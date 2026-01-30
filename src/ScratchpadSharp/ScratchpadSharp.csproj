@@ -24,4 +24,8 @@
     <ProjectReference Include="../ScratchpadSharp.Shared/ScratchpadSharp.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
 </Project>
