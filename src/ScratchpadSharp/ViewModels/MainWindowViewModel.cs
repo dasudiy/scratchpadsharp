@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Reactive;
+using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using ReactiveUI;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.Storage;
@@ -18,9 +21,16 @@ public class MainWindowViewModel : ReactiveObject
     private string codeText = string.Empty;
     private ScriptPackage currentPackage;
     private string? currentFilePath;
+    private Window? mainWindow;
 
     private readonly IScriptExecutionService scriptService;
     private readonly IPackageService packageService;
+
+    public Window? MainWindow
+    {
+        get => mainWindow;
+        set => this.RaiseAndSetIfChanged(ref mainWindow, value);
+    }
 
     public string CodeText
     {
@@ -224,51 +234,55 @@ public class MainWindowViewModel : ReactiveObject
 
     private async Task<string?> ShowOpenFileDialogAsync()
     {
-        var dialog = new Avalonia.Controls.OpenFileDialog
+        if (MainWindow?.StorageProvider == null)
+            return null;
+
+        var files = await MainWindow.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Open Script",
-            Filters = new List<Avalonia.Controls.FileDialogFilter>
+            AllowMultiple = false,
+            FileTypeFilter = new[]
             {
-                new Avalonia.Controls.FileDialogFilter
+                new FilePickerFileType("Script Packages")
                 {
-                    Name = "LinqPad Query Packages",
-                    Extensions = new List<string> { "lqpkg" }
+                    Patterns = new[] { "*.lqpkg" }
                 },
-                new Avalonia.Controls.FileDialogFilter
+                new FilePickerFileType("C# Scripts")
                 {
-                    Name = "C# Scripts",
-                    Extensions = new List<string> { "cs", "csx" }
+                    Patterns = new[] { "*.cs", "*.csx" }
+                },
+                new FilePickerFileType("All Files")
+                {
+                    Patterns = new[] { "*" }
                 }
             }
-        };
+        });
 
-        // This would be called from MainWindow in real implementation
-        // For now, we'll use a simple approach
-        return null;
+        return files.Count > 0 ? files[0].Path.LocalPath : null;
     }
 
     private async Task<string?> ShowSaveFileDialogAsync()
     {
-        var dialog = new Avalonia.Controls.SaveFileDialog
+        if (MainWindow?.StorageProvider == null)
+            return null;
+
+        var file = await MainWindow.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Save Script",
-            Filters = new List<Avalonia.Controls.FileDialogFilter>
+            DefaultExtension = "lqpkg",
+            FileTypeChoices = new[]
             {
-                new Avalonia.Controls.FileDialogFilter
+                new FilePickerFileType("Script Packages")
                 {
-                    Name = "LinqPad Query Packages",
-                    Extensions = new List<string> { "lqpkg" }
+                    Patterns = new[] { "*.lqpkg" }
                 },
-                new Avalonia.Controls.FileDialogFilter
+                new FilePickerFileType("C# Scripts")
                 {
-                    Name = "C# Scripts",
-                    Extensions = new List<string> { "cs" }
+                    Patterns = new[] { "*.cs" }
                 }
             }
-        };
+        });
 
-        // This would be called from MainWindow in real implementation
-        // For now, we'll use a simple approach
-        return null;
+        return file?.Path.LocalPath;
     }
 }

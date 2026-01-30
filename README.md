@@ -1,6 +1,6 @@
 # ScratchpadSharp
 
-A lightweight, high-performance C# script runner (LinqPad Lite) built with Avalonia UI and Roslyn.
+A lightweight, high-performance C# script runner built with Avalonia UI and Roslyn.
 
 ## Features
 

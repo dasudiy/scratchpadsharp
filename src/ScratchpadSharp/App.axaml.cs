@@ -20,10 +20,13 @@ public partial class App : Application
         var lifetime = ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
         if (lifetime != null)
         {
-            lifetime.MainWindow = new MainWindow
+            var viewModel = new MainWindowViewModel();
+            var mainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(),
+                DataContext = viewModel
             };
+            viewModel.MainWindow = mainWindow;
+            lifetime.MainWindow = mainWindow;
         }
 
         base.OnFrameworkInitializationCompleted();

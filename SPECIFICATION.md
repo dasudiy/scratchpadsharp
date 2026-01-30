@@ -1,6 +1,6 @@
 # ScratchpadSharp - Technical Specification
 
-**Project**: High-Performance C# Script Runner (LinqPad Lite)  
+**Project**: High-Performance C# Script Runner  
 **Target Platform**: Linux (cross-platform capable)  
 **Framework**: .NET 8.0 LTS  
 **Last Updated**: January 30, 2026
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-ScratchpadSharp is a lightweight, high-performance C# scratchpad application similar to LinqPad, built with Avalonia UI and Roslyn. It prioritizes startup speed, code execution isolation, and developer experience.
+ScratchpadSharp is a lightweight, high-performance C# scratchpad application built with Avalonia UI and Roslyn. It prioritizes startup speed, code execution isolation, and developer experience.
 
 ### Core Features
 - **Fast Script Execution**: Roslyn-based C# compilation and execution

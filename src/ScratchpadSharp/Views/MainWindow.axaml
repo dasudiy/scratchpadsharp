@@ -7,6 +7,15 @@
         Height="800"
         WindowStartupLocation="CenterScreen">
 
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewCommand}" />
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
+        <KeyBinding Gesture="F5" Command="{Binding ExecuteCommand}" />
+        <KeyBinding Gesture="Shift+F5" Command="{Binding CancelCommand}" />
+    </Window.KeyBindings>
+
     <DockPanel LastChildFill="True">
         <!-- Menu -->
         <Menu DockPanel.Dock="Top">
