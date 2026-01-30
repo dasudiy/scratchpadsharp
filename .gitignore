@@ -1,0 +1,32 @@
+# Build outputs
+bin/
+obj/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.iml
+.github/
+
+# NuGet
+.packages/
+packages/
+*.nupkg
+
+# Temporary files
+*.tmp
+*.bak
+.extracted/
+temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Application data
+*.lqpkg.backup

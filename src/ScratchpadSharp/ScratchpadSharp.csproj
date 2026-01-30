@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.*" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.*" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.*" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.*" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.0.*" />
+    <PackageReference Include="AvaloniaEdit.TextMate" Version="11.0.*" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ScratchpadSharp.Core/ScratchpadSharp.Core.csproj" />
+    <ProjectReference Include="../ScratchpadSharp.Shared/ScratchpadSharp.Shared.csproj" />
+  </ItemGroup>
+
+</Project>
