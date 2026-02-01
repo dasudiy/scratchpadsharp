@@ -65,13 +65,7 @@ public class ScriptExecutionService : IScriptExecutionService
     {
         // Wrap user code in a class with a static method
         var usingsBlock = string.Join(Environment.NewLine, config.DefaultUsings.Select(u => $"using {u};"));
-        var wrappedCode = @"
-using System;
-using System.Linq;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.IO;
-" + usingsBlock + @"
+        var wrappedCode = usingsBlock + @"
 
 public class __ScriptRunner
 {
@@ -87,8 +81,8 @@ public class __ScriptRunner
 
         var syntaxTree = CSharpSyntaxTree.ParseText(wrappedCode);
 
-        // Get reference assemblies from shared provider including NuGet packages
-        var references = MetadataReferenceProvider.GetReferencesWithPackages(config.NuGetPackages).ToList();
+        // Get reference assemblies from config and NuGet packages
+        var references = MetadataReferenceProvider.GetReferencesFromConfig(config).ToList();
 
         var compilation = CSharpCompilation.Create(
             $"__ScriptAssembly_{Guid.NewGuid():N}",

@@ -199,16 +199,6 @@ public class MainWindowViewModel : ReactiveObject
             var code = CodeText;
             var config = currentPackage.Config;
 
-            if (config.DefaultUsings.Count == 0)
-            {
-                config.DefaultUsings = new List<string>
-                {
-                    "System",
-                    "System.Linq",
-                    "System.Collections.Generic"
-                };
-            }
-
             var result = await scriptService.ExecuteAsync(code, config);
 
             if (result.Success)

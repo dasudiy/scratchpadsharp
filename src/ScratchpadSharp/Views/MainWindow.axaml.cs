@@ -17,6 +17,7 @@ using AvaloniaEdit.Document;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Highlighting.Xshd;
 using ScratchpadSharp.Core.Services;
+using ScratchpadSharp.Shared.Models;
 using ScratchpadSharp.ViewModels;
 
 namespace ScratchpadSharp.Views;
@@ -176,21 +177,10 @@ public partial class MainWindow : Window
             var code = codeEditor.Document.Text;
             var offset = codeEditor.CaretOffset;
             
-            // Get usings from config or use defaults
-            var usings = new List<string> { "System", "System.Linq", "System.Collections.Generic", "System.Threading.Tasks", "System.IO" };
-            var packages = new Dictionary<string, string>();
-            
-            if (viewModel?.CurrentPackage?.Config != null)
-            {
-                if (viewModel.CurrentPackage.Config.DefaultUsings?.Any() == true)
-                {
-                    usings = viewModel.CurrentPackage.Config.DefaultUsings;
-                }
-                if (viewModel.CurrentPackage.Config.NuGetPackages?.Any() == true)
-                {
-                    packages = viewModel.CurrentPackage.Config.NuGetPackages;
-                }
-            }
+            // Get usings and packages from config
+            var config = viewModel?.CurrentPackage?.Config ?? new ScriptConfig();
+            var usings = config.DefaultUsings;
+            var packages = config.NuGetPackages;
 
             // Fetch completions on background thread
             var completions = await Task.Run(

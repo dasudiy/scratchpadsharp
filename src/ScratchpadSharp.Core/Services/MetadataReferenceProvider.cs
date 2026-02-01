@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
+using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Services;
 
@@ -51,6 +52,52 @@ public static class MetadataReferenceProvider
         return references;
     }
 
+    public static IEnumerable<MetadataReference> GetReferencesFromAssemblyNames(List<string> assemblyNames)
+    {
+        var references = new List<MetadataReference>();
+
+        foreach (var assemblyName in assemblyNames)
+        {
+            try
+            {
+                var assembly = Assembly.Load(assemblyName);
+                references.Add(MetadataReference.CreateFromFile(assembly.Location));
+            }
+            catch
+            {
+                // Skip assemblies that fail to load
+            }
+        }
+
+        return references;
+    }
+
+    public static IEnumerable<MetadataReference> GetReferencesFromConfig(ScriptConfig config)
+    {
+        var references = new List<MetadataReference>();
+
+        // Add core type references
+        references.Add(MetadataReference.CreateFromFile(typeof(object).Assembly.Location));
+        references.Add(MetadataReference.CreateFromFile(typeof(Console).Assembly.Location));
+        references.Add(MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location));
+        references.Add(MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location));
+        references.Add(MetadataReference.CreateFromFile(typeof(Task).Assembly.Location));
+
+        // Add references from config
+        if (config.DefaultReferences?.Count > 0)
+        {
+            references.AddRange(GetReferencesFromAssemblyNames(config.DefaultReferences));
+        }
+
+        // Add NuGet packages
+        if (config.NuGetPackages?.Count > 0)
+        {
+            references.AddRange(GetPackageReferences(config.NuGetPackages));
+        }
+
+        return references;
+    }
+
     public static IEnumerable<MetadataReference> GetReferencesWithPackages(Dictionary<string, string> nugetPackages)
     {
         var references = GetDefaultReferences().ToList();
@@ -58,6 +105,13 @@ public static class MetadataReferenceProvider
         if (nugetPackages == null || nugetPackages.Count == 0)
             return references;
 
+        references.AddRange(GetPackageReferences(nugetPackages));
+        return references;
+    }
+
+    private static IEnumerable<MetadataReference> GetPackageReferences(Dictionary<string, string> nugetPackages)
+    {
+        var references = new List<MetadataReference>();
         var nugetPackagesPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".nuget", "packages");
@@ -72,12 +126,11 @@ public static class MetadataReferenceProvider
 
                 if (Directory.Exists(packagePath))
                 {
-                    // Find all DLL files in lib folders
                     var libPath = Path.Combine(packagePath, "lib");
                     if (Directory.Exists(libPath))
                     {
                         var dllFiles = Directory.GetFiles(libPath, "*.dll", SearchOption.AllDirectories)
-                            .Where(f => !f.Contains("\\ref\\")) // Skip reference assemblies
+                            .Where(f => !f.Contains("\\ref\\"))
                             .ToList();
 
                         foreach (var dll in dllFiles)
@@ -91,10 +144,7 @@ public static class MetadataReferenceProvider
                     }
                 }
             }
-            catch
-            {
-                // Skip packages that fail to load
-            }
+            catch { }
         }
 
         return references;
