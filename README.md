@@ -29,20 +29,23 @@ dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 
 ## Development
 
-### Phase 1: MVP (In Progress)
+### Phase 1: MVP ✓ Complete
 - [x] Project structure and dependencies
 - [x] Basic Avalonia UI with AvaloniaEdit
 - [x] Simple script execution (no isolation)
 - [x] Console output redirection
 - [x] Save/load .lqpkg files
 
-### Phase 2: Isolation & Storage
-- [ ] AssemblyLoadContext implementation
-- [ ] ALC unloading with WeakReference
+### Phase 2: Isolation & Storage ✓ Complete
+- [x] AssemblyLoadContext implementation with isCollectible
+- [x] ALC unloading with WeakReference monitoring
+- [x] Native library resolver (Linux .so support)
+- [x] In-memory compilation using CSharpCompilation
+- [x] Isolated script execution with timeout support
 - [ ] Developer Mode (folder structure)
 - [ ] Pack/unpack commands
 
-### Phase 3: NuGet & Dumpify
+### Phase 3: NuGet & Dumpify (In Progress)
 - [ ] NuGet package resolution
 - [ ] Dumpify integration
 - [ ] MetadataReference management
@@ -50,7 +53,7 @@ dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 
 ### Phase 4: EF Core & Polish
 - [ ] EF Core integration
-- [ ] Connection string injection
+- [x] Connection string injection (via ScriptConfig)
 - [ ] Error highlighting
 - [ ] ANSI color support
 - [ ] Settings UI
