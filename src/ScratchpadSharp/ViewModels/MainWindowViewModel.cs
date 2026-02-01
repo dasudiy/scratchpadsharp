@@ -56,6 +56,8 @@ public class MainWindowViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref isExecuting, value);
     }
 
+    public ScriptPackage CurrentPackage => currentPackage;
+
     public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
     public ReactiveCommand<Unit, Unit> NewCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenCommand { get; }

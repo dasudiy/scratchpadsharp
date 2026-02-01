@@ -87,25 +87,8 @@ public class __ScriptRunner
 
         var syntaxTree = CSharpSyntaxTree.ParseText(wrappedCode);
 
-        // Get reference assemblies
-        var references = new List<MetadataReference>
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Collections").Location),
-            MetadataReference.CreateFromFile(Assembly.Load("netstandard").Location),
-        };
-
-        // Add System.Private.CoreLib and mscorlib
-        try
-        {
-            references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.Private.CoreLib").Location));
-        }
-        catch { }
+        // Get reference assemblies from shared provider including NuGet packages
+        var references = MetadataReferenceProvider.GetReferencesWithPackages(config.NuGetPackages).ToList();
 
         var compilation = CSharpCompilation.Create(
             $"__ScriptAssembly_{Guid.NewGuid():N}",
