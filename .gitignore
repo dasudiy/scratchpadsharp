@@ -30,3 +30,5 @@ Thumbs.db
 
 # Application data
 *.lqpkg.backup
+.idea/
+src/SvgExtractor/

@@ -19,7 +19,7 @@
     <DockPanel LastChildFill="True">
         <!-- Menu -->
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="File" FontSize="24">
+            <MenuItem Header="File">
                 <MenuItem Header="New" Command="{Binding NewCommand}" InputGesture="Ctrl+N" />
                 <MenuItem Header="Open" Command="{Binding OpenCommand}" InputGesture="Ctrl+O" />
                 <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
@@ -27,7 +27,7 @@
                 <Separator />
                 <MenuItem Header="Exit" Command="{Binding ExitCommand}" />
             </MenuItem>
-            <MenuItem Header="Run" FontSize="24">
+            <MenuItem Header="Run">
                 <MenuItem Header="Execute Script" Command="{Binding ExecuteCommand}" InputGesture="F5" />
                 <MenuItem Header="Cancel" Command="{Binding CancelCommand}" InputGesture="Shift+F5" />
             </MenuItem>
@@ -45,7 +45,6 @@
             <avaloniaEdit:TextEditor Grid.Row="0"
                                      Name="CodeEditor"
                                      FontFamily="JetBrains Mono, Cascadia Code, DejaVu Sans Mono, monospace"
-                                     FontSize="36"
                                      FontWeight="Medium"
                                      ShowLineNumbers="True"
                                      WordWrap="False"
@@ -68,14 +67,12 @@
                 <Grid RowDefinitions="Auto, *">
                     <TextBlock Grid.Row="0"
                                Text="Output"
-                               FontSize="24"
                                FontWeight="Bold"
                                Foreground="#D4D4D4"
                                Padding="8,4" />
                     <ScrollViewer Grid.Row="1">
                         <SelectableTextBlock Text="{Binding Output}"
                                            FontFamily="Cascadia Code, Consolas, monospace"
-                                           FontSize="24"
                                            Foreground="#D4D4D4"
                                            Padding="8,4"
                                            TextWrapping="Wrap" />
