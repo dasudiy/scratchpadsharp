@@ -63,8 +63,12 @@ public class ScriptExecutionService : IScriptExecutionService
     private (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
         string code, ScriptConfig config)
     {
-        // Wrap user code in a class with a static method
-        var usingsBlock = string.Join(Environment.NewLine, config.DefaultUsings.Select(u => $"using {u};"));
+        var preprocessor = new ScriptPreprocessor();
+        var (cleanCode, userUsings) = preprocessor.ExtractUsingsAndComments(code);
+
+        var allUsings = config.DefaultUsings.Concat(userUsings).Distinct();
+        var usingsBlock = string.Join(Environment.NewLine, allUsings.Select(u => $"using {u};"));
+
         var wrappedCode = usingsBlock + @"
 
 public class __ScriptRunner
@@ -73,7 +77,9 @@ public class __ScriptRunner
 
     public static async Task<object?> __Execute()
     {
-        " + code + @"
+#line 1 ""Script.cs""
+        " + cleanCode + @"
+#line hidden
         return null;
     }
 }
