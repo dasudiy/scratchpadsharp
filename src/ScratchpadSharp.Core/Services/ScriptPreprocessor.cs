@@ -1,20 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 
 namespace ScratchpadSharp.Core.Services;
 
 public class ScriptPreprocessor
 {
-    public (string CleanCode, List<string> Usings) ExtractUsingsAndComments(string code)
+    public (string CleanCode, List<string> Usings, int RemovedLineCount) ExtractUsingsAndComments(string code)
     {
         var lines = code.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
         var usings = new List<string>();
         var cleanLines = new List<string>();
         var inBlockComment = false;
         var codeStarted = false;
+        var removedLineCount = 0;
 
         foreach (var line in lines)
         {
@@ -26,6 +25,7 @@ public class ScriptPreprocessor
                 {
                     inBlockComment = false;
                 }
+                removedLineCount++;
                 continue;
             }
 
@@ -35,6 +35,7 @@ public class ScriptPreprocessor
                 {
                     inBlockComment = true;
                 }
+                removedLineCount++;
                 continue;
             }
 
@@ -44,6 +45,10 @@ public class ScriptPreprocessor
                 {
                     cleanLines.Add(line);
                 }
+                else
+                {
+                    removedLineCount++;
+                }
                 continue;
             }
 
@@ -51,6 +56,7 @@ public class ScriptPreprocessor
             {
                 var ns = trimmed.Replace("using ", "").Replace(";", "").Trim();
                 usings.Add(ns);
+                removedLineCount++;
                 continue;
             }
 
@@ -59,6 +65,6 @@ public class ScriptPreprocessor
         }
 
         var cleanCode = string.Join(Environment.NewLine, cleanLines);
-        return (cleanCode, usings);
+        return (cleanCode, usings, removedLineCount);
     }
 }

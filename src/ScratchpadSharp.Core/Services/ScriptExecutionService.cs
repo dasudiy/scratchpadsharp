@@ -64,11 +64,12 @@ public class ScriptExecutionService : IScriptExecutionService
         string code, ScriptConfig config)
     {
         var preprocessor = new ScriptPreprocessor();
-        var (cleanCode, userUsings) = preprocessor.ExtractUsingsAndComments(code);
+        var (cleanCode, userUsings, removedLineCount) = preprocessor.ExtractUsingsAndComments(code);
 
         var allUsings = config.DefaultUsings.Concat(userUsings).Distinct();
         var usingsBlock = string.Join(Environment.NewLine, allUsings.Select(u => $"using {u};"));
 
+        var lineDirective = $"#line {removedLineCount + 1} \"Script.cs\"";
         var wrappedCode = usingsBlock + @"
 
 public class __ScriptRunner
@@ -77,7 +78,7 @@ public class __ScriptRunner
 
     public static async Task<object?> __Execute()
     {
-#line 1 ""Script.cs""
+    " + lineDirective + @"
         " + cleanCode + @"
 #line hidden
         return null;
