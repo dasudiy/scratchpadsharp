@@ -25,6 +25,7 @@ public class MainWindowViewModel : ReactiveObject
 
     private readonly IScriptExecutionService scriptService;
     private readonly IPackageService packageService;
+    private readonly CodeFormatterService formatterService;
 
     public Window? MainWindow
     {
@@ -64,16 +65,18 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> SaveCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveAsCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
+    public ReactiveCommand<Unit, Unit> FormatCommand { get; }
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
 
-    public MainWindowViewModel() : this(new ScriptExecutionService(), new PackageService())
+    public MainWindowViewModel() : this(new ScriptExecutionService(), new PackageService(), new CodeFormatterService())
     {
     }
 
-    public MainWindowViewModel(IScriptExecutionService scriptService, IPackageService packageService)
+    public MainWindowViewModel(IScriptExecutionService scriptService, IPackageService packageService, CodeFormatterService formatterService)
     {
         this.scriptService = scriptService;
         this.packageService = packageService;
+        this.formatterService = formatterService;
 
         codeText = string.Empty;
         currentPackage = new ScriptPackage();
@@ -84,6 +87,7 @@ public class MainWindowViewModel : ReactiveObject
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
         SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync);
         CancelCommand = ReactiveCommand.Create(Cancel);
+        FormatCommand = ReactiveCommand.CreateFromTask(FormatCodeAsync);
         ExitCommand = ReactiveCommand.Create(() =>
         {
             System.Diagnostics.Process.GetCurrentProcess().Kill();
@@ -187,6 +191,21 @@ public class MainWindowViewModel : ReactiveObject
     {
         IsExecuting = false;
         StatusText = "Execution cancelled";
+    }
+
+    private async Task FormatCodeAsync()
+    {
+        try
+        {
+            StatusText = "Formatting code...";
+            var formatted = await formatterService.FormatCodeAsync(CodeText);
+            CodeText = formatted;
+            StatusText = "Code formatted successfully";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Format failed: {ex.Message}";
+        }
     }
 
     private async Task ExecuteAsync()
