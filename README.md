@@ -6,6 +6,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 
 - **Fast Script Execution**: Roslyn-based C# compilation
 - **Memory Isolation**: AssemblyLoadContext with unloading
+- **IntelliSense Support**: Code completion, signature help, and formatting
 - **Rich Object Visualization**: Dumpify integration
 - **NuGet Support**: Dynamic package resolution
 - **EF Core Ready**: Built-in database support
@@ -45,10 +46,19 @@ dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 - [ ] Developer Mode (folder structure)
 - [ ] Pack/unpack commands
 
+### Phase 2.5: Roslyn IntelliSense ✓ Complete
+- [x] Shared workspace architecture (single AdhocWorkspace)
+- [x] Code completion (Ctrl+Space, auto-trigger)
+- [x] Signature help with XML documentation
+- [x] Code formatting (Ctrl+Alt+F)
+- [x] Multi-tab ready design (per-tab projects)
+- [x] Thread-safe document updates
+- [x] Async initialization with JIT warmup
+
 ### Phase 3: NuGet & Dumpify (In Progress)
+- [x] MetadataReference management with XML docs
 - [ ] NuGet package resolution
 - [ ] Dumpify integration
-- [ ] MetadataReference management
 - [ ] config.json support
 
 ### Phase 4: EF Core & Polish
