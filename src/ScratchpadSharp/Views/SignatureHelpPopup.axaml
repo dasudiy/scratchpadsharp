@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="clr-namespace:ScratchpadSharp.Views"
+    x:Class="ScratchpadSharp.Views.SignatureHelpPopup"
+    Width="450"
+    MaxWidth="600">
+
+    <UserControl.Resources>
+        <views:HighlightBoolConverter x:Key="HighlightBoolConverter" />
+    </UserControl.Resources>
+
+    <Border Background="White" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" BoxShadow="0 2 8 #00000020">
+        <StackPanel Margin="12" Spacing="8">
+            <!-- Signature Count Indicator -->
+            <TextBlock 
+                Text="{Binding SignatureCountText}"
+                FontSize="11"
+                Foreground="#666666"
+                TextAlignment="Right" />
+
+            <!-- Current Signature -->
+            <StackPanel Spacing="4">
+                <!-- Signature Header: ReturnType MethodName( -->
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                    <TextBlock Text="{Binding CurrentSignature.ReturnType}" Foreground="#0066CC" FontWeight="Bold" FontSize="11" />
+                    <TextBlock Text=" " FontSize="11" />
+                    <TextBlock Text="{Binding CurrentSignature.Name}" FontWeight="Bold" FontSize="11" />
+                    <TextBlock Text="(" FontSize="11" />
+                </StackPanel>
+
+                <!-- Parameters List -->
+                <ItemsControl ItemsSource="{Binding CurrentSignature.Parameters}" FontSize="11">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="16,2,0,2">
+                                <TextBlock 
+                                    Text="{Binding Type}"
+                                    Foreground="{Binding IsHighlighted, 
+                                        Converter={StaticResource HighlightBoolConverter},
+                                        ConverterParameter=#1E90FF|#000000}" />
+                                <TextBlock 
+                                    Text="{Binding Name}"
+                                    Foreground="{Binding IsHighlighted, 
+                                        Converter={StaticResource HighlightBoolConverter},
+                                        ConverterParameter=#1E90FF|#000000}"
+                                    FontWeight="Bold" />
+                                <TextBlock Text="," Foreground="#666666" IsVisible="{Binding !IsLast}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Closing Paren -->
+                <TextBlock Text=")" FontSize="11" />
+                
+                <!-- Documentation -->
+                <TextBlock 
+                    Text="{Binding CurrentSignature.Documentation}"
+                    FontSize="10"
+                    Foreground="#555555"
+                    TextWrapping="Wrap"
+                    MaxWidth="400"
+                    Margin="0,4,0,0"
+                    IsVisible="{Binding CurrentSignature.Documentation, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>
