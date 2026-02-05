@@ -29,8 +29,7 @@ public partial class MainWindow : Window
 {
     private MainWindowViewModel? viewModel;
     private CompletionWindow? completionWindow;
-    private Popup? signaturePopup;
-    private SignatureHelpViewModel? signatureViewModel;
+    private SignatureHelpWindow? signatureHelpWindow;
     private readonly IRoslynCompletionService completionService;
     private readonly ISignatureProvider signatureProvider;
     private CancellationTokenSource? completionCts;
@@ -50,7 +49,6 @@ public partial class MainWindow : Window
         {
             InitializeSyntaxHighlighting();
             InitializeCodeCompletion();
-            CreateSignaturePopup();
 
             CodeEditor.Document = new TextDocument();
             CodeEditor.TextChanged += (s, e) =>
@@ -84,27 +82,6 @@ public partial class MainWindow : Window
         {
             CodeEditor?.Focus();
         };
-    }
-
-    private void CreateSignaturePopup()
-    {
-        signatureViewModel = new SignatureHelpViewModel();
-        signaturePopup = new Popup
-        {
-            // PlacementTarget = CodeEditor.TextArea,
-            // Placement = PlacementMode.Top,
-            IsLightDismissEnabled = true,
-            Child = new SignatureHelpPopup { DataContext = signatureViewModel },
-        };
-
-        // Add to visual tree
-        if (MainGrid != null)
-        {
-            Console.WriteLine($"[SignatureHelp] Adding popup to visual tree...");
-            MainGrid.Children.Add(signaturePopup);
-        }
-
-        Debug.WriteLine($"[SignatureHelp] Popup created and added to visual tree");
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -149,18 +126,18 @@ public partial class MainWindow : Window
             {
                 HideSignatureHelp();
             }
-            else if (signatureViewModel?.IsVisible == true)
+            else if (signatureHelpWindow?.ViewModel?.IsVisible == true)
             {
                 // Only handle Up/Down when signature help is visible
                 if (e.Key == Key.Up)
                 {
                     e.Handled = true;
-                    signatureViewModel.SelectPreviousSignature();
+                    signatureHelpWindow.ViewModel.SelectPreviousSignature();
                 }
                 else if (e.Key == Key.Down)
                 {
                     e.Handled = true;
-                    signatureViewModel.SelectNextSignature();
+                    signatureHelpWindow.ViewModel.SelectNextSignature();
                 }
             }
         };
@@ -367,24 +344,21 @@ public partial class MainWindow : Window
                 if (token.IsCancellationRequested) return;
 
                 Debug.WriteLine($"[SignatureHelp] Showing popup...");
-                signatureViewModel ??= new SignatureHelpViewModel();
-                signatureViewModel.UpdateSignatures(signatures, argIndex);
-                Debug.WriteLine($"[SignatureHelp] ViewModel IsVisible before Show: {signatureViewModel.IsVisible}");
-                signatureViewModel.Show();
-                Debug.WriteLine($"[SignatureHelp] ViewModel IsVisible after Show: {signatureViewModel.IsVisible}");
-                Debug.WriteLine($"[SignatureHelp] Signatures count: {signatureViewModel.Signatures.Count}");
-                Debug.WriteLine($"[SignatureHelp] Current signature: {signatureViewModel.CurrentSignature?.Name}");
+                
+                // Close existing window
+                signatureHelpWindow?.Close();
+                
+                // Create new signature help window
+                signatureHelpWindow = new SignatureHelpWindow(CodeEditor.TextArea);
+                signatureHelpWindow.Closed += (s, e) => signatureHelpWindow = null;
+                
+                signatureHelpWindow.ViewModel.UpdateSignatures(signatures, argIndex);
+                signatureHelpWindow.ViewModel.Show();
+                
+                Debug.WriteLine($"[SignatureHelp] Signatures count: {signatureHelpWindow.ViewModel.Signatures.Count}");
+                Debug.WriteLine($"[SignatureHelp] Current signature: {signatureHelpWindow.ViewModel.CurrentSignature?.Name}");
 
-                if (signaturePopup != null && !signaturePopup.IsOpen)
-                {
-                    Debug.WriteLine($"[SignatureHelp] About to position popup...");
-                    PositionSignaturePopup();
-                    Debug.WriteLine($"[SignatureHelp] Popup opened: {signaturePopup.IsOpen}");
-                }
-                else
-                {
-                    Debug.WriteLine($"[SignatureHelp] Popup is null or already open: null={signaturePopup == null}, isOpen={signaturePopup?.IsOpen}");
-                }
+                signatureHelpWindow.Show();
             });
         }
         catch (OperationCanceledException)
@@ -398,7 +372,7 @@ public partial class MainWindow : Window
 
     private async Task UpdateSignatureHelpAsync()
     {
-        if (CodeEditor?.TextArea == null || signatureViewModel == null || !signatureViewModel.IsVisible)
+        if (CodeEditor?.TextArea == null || signatureHelpWindow?.ViewModel == null || !signatureHelpWindow.ViewModel.IsVisible)
             return;
 
         signatureCts?.Cancel();
@@ -422,7 +396,7 @@ public partial class MainWindow : Window
             {
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    signatureViewModel?.UpdateArgumentIndex(argIndex);
+                    signatureHelpWindow?.ViewModel?.UpdateArgumentIndex(argIndex);
                 });
             }
         }
@@ -435,41 +409,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PositionSignaturePopup()
-    {
-        if (signaturePopup == null || CodeEditor?.TextArea == null)
-        {
-            Debug.WriteLine($"[SignatureHelp] PositionSignaturePopup failed: popup={signaturePopup == null}, editor={CodeEditor == null}");
-            return;
-        }
-
-        try
-        {
-            var caretPos = CodeEditor.TextArea.Caret.CalculateCaretRectangle();
-            
-            // Set offset to position at caret
-            signaturePopup.PlacementTarget = CodeEditor;
-            signaturePopup.Placement = PlacementMode.TopEdgeAlignedLeft;
-            signaturePopup.HorizontalOffset = caretPos.X+50;
-            signaturePopup.VerticalOffset = caretPos.Bottom;
-            Debug.WriteLine($"[SignatureHelp] Setting offset to ({caretPos.X}, {caretPos.Y})");
-
-            if (!signaturePopup.IsOpen)
-            {
-                Debug.WriteLine($"[SignatureHelp] Opening popup...");
-                signaturePopup.IsOpen = true;
-                Debug.WriteLine($"[SignatureHelp] IsOpen is now: {signaturePopup.IsOpen}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error positioning signature popup: {ex.Message}");
-        }
-    }
-
     private void OnCaretPositionChanged(object? sender, EventArgs e)
     {
-        if (signatureViewModel == null || !signatureViewModel.IsVisible)
+        if (signatureHelpWindow?.ViewModel == null || !signatureHelpWindow.ViewModel.IsVisible)
             return;
 
         // Hide signature help if caret moves outside the invocation context
@@ -492,14 +434,6 @@ public partial class MainWindow : Window
 
     private void HideSignatureHelp()
     {
-        if (signaturePopup != null && signaturePopup.IsOpen)
-        {
-            signaturePopup.IsOpen = false;
-        }
-
-        if (signatureViewModel != null)
-        {
-            signatureViewModel.Hide();
-        }
+        signatureHelpWindow?.Close();
     }
 }
