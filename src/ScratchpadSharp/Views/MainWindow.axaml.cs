@@ -27,6 +27,7 @@ namespace ScratchpadSharp.Views;
 
 public partial class MainWindow : Window
 {
+    private const string TabId = "main";
     private MainWindowViewModel? viewModel;
     private CompletionWindow? completionWindow;
     private SignatureHelpWindow? signatureHelpWindow;
@@ -80,7 +81,35 @@ public partial class MainWindow : Window
         // Focus editor when window opens
         this.Opened += (s, e) =>
         {
+            // Wait for workspace initialization and create project
+            _ = Task.Run(async () =>
+            {
+                while (!RoslynWorkspaceService.Instance.IsInitialized)
+                {
+                    await Task.Delay(100);
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    try
+                    {
+                        RoslynWorkspaceService.Instance.CreateProject(TabId);
+                        Debug.WriteLine($"[MainWindow] Created Roslyn project for tab '{TabId}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[MainWindow] Error creating project: {ex.Message}");
+                    }
+                });
+            });
+
             CodeEditor?.Focus();
+        };
+
+        this.Closing += (s, e) =>
+        {
+            RoslynWorkspaceService.Instance.RemoveProject(TabId);
+            Debug.WriteLine($"[MainWindow] Removed Roslyn project for tab '{TabId}'");
         };
     }
 
@@ -199,7 +228,7 @@ public partial class MainWindow : Window
 
             // Fetch completions on background thread
             var completions = await Task.Run(
-                () => completionService.GetCompletionsAsync(code, offset, usings, packages, token),
+                () => completionService.GetCompletionsAsync(TabId, code, offset, usings, packages, token),
                 token);
 
             if (token.IsCancellationRequested || completions.IsEmpty)
@@ -331,7 +360,7 @@ public partial class MainWindow : Window
             Debug.WriteLine($"[SignatureHelp] Default usings count: {usings.Count}");
 
             var (signatures, argIndex) = await Task.Run(
-                () => signatureProvider.GetSignaturesAsync(code, offset, usings, packages, token),
+                () => signatureProvider.GetSignaturesAsync(TabId, code, offset, usings, packages, token),
                 token);
 
             Debug.WriteLine($"[SignatureHelp] Got {signatures.Count} signatures, argIndex={argIndex}");
@@ -389,7 +418,7 @@ public partial class MainWindow : Window
             var packages = config.NuGetPackages;
 
             var (_, argIndex) = await Task.Run(
-                () => signatureProvider.GetSignaturesAsync(code, offset, usings, packages, token),
+                () => signatureProvider.GetSignaturesAsync(TabId, code, offset, usings, packages, token),
                 token);
 
             if (!token.IsCancellationRequested && argIndex >= 0)

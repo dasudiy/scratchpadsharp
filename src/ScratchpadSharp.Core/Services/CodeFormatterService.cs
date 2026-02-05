@@ -2,24 +2,34 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Formatting;
-using Microsoft.CodeAnalysis.Host.Mef;
 
 namespace ScratchpadSharp.Core.Services;
 
 public class CodeFormatterService
 {
-    public async Task<string> FormatCodeAsync(string sourceCode)
+    public async Task<string> FormatCodeAsync(string tabId, string sourceCode)
     {
         if (string.IsNullOrWhiteSpace(sourceCode))
             return sourceCode;
 
-        using var workspace = new AdhocWorkspace(MefHostServices.Create(MefHostServices.DefaultAssemblies));
-        
-        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-        var root = await syntaxTree.GetRootAsync();
+        if (!RoslynWorkspaceService.Instance.IsInitialized)
+            return sourceCode;
 
-        var formattedNode = Formatter.Format(root, workspace);
+        try
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+            var root = await syntaxTree.GetRootAsync();
 
-        return formattedNode.ToFullString();
+            var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
+            var workspace = document.Project.Solution.Workspace;
+
+            var formattedNode = Formatter.Format(root, workspace);
+
+            return formattedNode.ToFullString();
+        }
+        catch
+        {
+            return sourceCode;
+        }
     }
 }

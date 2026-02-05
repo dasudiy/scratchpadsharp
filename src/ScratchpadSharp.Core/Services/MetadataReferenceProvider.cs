@@ -13,6 +13,16 @@ public static class MetadataReferenceProvider
 {
     private static List<MetadataReference>? cachedReferences;
 
+    private static MetadataReference CreateReferenceWithXmlDocs(string assemblyPath)
+    {
+        var xmlDocPath = Path.ChangeExtension(assemblyPath, ".xml");
+        var docProvider = File.Exists(xmlDocPath)
+            ? XmlDocumentationProvider.CreateFromFile(xmlDocPath)
+            : null;
+        
+        return MetadataReference.CreateFromFile(assemblyPath, documentation: docProvider);
+    }
+
     public static IEnumerable<MetadataReference> GetDefaultReferences()
     {
         if (cachedReferences != null)
@@ -20,31 +30,31 @@ public static class MetadataReferenceProvider
 
         var references = new List<MetadataReference>
         {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Collections").Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Linq").Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Linq.Expressions").Location),
-            MetadataReference.CreateFromFile(Assembly.Load("netstandard").Location),
+            CreateReferenceWithXmlDocs(typeof(object).Assembly.Location),
+            CreateReferenceWithXmlDocs(typeof(Console).Assembly.Location),
+            CreateReferenceWithXmlDocs(typeof(Enumerable).Assembly.Location),
+            CreateReferenceWithXmlDocs(typeof(List<>).Assembly.Location),
+            CreateReferenceWithXmlDocs(typeof(Task).Assembly.Location),
+            CreateReferenceWithXmlDocs(Assembly.Load("System.Runtime").Location),
+            CreateReferenceWithXmlDocs(Assembly.Load("System.Collections").Location),
+            CreateReferenceWithXmlDocs(Assembly.Load("System.Linq").Location),
+            CreateReferenceWithXmlDocs(Assembly.Load("System.Linq.Expressions").Location),
+            CreateReferenceWithXmlDocs(Assembly.Load("netstandard").Location),
         };
 
         // Add System.Private.CoreLib
         try
         {
-            references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.Private.CoreLib").Location));
+            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Private.CoreLib").Location));
         }
         catch { }
 
         // Add common assemblies for better IntelliSense
         try
         {
-            references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.Text.RegularExpressions").Location));
-            references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.IO.FileSystem").Location));
-            references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.Net.Http").Location));
+            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Text.RegularExpressions").Location));
+            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.IO.FileSystem").Location));
+            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Net.Http").Location));
         }
         catch { }
 

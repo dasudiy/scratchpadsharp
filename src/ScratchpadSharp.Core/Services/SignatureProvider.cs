@@ -31,6 +31,7 @@ public class ParameterSignature
 public interface ISignatureProvider
 {
     Task<(List<MethodSignature> Signatures, int ArgumentIndex)> GetSignaturesAsync(
+        string tabId,
         string code, 
         int position,
         List<string> usings,
@@ -40,77 +41,8 @@ public interface ISignatureProvider
 
 public class SignatureProvider : ISignatureProvider
 {
-    private readonly AdhocWorkspace workspace;
-    private readonly ProjectId projectId;
-    private readonly DocumentId documentId;
-    private Document currentDocument;
-
-    public SignatureProvider()
-    {
-        var host = MefHostServices.Create(MefHostServices.DefaultAssemblies);
-        workspace = new AdhocWorkspace(host);
-
-        projectId = ProjectId.CreateNewId();
-        var projectInfo = ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            name: "ScratchpadProject",
-            assemblyName: "ScratchpadAssembly",
-            language: LanguageNames.CSharp,
-            compilationOptions: new CSharpCompilationOptions(
-                OutputKind.DynamicallyLinkedLibrary,
-                allowUnsafe: false),
-            parseOptions: new CSharpParseOptions(LanguageVersion.Latest),
-            metadataReferences: MetadataReferenceProvider.GetDefaultReferences());
-
-        workspace.AddProject(projectInfo);
-
-        documentId = DocumentId.CreateNewId(projectId);
-        var documentInfo = DocumentInfo.Create(
-            documentId,
-            name: "Script.cs",
-            loader: TextLoader.From(TextAndVersion.Create(SourceText.From(""), VersionStamp.Create())));
-
-        workspace.AddDocument(documentInfo);
-        currentDocument = workspace.CurrentSolution.GetDocument(documentId)!;
-    }
-
-    public void UpdateReferences(Dictionary<string, string> nugetPackages)
-    {
-        var references = MetadataReferenceProvider.GetReferencesWithPackages(nugetPackages);
-        var project = workspace.CurrentSolution.GetProject(projectId);
-        if (project != null)
-        {
-            var updatedProject = project.WithMetadataReferences(references);
-            workspace.TryApplyChanges(updatedProject.Solution);
-        }
-    }
-
-    private void UpdateDocument(string code, List<string> usings)
-    {
-        var usingStatements = string.Join(Environment.NewLine, usings.Select(u => $"using {u};"));
-        var fullCode = usingStatements + (usingStatements.Length > 0 ? "\n\n" : "") + code;
-        
-        System.Diagnostics.Debug.WriteLine($"[SignatureProvider] UpdateDocument - code param length: {code.Length}");
-        System.Diagnostics.Debug.WriteLine($"[SignatureProvider] UpdateDocument - code param: '{code}'");
-        System.Diagnostics.Debug.WriteLine($"[SignatureProvider] UpdateDocument - usings count: {usings.Count}");
-        System.Diagnostics.Debug.WriteLine($"[SignatureProvider] UpdateDocument - fullCode length: {fullCode.Length}");
-        System.Diagnostics.Debug.WriteLine($"[SignatureProvider] UpdateDocument - fullCode:\n{fullCode}");
-        
-        var sourceText = SourceText.From(fullCode);
-        
-        var solution = workspace.CurrentSolution.WithDocumentText(documentId, sourceText);
-        if (workspace.TryApplyChanges(solution))
-        {
-            currentDocument = workspace.CurrentSolution.GetDocument(documentId)!;
-        }
-        else
-        {
-            currentDocument = currentDocument.WithText(sourceText);
-        }
-    }
-
     public async Task<(List<MethodSignature> Signatures, int ArgumentIndex)> GetSignaturesAsync(
+        string tabId,
         string code,
         int position,
         List<string> usings,
@@ -119,32 +51,24 @@ public class SignatureProvider : ISignatureProvider
     {
         try
         {
+            if (!RoslynWorkspaceService.Instance.IsInitialized)
+            {
+                System.Diagnostics.Debug.WriteLine("[SignatureProvider] Workspace not initialized yet");
+                return (new List<MethodSignature>(), -1);
+            }
+
             if (nugetPackages?.Count > 0)
             {
-                UpdateReferences(nugetPackages);
+                await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, nugetPackages);
             }
 
-            UpdateDocument(code, usings);
+            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, usings);
 
-            var document = workspace.CurrentSolution.GetDocument(documentId);
-            if (document == null)
-                return (new List<MethodSignature>(), -1);
+            var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
 
-            var text = await document.GetTextAsync(cancellationToken);
-            var fullCode = text.ToString();
-            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Code length: {code.Length}, Position: {position}");
-            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Full code length: {fullCode.Length}");
-            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Full code:\n{fullCode}");
-            
-            var adjustedPosition = position;
-            var usingLinesCount = usings.Count;
-            if (usingLinesCount > 0)
-            {
-                var usingStatements = string.Join(Environment.NewLine, usings.Select(u => $"using {u};"));
-                var usingLength = usingStatements.Length + 2;
-                adjustedPosition = position + usingLength;
-                System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Using length: {usingLength}, Adjusted position: {adjustedPosition}");
-            }
+            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(position, usings);
+
+            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Code length: {code.Length}, Position: {position}, Adjusted: {adjustedPosition}");
 
             var root = await document.GetSyntaxRootAsync(cancellationToken);
             if (root == null)
@@ -190,7 +114,7 @@ public class SignatureProvider : ISignatureProvider
         }
     }
 
-    private SyntaxNode? FindInvocationOrObjectCreation(SyntaxNode? node, int position)
+    private static SyntaxNode? FindInvocationOrObjectCreation(SyntaxNode? node, int position)
     {
         int depth = 0;
         while (node != null)
@@ -236,7 +160,7 @@ public class SignatureProvider : ISignatureProvider
         return null;
     }
 
-    private SyntaxNode? FindInvocationByDescendant(SyntaxNode root, int position)
+    private static SyntaxNode? FindInvocationByDescendant(SyntaxNode root, int position)
     {
         // Find all invocation and object creation expressions
         var invocations = root.DescendantNodes()
@@ -280,7 +204,7 @@ public class SignatureProvider : ISignatureProvider
         return null;
     }
 
-    private List<ISymbol> GetInvokedSymbols(SyntaxNode node, SemanticModel semanticModel)
+    private static List<ISymbol> GetInvokedSymbols(SyntaxNode node, SemanticModel semanticModel)
     {
         var symbols = new List<ISymbol>();
 
@@ -314,7 +238,7 @@ public class SignatureProvider : ISignatureProvider
         return symbols.Distinct(SymbolEqualityComparer.Default).ToList();
     }
 
-    private List<MethodSignature> ExtractSignatures(List<ISymbol> symbols)
+    private static List<MethodSignature> ExtractSignatures(List<ISymbol> symbols)
     {
         var signatures = new List<MethodSignature>();
 
@@ -329,7 +253,7 @@ public class SignatureProvider : ISignatureProvider
         return signatures;
     }
 
-    private MethodSignature BuildMethodSignature(IMethodSymbol method)
+    private static MethodSignature BuildMethodSignature(IMethodSymbol method)
     {
         var signature = new MethodSignature
         {
@@ -352,7 +276,7 @@ public class SignatureProvider : ISignatureProvider
         return signature;
     }
 
-    private int GetArgumentIndex(SyntaxNode node, int position)
+    private static int GetArgumentIndex(SyntaxNode node, int position)
     {
         ArgumentListSyntax? argumentList = null;
 
@@ -384,10 +308,5 @@ public class SignatureProvider : ISignatureProvider
         }
 
         return argIndex;
-    }
-
-    public void Dispose()
-    {
-        workspace?.Dispose();
     }
 }

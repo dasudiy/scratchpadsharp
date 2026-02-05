@@ -15,6 +15,7 @@ namespace ScratchpadSharp.ViewModels;
 
 public class MainWindowViewModel : ReactiveObject
 {
+    private const string TabId = "main";
     private string output = string.Empty;
     private string statusText = "Ready";
     private bool isExecuting;
@@ -198,7 +199,7 @@ public class MainWindowViewModel : ReactiveObject
         try
         {
             StatusText = "Formatting code...";
-            var formatted = await formatterService.FormatCodeAsync(CodeText);
+            var formatted = await formatterService.FormatCodeAsync(TabId, CodeText);
             CodeText = formatted;
             StatusText = "Code formatted successfully";
         }
