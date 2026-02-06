@@ -29,38 +29,36 @@ public class RoslynWorkspaceService
         if (isInitialized)
             return;
 
-        await Task.Run(() =>
+
+        System.Diagnostics.Debug.WriteLine("[RoslynWorkspace] Initializing workspace...");
+
+        var assemblies = new List<Assembly>();
+        assemblies.AddRange(MefHostServices.DefaultAssemblies);
+
+        try
         {
-            System.Diagnostics.Debug.WriteLine("[RoslynWorkspace] Initializing workspace...");
+            assemblies.Add(typeof(CompletionService).Assembly);
+            assemblies.Add(typeof(CSharpCompilation).Assembly);
+            assemblies.Add(typeof(Compilation).Assembly);
+            assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.CSharp.Features"));
+            assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.CSharp.Workspaces"));
+            assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.Workspaces"));
 
-            var assemblies = new List<Assembly>();
-            assemblies.AddRange(MefHostServices.DefaultAssemblies);
+            System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Loaded {assemblies.Distinct().Count()} MEF assemblies");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Error loading assemblies: {ex.Message}");
+        }
 
-            try
-            {
-                assemblies.Add(typeof(CompletionService).Assembly);
-                assemblies.Add(typeof(CSharpCompilation).Assembly);
-                assemblies.Add(typeof(Compilation).Assembly);
-                assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.CSharp.Features"));
-                assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.CSharp.Workspaces"));
-                assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.Workspaces"));
+        var host = MefHostServices.Create(assemblies.Distinct().ToArray());
+        workspace = new AdhocWorkspace(host);
 
-                System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Loaded {assemblies.Distinct().Count()} MEF assemblies");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Error loading assemblies: {ex.Message}");
-            }
+        System.Diagnostics.Debug.WriteLine("[RoslynWorkspace] Workspace initialized");
+        isInitialized = true;
 
-            var host = MefHostServices.Create(assemblies.Distinct().ToArray());
-            workspace = new AdhocWorkspace(host);
-
-            System.Diagnostics.Debug.WriteLine("[RoslynWorkspace] Workspace initialized");
-            isInitialized = true;
-
-            // Warm up Roslyn with a dummy completion request
-            WarmUpAsync().ConfigureAwait(false);
-        });
+        // Warm up Roslyn with a dummy completion request
+        await WarmUpAsync().ConfigureAwait(false);
     }
 
     private async Task WarmUpAsync()
@@ -68,7 +66,7 @@ public class RoslynWorkspaceService
         try
         {
             System.Diagnostics.Debug.WriteLine("[RoslynWorkspace] Warming up Roslyn...");
-            
+
             var warmupProjectId = ProjectId.CreateNewId("warmup");
             var projectInfo = ProjectInfo.Create(
                 warmupProjectId,
@@ -87,7 +85,7 @@ public class RoslynWorkspaceService
                 documentId,
                 name: "Warmup.cs",
                 loader: TextLoader.From(TextAndVersion.Create(
-                    SourceText.From("System.Console."), 
+                    SourceText.From("System.Console."),
                     VersionStamp.Create())));
 
             workspace.AddDocument(documentInfo);
@@ -105,7 +103,7 @@ public class RoslynWorkspaceService
             // Remove warmup project by clearing the solution
             var solution = workspace.CurrentSolution.RemoveProject(warmupProjectId);
             workspace.TryApplyChanges(solution);
-            
+
             System.Diagnostics.Debug.WriteLine("[RoslynWorkspace] Warmup complete");
         }
         catch (Exception ex)
@@ -131,7 +129,9 @@ public class RoslynWorkspaceService
             language: LanguageNames.CSharp,
             compilationOptions: new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
-                allowUnsafe: false),
+                allowUnsafe: false).WithXmlReferenceResolver(
+                    XmlFileResolver.Default
+                ),
             parseOptions: new CSharpParseOptions(LanguageVersion.Latest),
             metadataReferences: MetadataReferenceProvider.GetDefaultReferences());
 
@@ -160,7 +160,7 @@ public class RoslynWorkspaceService
             var solution = workspace.CurrentSolution.RemoveProject(projectId);
             workspace.TryApplyChanges(solution);
         }
-        
+
         tabMappings.Remove(tabId);
 
         System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Removed project for tab '{tabId}'");

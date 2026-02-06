@@ -80,7 +80,7 @@ scratchpad-sharp/
 
 #### Core Library
 ```xml
-<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.8.*" />
+<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.11.*" />
 <PackageReference Include="NuGet.Protocol" Version="6.8.*" />
 <PackageReference Include="NuGet.Packaging" Version="6.8.*" />
 <PackageReference Include="Dumpify" Version="0.6.*" />

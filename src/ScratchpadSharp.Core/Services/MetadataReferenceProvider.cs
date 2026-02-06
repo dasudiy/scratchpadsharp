@@ -15,11 +15,7 @@ public static class MetadataReferenceProvider
 
     private static MetadataReference CreateReferenceWithXmlDocs(string assemblyPath)
     {
-        var xmlDocPath = Path.ChangeExtension(assemblyPath, ".xml");
-        var docProvider = File.Exists(xmlDocPath)
-            ? XmlDocumentationProvider.CreateFromFile(xmlDocPath)
-            : null;
-        
+        var docProvider = BclXmlResolver.GetMetadataDocProvider(assemblyPath);       
         return MetadataReference.CreateFromFile(assemblyPath, documentation: docProvider);
     }
 
