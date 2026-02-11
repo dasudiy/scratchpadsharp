@@ -238,12 +238,18 @@ public class RoslynWorkspaceService
 
     public int CalculateAdjustedPosition(int position, List<string> usings)
     {
-        if (usings.Count == 0)
-            return position;
+        return position + GetUsingsOffset(usings);
+    }
+
+    public int GetUsingsOffset(List<string> usings)
+    {
+        if (usings == null || usings.Count == 0)
+            return 0;
 
         var usingStatements = string.Join(Environment.NewLine, usings.Select(u => $"using {u};"));
-        var usingLength = usingStatements.Length + 2; // +2 for the blank lines
-        return position + usingLength;
+        // +2 for the blank lines that UpdateDocumentAsync adds:
+        // var fullCode = usingStatements + (usingStatements.Length > 0 ? "\n\n" : "") + code;
+        return usingStatements.Length + (usingStatements.Length > 0 ? 2 : 0);
     }
 
     public bool IsInitialized => isInitialized;

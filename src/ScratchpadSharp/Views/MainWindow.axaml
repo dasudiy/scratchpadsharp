@@ -2,6 +2,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:avaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
     xmlns:views="using:ScratchpadSharp.Views"
+    xmlns:converters="using:ScratchpadSharp.Converters"
     x:Class="ScratchpadSharp.Views.MainWindow"
     Title="ScratchpadSharp"
     Width="1200"
@@ -19,7 +20,7 @@
     </Window.KeyBindings>
 
     <Window.Resources>
-        <views:HighlightBoolConverter x:Key="HighlightBoolConverter" />
+        <converters:HighlightBoolConverter x:Key="HighlightBoolConverter" />
     </Window.Resources>
 
     <DockPanel LastChildFill="True">

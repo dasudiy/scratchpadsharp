@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using System.Xml;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
@@ -18,10 +17,10 @@ using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Highlighting.Xshd;
-using AvaloniaEdit.Rendering;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Shared.Models;
 using ScratchpadSharp.ViewModels;
+using ScratchpadSharp.Editor;
 
 namespace ScratchpadSharp.Views;
 
@@ -29,15 +28,12 @@ public partial class MainWindow : Window
 {
     private const string TabId = "main";
     private MainWindowViewModel? viewModel;
-    private CompletionWindow? completionWindow;
-    private SignatureHelpWindow? signatureHelpWindow;
     private readonly IRoslynCompletionService completionService;
     private readonly ISignatureProvider signatureProvider;
-    private CancellationTokenSource? completionCts;
-    private CancellationTokenSource? signatureCts;
-    private DateTime lastCompletionRequest = DateTime.MinValue;
-    private int parenthesisDepth = 0;
-    private const int DebounceMilliseconds = 50;
+
+    private CodeCompletionHandler _codeCompletionHandler = null!;
+    private SignatureHelpHandler _signatureHelpHandler = null!;
+
 
     public MainWindow()
     {
@@ -48,69 +44,31 @@ public partial class MainWindow : Window
 
         if (CodeEditor != null)
         {
+            _codeCompletionHandler = new CodeCompletionHandler(
+                CodeEditor,
+                completionService,
+                () => viewModel,
+                TabId);
+
+            _signatureHelpHandler = new SignatureHelpHandler(
+                CodeEditor,
+                signatureProvider,
+                () => viewModel,
+                TabId);
+
             InitializeSyntaxHighlighting();
             InitializeCodeCompletion();
 
             CodeEditor.Document = new TextDocument();
-            CodeEditor.TextChanged += (s, e) =>
-            {
-                if (viewModel != null)
-                {
-                    viewModel.CodeText = CodeEditor.Document.Text;
-                }
-            };
+            CodeEditor.TextChanged += OnCodeEditorTextChanged;
 
             // Add Ctrl+Wheel zoom functionality
-            CodeEditor.PointerWheelChanged += (s, e) =>
-            {
-                if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
-                {
-                    var delta = e.Delta.Y;
-                    var currentSize = CodeEditor.FontSize;
-                    var newSize = currentSize + (delta > 0 ? 2 : -2);
-
-                    // Clamp between 8 and 48
-                    newSize = Math.Max(8, Math.Min(48, newSize));
-                    CodeEditor.FontSize = newSize;
-
-                    e.Handled = true;
-                }
-            };
+            CodeEditor.PointerWheelChanged += OnPointerWheelChanged;
         }
 
         // Focus editor when window opens
-        this.Opened += (s, e) =>
-        {
-            // Wait for workspace initialization and create project
-            _ = Task.Run(async () =>
-            {
-                while (!RoslynWorkspaceService.Instance.IsInitialized)
-                {
-                    await Task.Delay(100);
-                }
-
-                await Dispatcher.UIThread.InvokeAsync(() =>
-                {
-                    try
-                    {
-                        RoslynWorkspaceService.Instance.CreateProject(TabId);
-                        Debug.WriteLine($"[MainWindow] Created Roslyn project for tab '{TabId}'");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[MainWindow] Error creating project: {ex.Message}");
-                    }
-                });
-            });
-
-            CodeEditor?.Focus();
-        };
-
-        this.Closing += (s, e) =>
-        {
-            RoslynWorkspaceService.Instance.RemoveProject(TabId);
-            Debug.WriteLine($"[MainWindow] Removed Roslyn project for tab '{TabId}'");
-        };
+        this.Opened += OnWindowOpened;
+        this.Closing += OnWindowClosing;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -127,13 +85,73 @@ public partial class MainWindow : Window
                     CodeEditor.Document.Text != viewModel.CodeText)
                 {
                     CodeEditor.Document.Text = viewModel.CodeText;
-                    parenthesisDepth = 0;
-                    HideSignatureHelp();
+                    _signatureHelpHandler?.Reset();
                 }
             };
 
             CodeEditor.Document.Text = viewModel.CodeText;
         }
+    }
+
+    private void OnCodeEditorTextChanged(object? sender, EventArgs e)
+    {
+        if (viewModel != null && CodeEditor != null)
+        {
+            viewModel.CodeText = CodeEditor.Document.Text;
+        }
+
+        _codeCompletionHandler?.OnTextChanged();
+    }
+
+    private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (CodeEditor == null) return;
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            var delta = e.Delta.Y;
+            var currentSize = CodeEditor.FontSize;
+            var newSize = currentSize + (delta > 0 ? 2 : -2);
+
+            // Clamp between 8 and 48
+            newSize = Math.Max(8, Math.Min(48, newSize));
+            CodeEditor.FontSize = newSize;
+
+            e.Handled = true;
+        }
+    }
+
+    private async void OnWindowOpened(object? sender, EventArgs e)
+    {
+        // Wait for workspace initialization and create project
+        await Task.Run(async () =>
+        {
+            while (!RoslynWorkspaceService.Instance.IsInitialized)
+            {
+                await Task.Delay(100);
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                try
+                {
+                    RoslynWorkspaceService.Instance.CreateProject(TabId);
+                    Debug.WriteLine($"[MainWindow] Created Roslyn project for tab '{TabId}'");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[MainWindow] Error creating project: {ex.Message}");
+                }
+            });
+        });
+
+        CodeEditor?.Focus();
+    }
+
+    private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        RoslynWorkspaceService.Instance.RemoveProject(TabId);
+        Debug.WriteLine($"[MainWindow] Removed Roslyn project for tab '{TabId}'");
     }
 
     private void InitializeCodeCompletion()
@@ -142,138 +160,32 @@ public partial class MainWindow : Window
 
         // Trigger completion on TextEntered
         CodeEditor.TextArea.TextEntered += OnTextEntered;
+        CodeEditor.TextArea.TextEntering += OnTextEntering;
 
-        // Add Ctrl+Space shortcut for manual completion
-        CodeEditor.TextArea.KeyDown += (s, e) =>
-        {
-            if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-            {
-                e.Handled = true;
-                _ = ShowCompletionWindowAsync();
-            }
-            else if (e.Key == Key.Escape)
-            {
-                HideSignatureHelp();
-            }
-            else if (signatureHelpWindow?.ViewModel?.IsVisible == true)
-            {
-                // Only handle Up/Down when signature help is visible
-                if (e.Key == Key.Up)
-                {
-                    e.Handled = true;
-                    signatureHelpWindow.ViewModel.SelectPreviousSignature();
-                }
-                else if (e.Key == Key.Down)
-                {
-                    e.Handled = true;
-                    signatureHelpWindow.ViewModel.SelectNextSignature();
-                }
-            }
-        };
+        // Add keyboard shortcuts
+        CodeEditor.TextArea.KeyDown += OnEditorKeyDown;
 
-        // Signature Help handlers
-        CodeEditor.TextArea.TextEntered += OnTextEnteredSignatureHelp;
-        CodeEditor.TextArea.Caret.PositionChanged += OnCaretPositionChanged;
+        // Initialize signature help handler
+        _signatureHelpHandler.Initialize();
+    }
+
+    private void OnTextEntering(object? sender, TextInputEventArgs e)
+    {
+        _codeCompletionHandler?.OnTextEntering(e);
     }
 
     private void OnTextEntered(object? sender, TextInputEventArgs e)
     {
         if (CodeEditor == null || e.Text == null) return;
 
-        // Don't re-trigger if window is already open and user is typing letters/digits
-        // (let the existing window handle filtering)
-        if (completionWindow != null && e.Text.Length == 1 &&
-            (char.IsLetterOrDigit(e.Text[0]) || e.Text[0] == '_'))
-        {
-            return;
-        }
-
-        // Trigger on '.' or after typing alphanumeric/underscore when window is closed
-        var shouldTrigger = e.Text == "." ||
-                           (e.Text.Length == 1 && (char.IsLetterOrDigit(e.Text[0]) || e.Text[0] == '_'));
-
-        if (shouldTrigger)
-        {
-            _ = ShowCompletionWindowAsync();
-        }
+        _signatureHelpHandler?.HandleInput(e);
+        _codeCompletionHandler?.OnTextEntered(e);
     }
 
-    private async Task ShowCompletionWindowAsync()
+    private void OnEditorKeyDown(object? sender, KeyEventArgs e)
     {
-        if (CodeEditor?.TextArea == null) return;
-
-        // Cancel previous completion request
-        completionCts?.Cancel();
-        completionCts = new CancellationTokenSource();
-        var token = completionCts.Token;
-
-        // Debounce: wait a bit to avoid spamming
-        lastCompletionRequest = DateTime.UtcNow;
-        var requestTime = lastCompletionRequest;
-        await Task.Delay(DebounceMilliseconds, token);
-
-        // Check if another request came in during debounce
-        if (requestTime != lastCompletionRequest || token.IsCancellationRequested)
-            return;
-
-        try
-        {
-            var code = CodeEditor.Document.Text;
-            var offset = CodeEditor.CaretOffset;
-
-            // Get usings and packages from config
-            var config = viewModel?.CurrentPackage?.Config ?? new ScriptConfig();
-            var usings = config.DefaultUsings;
-            var packages = config.NuGetPackages;
-
-            // Fetch completions on background thread
-            var completions = await Task.Run(
-                () => completionService.GetCompletionsAsync(TabId, code, offset, usings, packages, token),
-                token);
-
-            if (token.IsCancellationRequested || completions.IsEmpty)
-                return;
-
-            // Show completion window on UI thread
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                if (token.IsCancellationRequested) return;
-
-                // Close existing window
-                completionWindow?.Close();
-
-                // Create new completion window
-                completionWindow = new CompletionWindow(CodeEditor.TextArea);
-                completionWindow.Closed += (s, e) => completionWindow = null;
-
-                // Increase window dimensions
-                completionWindow.Width = 600;
-                completionWindow.Height = 400;
-                completionWindow.MinWidth = 400;
-                completionWindow.MinHeight = 200;
-
-                var data = completionWindow.CompletionList.CompletionData;
-                foreach (var item in completions)
-                {
-                    data.Add(new RoslynCompletionData(item));
-                }
-
-                if (data.Count > 0)
-                {
-                    // Enable filtering as user types
-                    completionWindow.CompletionList.SelectItem(string.Empty);
-                    completionWindow.Show();
-                }
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when cancellation occurs
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Completion error: {ex.Message}");
-        }
+        if (_codeCompletionHandler?.HandleKeyDown(e) == true) return;
+        if (_signatureHelpHandler?.HandleKeyDown(e) == true) return;
     }
 
     private void InitializeSyntaxHighlighting()
@@ -297,172 +209,8 @@ public partial class MainWindow : Window
             {
                 CodeEditor.SyntaxHighlighting = builtInHighlighting;
             }
-            else
-            {
-                Debug.WriteLine("Failed to load built-in C# syntax highlighting");
-            }
         }
     }
 
-    private void OnTextEnteredSignatureHelp(object? sender, TextInputEventArgs e)
-    {
-        if (CodeEditor == null || e.Text == null || e.Text.Length != 1)
-            return;
 
-        var ch = e.Text[0];
-        Debug.WriteLine($"[SignatureHelp] Character entered: '{ch}', code length: {CodeEditor.Document.TextLength}");
-
-        if (ch == '(')
-        {
-            parenthesisDepth++;
-            Debug.WriteLine($"[SignatureHelp] Opening paren, depth={parenthesisDepth}, offset={CodeEditor.CaretOffset}");
-            _ = ShowSignatureHelpAsync();
-        }
-        else if (ch == ')')
-        {
-            parenthesisDepth--;
-            if (parenthesisDepth < 0)
-                parenthesisDepth = 0;
-
-            Debug.WriteLine($"[SignatureHelp] Closing paren, depth={parenthesisDepth}");
-            if (parenthesisDepth == 0)
-            {
-                HideSignatureHelp();
-            }
-        }
-        else if (ch == ',' && parenthesisDepth > 0)
-        {
-            Debug.WriteLine($"[SignatureHelp] Comma, updating parameter index");
-            _ = UpdateSignatureHelpAsync();
-        }
-    }
-
-    private async Task ShowSignatureHelpAsync()
-    {
-        if (CodeEditor?.TextArea == null) return;
-
-        signatureCts?.Cancel();
-        signatureCts = new CancellationTokenSource();
-        var token = signatureCts.Token;
-
-        try
-        {
-            var code = CodeEditor.Document.Text;
-            var offset = CodeEditor.CaretOffset;
-
-            Debug.WriteLine($"[SignatureHelp] Code to analyze (length {code.Length}):\n{code}");
-            Debug.WriteLine($"[SignatureHelp] Offset: {offset}");
-
-            var config = viewModel?.CurrentPackage?.Config ?? new ScriptConfig();
-            var usings = config.DefaultUsings;
-            var packages = config.NuGetPackages;
-
-            Debug.WriteLine($"[SignatureHelp] Default usings count: {usings.Count}");
-
-            var (signatures, argIndex) = await Task.Run(
-                () => signatureProvider.GetSignaturesAsync(TabId, code, offset, usings, packages, token),
-                token);
-
-            Debug.WriteLine($"[SignatureHelp] Got {signatures.Count} signatures, argIndex={argIndex}");
-
-            if (token.IsCancellationRequested || signatures.Count == 0)
-                return;
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                if (token.IsCancellationRequested) return;
-
-                Debug.WriteLine($"[SignatureHelp] Showing popup...");
-                
-                // Close existing window
-                signatureHelpWindow?.Close();
-                
-                // Create new signature help window
-                signatureHelpWindow = new SignatureHelpWindow(CodeEditor.TextArea);
-                signatureHelpWindow.Closed += (s, e) => signatureHelpWindow = null;
-                
-                signatureHelpWindow.ViewModel.UpdateSignatures(signatures, argIndex);
-                signatureHelpWindow.ViewModel.Show();
-                
-                Debug.WriteLine($"[SignatureHelp] Signatures count: {signatureHelpWindow.ViewModel.Signatures.Count}");
-                Debug.WriteLine($"[SignatureHelp] Current signature: {signatureHelpWindow.ViewModel.CurrentSignature?.Name}");
-
-                signatureHelpWindow.Show();
-            });
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Signature help error: {ex.Message}");
-        }
-    }
-
-    private async Task UpdateSignatureHelpAsync()
-    {
-        if (CodeEditor?.TextArea == null || signatureHelpWindow?.ViewModel == null || !signatureHelpWindow.ViewModel.IsVisible)
-            return;
-
-        signatureCts?.Cancel();
-        signatureCts = new CancellationTokenSource();
-        var token = signatureCts.Token;
-
-        try
-        {
-            var code = CodeEditor.Document.Text;
-            var offset = CodeEditor.CaretOffset;
-
-            var config = viewModel?.CurrentPackage?.Config ?? new ScriptConfig();
-            var usings = config.DefaultUsings;
-            var packages = config.NuGetPackages;
-
-            var (_, argIndex) = await Task.Run(
-                () => signatureProvider.GetSignaturesAsync(TabId, code, offset, usings, packages, token),
-                token);
-
-            if (!token.IsCancellationRequested && argIndex >= 0)
-            {
-                await Dispatcher.UIThread.InvokeAsync(() =>
-                {
-                    signatureHelpWindow?.ViewModel?.UpdateArgumentIndex(argIndex);
-                });
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Signature help update error: {ex.Message}");
-        }
-    }
-
-    private void OnCaretPositionChanged(object? sender, EventArgs e)
-    {
-        if (signatureHelpWindow?.ViewModel == null || !signatureHelpWindow.ViewModel.IsVisible)
-            return;
-
-        // Hide signature help if caret moves outside the invocation context
-        if (CodeEditor?.TextArea != null)
-        {
-            var offset = CodeEditor.CaretOffset;
-            var code = CodeEditor.Document.Text;
-            
-            // Simple check: if we're not near parentheses, hide
-            if (offset > 0 && offset <= code.Length)
-            {
-                var nearbyText = code.Substring(Math.Max(0, offset - 20), Math.Min(40, code.Length - Math.Max(0, offset - 20)));
-                if (!nearbyText.Contains('('))
-                {
-                    HideSignatureHelp();
-                }
-            }
-        }
-    }
-
-    private void HideSignatureHelp()
-    {
-        signatureHelpWindow?.Close();
-    }
 }

@@ -1,102 +1,45 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
-using System.Reactive;
-using System.Reactive.Linq;
-using ReactiveUI;
+using System.Runtime.CompilerServices;
 using ScratchpadSharp.Core.Services;
 
 namespace ScratchpadSharp.ViewModels;
 
-public class SignatureParameterViewModel : ReactiveObject
+public class SignatureHelpViewModel : INotifyPropertyChanged
 {
-    private string name = string.Empty;
-    private string type = string.Empty;
-    private bool isHighlighted;
+    private bool isVisible;
+    private int currentSignatureIndex;
+    private int currentParameterIndex;
+    private ObservableCollection<MethodSignature> signatures = new();
 
-    public string Name
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool IsVisible
     {
-        get => name;
-        set => this.RaiseAndSetIfChanged(ref name, value);
-    }
-
-    public string Type
-    {
-        get => type;
-        set => this.RaiseAndSetIfChanged(ref type, value);
-    }
-
-    public bool IsHighlighted
-    {
-        get => isHighlighted;
-        set => this.RaiseAndSetIfChanged(ref isHighlighted, value);
-    }
-}
-
-public class MethodSignatureViewModel : ReactiveObject
-{
-    private string name = string.Empty;
-    private string returnType = string.Empty;
-    private string documentation = string.Empty;
-    private ObservableCollection<SignatureParameterViewModel> parameters = new();
-    private int currentParameterIndex = -1;
-
-    public string Name
-    {
-        get => name;
-        set => this.RaiseAndSetIfChanged(ref name, value);
-    }
-
-    public string ReturnType
-    {
-        get => returnType;
-        set => this.RaiseAndSetIfChanged(ref returnType, value);
-    }
-
-    public string Documentation
-    {
-        get => documentation;
-        set => this.RaiseAndSetIfChanged(ref documentation, value);
-    }
-
-    public ObservableCollection<SignatureParameterViewModel> Parameters
-    {
-        get => parameters;
-        set => this.RaiseAndSetIfChanged(ref parameters, value);
-    }
-
-    public int CurrentParameterIndex
-    {
-        get => currentParameterIndex;
+        get => isVisible;
         set
         {
-            this.RaiseAndSetIfChanged(ref currentParameterIndex, value);
-            UpdateParameterHighlighting();
+            if (isVisible != value)
+            {
+                isVisible = value;
+                OnPropertyChanged();
+            }
         }
     }
 
-    private void UpdateParameterHighlighting()
-    {
-        for (int i = 0; i < Parameters.Count; i++)
-        {
-            Parameters[i].IsHighlighted = (i == currentParameterIndex);
-        }
-    }
-}
-
-public class SignatureHelpViewModel : ReactiveObject
-{
-    private ObservableCollection<MethodSignatureViewModel> signatures = new();
-    private int currentSignatureIndex;
-    private bool isVisible;
-    private double popupX;
-    private double popupY;
-
-    public ObservableCollection<MethodSignatureViewModel> Signatures
+    public ObservableCollection<MethodSignature> Signatures
     {
         get => signatures;
-        set => this.RaiseAndSetIfChanged(ref signatures, value);
+        set
+        {
+            signatures = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SignatureCountText));
+            OnPropertyChanged(nameof(HasMultipleSignatures));
+        }
     }
 
     public int CurrentSignatureIndex
@@ -104,124 +47,76 @@ public class SignatureHelpViewModel : ReactiveObject
         get => currentSignatureIndex;
         set
         {
-            this.RaiseAndSetIfChanged(ref currentSignatureIndex, value);
-            this.RaisePropertyChanged(nameof(CurrentSignature));
-            this.RaisePropertyChanged(nameof(SignatureCountText));
+            if (currentSignatureIndex != value && value >= 0 && value < Signatures.Count)
+            {
+                currentSignatureIndex = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CurrentSignature));
+                OnPropertyChanged(nameof(SignatureCountText));
+                UpdateParameterHighlights();
+            }
         }
     }
 
-    public bool IsVisible
+    public int CurrentParameterIndex
     {
-        get => isVisible;
-        set => this.RaiseAndSetIfChanged(ref isVisible, value);
+        get => currentParameterIndex;
+        set
+        {
+            if (currentParameterIndex != value)
+            {
+                currentParameterIndex = value;
+                OnPropertyChanged();
+                UpdateParameterHighlights();
+            }
+        }
     }
 
-    public double PopupX
-    {
-        get => popupX;
-        set => this.RaiseAndSetIfChanged(ref popupX, value);
-    }
-
-    public double PopupY
-    {
-        get => popupY;
-        set => this.RaiseAndSetIfChanged(ref popupY, value);
-    }
-
-    public MethodSignatureViewModel? CurrentSignature =>
-        currentSignatureIndex >= 0 && currentSignatureIndex < signatures.Count
-            ? signatures[currentSignatureIndex]
+    public MethodSignature? CurrentSignature =>
+        Signatures.Count > 0 && CurrentSignatureIndex >= 0 && CurrentSignatureIndex < Signatures.Count
+            ? Signatures[CurrentSignatureIndex]
             : null;
 
     public string SignatureCountText =>
-        signatures.Count > 0
-            ? $"{currentSignatureIndex + 1} of {signatures.Count}"
-            : "";
+        Signatures.Count > 1
+            ? $"↑↓ {CurrentSignatureIndex + 1} of {Signatures.Count} overloads"
+            : string.Empty;
 
-    public void UpdateSignatures(List<MethodSignature> methodSignatures, int argumentIndex)
+    public bool HasMultipleSignatures => Signatures.Count > 1;
+
+    public void UpdateSignatures(List<MethodSignature> newSignatures, int parameterIndex)
     {
-        var viewModels = new ObservableCollection<MethodSignatureViewModel>();
+        Signatures = new ObservableCollection<MethodSignature>(
+            newSignatures.Select(s => CreateEnhancedSignature(s)));
 
-        foreach (var sig in methodSignatures)
-        {
-            var vm = new MethodSignatureViewModel
-            {
-                Name = sig.Name,
-                ReturnType = sig.ReturnType,
-                Documentation = ExtractSummary(sig.Documentation),
-                CurrentParameterIndex = argumentIndex
-            };
-
-            foreach (var param in sig.Parameters)
-            {
-                vm.Parameters.Add(new SignatureParameterViewModel
-                {
-                    Name = param.Name,
-                    Type = param.Type
-                });
-            }
-
-            viewModels.Add(vm);
-        }
-
-        Signatures = viewModels;
         CurrentSignatureIndex = 0;
-        this.RaisePropertyChanged(nameof(CurrentSignature));
-        this.RaisePropertyChanged(nameof(SignatureCountText));
+        CurrentParameterIndex = parameterIndex;
+
+        // 尝试选择最匹配的重载
+        SelectBestMatchingOverload(parameterIndex);
     }
 
-    private string ExtractSummary(string xmlDoc)
+    public void UpdateArgumentIndex(int newIndex)
     {
-        if (string.IsNullOrEmpty(xmlDoc))
-            return string.Empty;
-
-        try
-        {
-            var summaryStart = xmlDoc.IndexOf("<summary>");
-            var summaryEnd = xmlDoc.IndexOf("</summary>");
-            
-            if (summaryStart >= 0 && summaryEnd > summaryStart)
-            {
-                var summary = xmlDoc.Substring(summaryStart + 9, summaryEnd - summaryStart - 9);
-                return summary.Trim();
-            }
-        }
-        catch
-        {
-            // Ignore parsing errors
-        }
-
-        return string.Empty;
-    }
-
-    public void UpdateArgumentIndex(int argumentIndex)
-    {
-        if (CurrentSignature != null)
-        {
-            CurrentSignature.CurrentParameterIndex = argumentIndex;
-        }
+        CurrentParameterIndex = newIndex;
     }
 
     public void SelectNextSignature()
     {
-        if (CurrentSignatureIndex < Signatures.Count - 1)
+        if (Signatures.Count > 1)
         {
-            CurrentSignatureIndex++;
+            CurrentSignatureIndex = (CurrentSignatureIndex + 1) % Signatures.Count;
         }
     }
 
     public void SelectPreviousSignature()
     {
-        if (CurrentSignatureIndex > 0)
+        if (Signatures.Count > 1)
         {
-            CurrentSignatureIndex--;
+            CurrentSignatureIndex = CurrentSignatureIndex == 0
+                ? Signatures.Count - 1
+                : CurrentSignatureIndex - 1;
         }
-    }
-
-    public void SetPosition(double x, double y)
-    {
-        PopupX = x;
-        PopupY = y;
     }
 
     public void Show()
@@ -232,5 +127,138 @@ public class SignatureHelpViewModel : ReactiveObject
     public void Hide()
     {
         IsVisible = false;
+    }
+
+    private MethodSignature CreateEnhancedSignature(MethodSignature original)
+    {
+        var enhanced = new MethodSignature
+        {
+            Name = original.Name,
+            ReturnType = original.ReturnType,
+            Documentation = original.Documentation,
+            Summary = original.Summary,
+            IsExtensionMethod = original.IsExtensionMethod,
+            FullSignature = original.FullSignature,
+            ParameterDocs = new Dictionary<string, string>(original.ParameterDocs),
+            Parameters = new List<ParameterSignature>()
+        };
+
+        // 复制参数并添加UI属性
+        for (int i = 0; i < original.Parameters.Count; i++)
+        {
+            var param = original.Parameters[i];
+            var enhancedParam = new EnhancedParameterSignature
+            {
+                Name = param.Name,
+                Type = param.Type,
+                Documentation = param.Documentation,
+                IsParams = param.IsParams,
+                IsOptional = param.IsOptional,
+                DefaultValue = param.DefaultValue,
+                IsHighlighted = false,
+                IsLast = i == original.Parameters.Count - 1
+            };
+            enhanced.Parameters.Add(enhancedParam);
+        }
+
+        return enhanced;
+    }
+
+    private void SelectBestMatchingOverload(int parameterIndex)
+    {
+        if (Signatures.Count <= 1)
+            return;
+
+        // 选择参数数量最接近的重载
+        int bestIndex = 0;
+        int minDiff = int.MaxValue;
+
+        for (int i = 0; i < Signatures.Count; i++)
+        {
+            var sig = Signatures[i];
+            int paramCount = sig.Parameters.Count;
+
+            // 如果有params参数,视为可以接受任意数量
+            bool hasParams = sig.Parameters.Any(p => p.IsParams);
+
+            int diff;
+            if (hasParams)
+            {
+                // 如果有params,只要参数数量>=必需参数就是完美匹配
+                int requiredParams = sig.Parameters.TakeWhile(p => !p.IsParams).Count();
+                diff = parameterIndex >= requiredParams ? 0 : requiredParams - parameterIndex;
+            }
+            else
+            {
+                diff = Math.Abs(paramCount - (parameterIndex + 1));
+            }
+
+            if (diff < minDiff)
+            {
+                minDiff = diff;
+                bestIndex = i;
+            }
+        }
+
+        CurrentSignatureIndex = bestIndex;
+    }
+
+    private void UpdateParameterHighlights()
+    {
+        var current = CurrentSignature;
+        if (current == null)
+            return;
+
+        for (int i = 0; i < current.Parameters.Count; i++)
+        {
+            if (current.Parameters[i] is EnhancedParameterSignature enhancedParam)
+            {
+                enhancedParam.IsHighlighted = (i == CurrentParameterIndex);
+            }
+        }
+    }
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
+public class EnhancedParameterSignature : ParameterSignature, INotifyPropertyChanged
+{
+    private bool isHighlighted;
+    private bool isLast;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool IsHighlighted
+    {
+        get => isHighlighted;
+        set
+        {
+            if (isHighlighted != value)
+            {
+                isHighlighted = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public bool IsLast
+    {
+        get => isLast;
+        set
+        {
+            if (isLast != value)
+            {
+                isLast = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

@@ -3,7 +3,7 @@ using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
 
-namespace ScratchpadSharp.Views;
+namespace ScratchpadSharp.Converters;
 
 public class HighlightBoolConverter : IValueConverter
 {
@@ -16,11 +16,11 @@ public class HighlightBoolConverter : IValueConverter
             {
                 var highlightedColor = colors[0];
                 var normalColor = colors[1];
-                
+
                 var brush = isHighlighted
                     ? new SolidColorBrush(Color.Parse(highlightedColor))
                     : new SolidColorBrush(Color.Parse(normalColor));
-                
+
                 return brush;
             }
         }
