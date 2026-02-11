@@ -11,9 +11,9 @@ namespace ScratchpadSharp.ViewModels;
 public class SignatureHelpViewModel : INotifyPropertyChanged
 {
     private bool isVisible;
-    private int currentSignatureIndex;
+    private EnhancedMethodSignature? selectedSignature;
     private int currentParameterIndex;
-    private ObservableCollection<MethodSignature> signatures = new();
+    private ObservableCollection<EnhancedMethodSignature> signatures = new();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -30,30 +30,36 @@ public class SignatureHelpViewModel : INotifyPropertyChanged
         }
     }
 
-    public ObservableCollection<MethodSignature> Signatures
+    public ObservableCollection<EnhancedMethodSignature> Signatures
     {
         get => signatures;
         set
         {
             signatures = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(SignatureCountText));
-            OnPropertyChanged(nameof(HasMultipleSignatures));
         }
     }
 
-    public int CurrentSignatureIndex
+    public EnhancedMethodSignature? SelectedSignature
     {
-        get => currentSignatureIndex;
+        get => selectedSignature;
         set
         {
-            if (currentSignatureIndex != value && value >= 0 && value < Signatures.Count)
+            if (selectedSignature != value)
             {
-                currentSignatureIndex = value;
+                selectedSignature = value;
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(CurrentSignature));
-                OnPropertyChanged(nameof(SignatureCountText));
-                UpdateParameterHighlights();
+
+                if (selectedSignature != null)
+                {
+                    foreach (var sig in Signatures)
+                    {
+                        sig.IsBestMatch = (sig == selectedSignature);
+                    }
+
+                    UpdateParameterHighlights();
+                    UpdateCurrentParameterDoc(selectedSignature);
+                }
             }
         }
     }
@@ -68,55 +74,29 @@ public class SignatureHelpViewModel : INotifyPropertyChanged
                 currentParameterIndex = value;
                 OnPropertyChanged();
                 UpdateParameterHighlights();
+
+                if (Signatures.Count > 0)
+                {
+                    SelectBestMatchingOverload(currentParameterIndex);
+                }
             }
         }
     }
 
-    public MethodSignature? CurrentSignature =>
-        Signatures.Count > 0 && CurrentSignatureIndex >= 0 && CurrentSignatureIndex < Signatures.Count
-            ? Signatures[CurrentSignatureIndex]
-            : null;
-
-    public string SignatureCountText =>
-        Signatures.Count > 1
-            ? $"↑↓ {CurrentSignatureIndex + 1} of {Signatures.Count} overloads"
-            : string.Empty;
-
-    public bool HasMultipleSignatures => Signatures.Count > 1;
-
     public void UpdateSignatures(List<MethodSignature> newSignatures, int parameterIndex)
     {
-        Signatures = new ObservableCollection<MethodSignature>(
-            newSignatures.Select(s => CreateEnhancedSignature(s)));
+        var enhancedSignatures = newSignatures.Select(s => CreateEnhancedSignature(s)).ToList();
+        Signatures = new ObservableCollection<EnhancedMethodSignature>(enhancedSignatures);
 
-        CurrentSignatureIndex = 0;
-        CurrentParameterIndex = parameterIndex;
+        currentParameterIndex = parameterIndex;
+        OnPropertyChanged(nameof(CurrentParameterIndex));
 
-        // 尝试选择最匹配的重载
         SelectBestMatchingOverload(parameterIndex);
     }
 
     public void UpdateArgumentIndex(int newIndex)
     {
         CurrentParameterIndex = newIndex;
-    }
-
-    public void SelectNextSignature()
-    {
-        if (Signatures.Count > 1)
-        {
-            CurrentSignatureIndex = (CurrentSignatureIndex + 1) % Signatures.Count;
-        }
-    }
-
-    public void SelectPreviousSignature()
-    {
-        if (Signatures.Count > 1)
-        {
-            CurrentSignatureIndex = CurrentSignatureIndex == 0
-                ? Signatures.Count - 1
-                : CurrentSignatureIndex - 1;
-        }
     }
 
     public void Show()
@@ -129,9 +109,9 @@ public class SignatureHelpViewModel : INotifyPropertyChanged
         IsVisible = false;
     }
 
-    private MethodSignature CreateEnhancedSignature(MethodSignature original)
+    private EnhancedMethodSignature CreateEnhancedSignature(MethodSignature original)
     {
-        var enhanced = new MethodSignature
+        var enhanced = new EnhancedMethodSignature
         {
             Name = original.Name,
             ReturnType = original.ReturnType,
@@ -143,7 +123,6 @@ public class SignatureHelpViewModel : INotifyPropertyChanged
             Parameters = new List<ParameterSignature>()
         };
 
-        // 复制参数并添加UI属性
         for (int i = 0; i < original.Parameters.Count; i++)
         {
             var param = original.Parameters[i];
@@ -166,54 +145,166 @@ public class SignatureHelpViewModel : INotifyPropertyChanged
 
     private void SelectBestMatchingOverload(int parameterIndex)
     {
-        if (Signatures.Count <= 1)
+        if (Signatures.Count == 0)
+        {
+            SelectedSignature = null;
             return;
+        }
 
-        // 选择参数数量最接近的重载
-        int bestIndex = 0;
+        EnhancedMethodSignature? bestMatch = null;
         int minDiff = int.MaxValue;
 
-        for (int i = 0; i < Signatures.Count; i++)
+        foreach (var sig in Signatures)
         {
-            var sig = Signatures[i];
             int paramCount = sig.Parameters.Count;
-
-            // 如果有params参数,视为可以接受任意数量
             bool hasParams = sig.Parameters.Any(p => p.IsParams);
 
             int diff;
             if (hasParams)
             {
-                // 如果有params,只要参数数量>=必需参数就是完美匹配
                 int requiredParams = sig.Parameters.TakeWhile(p => !p.IsParams).Count();
-                diff = parameterIndex >= requiredParams ? 0 : requiredParams - parameterIndex;
+                if (parameterIndex >= requiredParams)
+                    diff = 0;
+                else
+                    diff = requiredParams - parameterIndex;
             }
             else
             {
-                diff = Math.Abs(paramCount - (parameterIndex + 1));
+                if (parameterIndex < paramCount)
+                    diff = 0;
+                else
+                    diff = parameterIndex - paramCount + 1;
             }
 
-            if (diff < minDiff)
+            int score = diff * 1000;
+            score += Math.Abs(paramCount - (parameterIndex + 1));
+
+            if (score < minDiff)
             {
-                minDiff = diff;
-                bestIndex = i;
+                minDiff = score;
+                bestMatch = sig;
             }
         }
 
-        CurrentSignatureIndex = bestIndex;
+        if (bestMatch != null)
+        {
+            SelectedSignature = bestMatch;
+        }
+        else if (SelectedSignature == null)
+        {
+            SelectedSignature = Signatures.FirstOrDefault(); // Fallback
+            if (SelectedSignature != null) SelectedSignature.IsBestMatch = true;
+        }
     }
 
     private void UpdateParameterHighlights()
     {
-        var current = CurrentSignature;
-        if (current == null)
-            return;
+        if (SelectedSignature == null) return;
 
-        for (int i = 0; i < current.Parameters.Count; i++)
+        foreach (var sig in Signatures)
         {
-            if (current.Parameters[i] is EnhancedParameterSignature enhancedParam)
+            for (int i = 0; i < sig.Parameters.Count; i++)
             {
-                enhancedParam.IsHighlighted = (i == CurrentParameterIndex);
+                if (sig.Parameters[i] is EnhancedParameterSignature enhancedParam)
+                {
+                    bool isCurrentParam = (i == CurrentParameterIndex);
+                    if (enhancedParam.IsParams && CurrentParameterIndex >= i)
+                        isCurrentParam = true;
+
+                    enhancedParam.IsHighlighted = isCurrentParam;
+                }
+            }
+        }
+    }
+
+    private void UpdateCurrentParameterDoc(EnhancedMethodSignature sig)
+    {
+        // Find active param
+        int idx = CurrentParameterIndex;
+        // Logic: if index is within bounds, use it.
+        // If params, and index is >= params index, use params doc.
+
+        string doc = string.Empty;
+
+        if (sig.Parameters.Count > 0)
+        {
+            if (idx >= 0 && idx < sig.Parameters.Count)
+            {
+                doc = sig.Parameters[idx].Documentation;
+            }
+            else if (sig.Parameters.Last().IsParams && idx >= sig.Parameters.Count - 1)
+            {
+                doc = sig.Parameters.Last().Documentation;
+            }
+        }
+
+        // Format: "ParamName: Doc"
+        if (!string.IsNullOrEmpty(doc))
+        {
+            // Get param name too?
+            string paramName = "";
+            if (idx >= 0 && idx < sig.Parameters.Count) paramName = sig.Parameters[idx].Name;
+            else if (sig.Parameters.Count > 0 && sig.Parameters.Last().IsParams) paramName = sig.Parameters.Last().Name;
+
+            if (!string.IsNullOrEmpty(paramName))
+            {
+                // sig.CurrentParameterDocumentation = $"{paramName}: {doc}";
+                // Actually user might just want the doc.
+                // But usually "value: The value to write" is better.
+                // Since I don't have easy access to Name here without recalc, I'll rely on what I have.
+                // Ah, I have the param object.
+                sig.CurrentParameterDocumentation = doc;
+            }
+            else
+            {
+                sig.CurrentParameterDocumentation = doc;
+            }
+        }
+        else
+        {
+            sig.CurrentParameterDocumentation = string.Empty;
+        }
+
+        // Also if doc is empty, try to get from dictionary if not populated in params?
+        // MethodSignature has ParameterDocs dict.
+        // But CreateEnhancedSignature populates Parameters.Documentation from it.
+    }
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
+public class EnhancedMethodSignature : MethodSignature, INotifyPropertyChanged
+{
+    private bool isBestMatch;
+    private string currentParameterDocumentation = string.Empty;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool IsBestMatch
+    {
+        get => isBestMatch;
+        set
+        {
+            if (isBestMatch != value)
+            {
+                isBestMatch = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public string CurrentParameterDocumentation
+    {
+        get => currentParameterDocumentation;
+        set
+        {
+            if (currentParameterDocumentation != value)
+            {
+                currentParameterDocumentation = value;
+                OnPropertyChanged();
             }
         }
     }

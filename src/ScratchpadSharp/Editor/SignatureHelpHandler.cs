@@ -46,11 +46,9 @@ public class SignatureHelpHandler
 
     public void HandleInput(TextInputEventArgs e)
     {
-        // For specific trigger characters, we might want to trigger an immediate (or faster) update
-        // simple polling handles most things, but explicit triggers feel more responsive
         if (e.Text == "(" || e.Text == ",")
         {
-            TriggerUpdate(0); // Immediate update
+            TriggerUpdate(0);
         }
     }
 
@@ -61,26 +59,10 @@ public class SignatureHelpHandler
             if (_signatureHelpWindow != null)
             {
                 HideSignatureHelp();
-                return true; // Consume escape if we closed the window
+                return true;
             }
         }
 
-        // Navigation
-        if (_signatureHelpWindow?.ViewModel?.IsVisible == true)
-        {
-            if (e.Key == Key.Up)
-            {
-                e.Handled = true;
-                _signatureHelpWindow.ViewModel.SelectPreviousSignature();
-                return true;
-            }
-            else if (e.Key == Key.Down)
-            {
-                e.Handled = true;
-                _signatureHelpWindow.ViewModel.SelectNextSignature();
-                return true;
-            }
-        }
         return false;
     }
 
@@ -121,11 +103,9 @@ public class SignatureHelpHandler
 
             if (token.IsCancellationRequested || _editor?.TextArea == null) return;
 
-            // Gather context
             string code = string.Empty;
             int offset = 0;
 
-            // Safe UI access to get document state
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 if (_editor.Document != null)
@@ -142,7 +122,6 @@ public class SignatureHelpHandler
             var usings = config.DefaultUsings;
             var packages = config.NuGetPackages;
 
-            // Call Roslyn provider
             var (signatures, argIndex, activeParam) = await Task.Run(
                 () => _signatureProvider.GetSignaturesAsync(_tabId, code, offset, usings, packages, token),
                 token);
@@ -155,7 +134,6 @@ public class SignatureHelpHandler
 
                 if (signatures == null || signatures.Count == 0)
                 {
-                    // No valid context -> Close window
                     if (_signatureHelpWindow != null)
                     {
                         HideSignatureHelp();
@@ -163,7 +141,6 @@ public class SignatureHelpHandler
                 }
                 else
                 {
-                    // Valid context -> Show or Update
                     if (_signatureHelpWindow == null)
                     {
                         _signatureHelpWindow = new SignatureHelpWindow(_editor.TextArea);
@@ -171,23 +148,18 @@ public class SignatureHelpHandler
                         _signatureHelpWindow.Show();
                     }
 
-                    // Update contents
                     _signatureHelpWindow.ViewModel.UpdateSignatures(signatures, activeParam);
 
-                    // If we have an argIndex, we could theoretically select a specific overload logic, 
-                    // but ViewModel.UpdateSignatures already calls SelectBestMatchingOverload(parameterIndex).
-                    // So passing `activeParam` (which seems to be the active parameter INDEX) is correct.
+                    // Dispatcher.UIThread.Post(() => _signatureHelpWindow?.UpdatePosition(), DispatcherPriority.Input);
                 }
             });
         }
         catch (OperationCanceledException)
         {
-            // Ignore
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[SignatureHelp] Error: {ex.Message}");
-            // Failure shouldn't crash UI, just hide help
             await Dispatcher.UIThread.InvokeAsync(HideSignatureHelp);
         }
     }
