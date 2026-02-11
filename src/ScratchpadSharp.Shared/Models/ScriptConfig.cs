@@ -18,7 +18,8 @@ public class ScriptConfig
             "System.Linq",
             "System.Collections.Generic",
             "System.Threading.Tasks",
-            "System.IO"
+            "System.IO",
+            "ScratchpadSharp.Core.Services"
         };
 
         DefaultReferences = new List<string>

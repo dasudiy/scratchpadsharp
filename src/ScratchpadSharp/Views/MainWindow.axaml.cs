@@ -35,6 +35,8 @@ public partial class MainWindow : Window
     private SignatureHelpHandler _signatureHelpHandler = null!;
 
 
+
+
     public MainWindow()
     {
         completionService = new RoslynCompletionService();

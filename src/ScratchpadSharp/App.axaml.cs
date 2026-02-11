@@ -7,6 +7,7 @@ using Avalonia.Markup.Xaml;
 using ScratchpadSharp.Views;
 using ScratchpadSharp.ViewModels;
 using ScratchpadSharp.Core.Services;
+using ScratchpadSharp.Core.Storage;
 using Microsoft.Extensions.Configuration;
 
 namespace ScratchpadSharp;
@@ -37,7 +38,8 @@ public partial class App : Application
         var lifetime = ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
         if (lifetime != null)
         {
-            var viewModel = new MainWindowViewModel();
+            var htmlDumpService = new Services.HtmlDumpService();
+            var viewModel = new MainWindowViewModel(new ScriptExecutionService(), new PackageService(), new CodeFormatterService(), htmlDumpService);
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel

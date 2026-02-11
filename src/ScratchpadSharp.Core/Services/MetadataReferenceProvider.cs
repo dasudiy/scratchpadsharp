@@ -15,7 +15,7 @@ public static class MetadataReferenceProvider
 
     private static MetadataReference CreateReferenceWithXmlDocs(string assemblyPath)
     {
-        var docProvider = BclXmlResolver.GetMetadataDocProvider(assemblyPath);       
+        var docProvider = BclXmlResolver.GetMetadataDocProvider(assemblyPath);
         return MetadataReference.CreateFromFile(assemblyPath, documentation: docProvider);
     }
 
@@ -36,6 +36,7 @@ public static class MetadataReferenceProvider
             CreateReferenceWithXmlDocs(Assembly.Load("System.Linq").Location),
             CreateReferenceWithXmlDocs(Assembly.Load("System.Linq.Expressions").Location),
             CreateReferenceWithXmlDocs(Assembly.Load("netstandard").Location),
+            CreateReferenceWithXmlDocs(typeof(ScriptExecutionService).Assembly.Location),
         };
 
         // Add System.Private.CoreLib
@@ -88,6 +89,9 @@ public static class MetadataReferenceProvider
         references.Add(MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location));
         references.Add(MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location));
         references.Add(MetadataReference.CreateFromFile(typeof(Task).Assembly.Location));
+
+        // Add reference to ScratchpadSharp.Core to support DumpDispatcher
+        references.Add(MetadataReference.CreateFromFile(typeof(ScriptExecutionService).Assembly.Location));
 
         // Add references from config
         if (config.DefaultReferences?.Count > 0)

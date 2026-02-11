@@ -31,11 +31,11 @@ public class ScriptExecutionService : IScriptExecutionService
                 var compilation = CompileScriptAsync(code, config);
                 if (compilation.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
                 {
-                    var errors = string.Join(Environment.NewLine, 
+                    var errors = string.Join(Environment.NewLine,
                         compilation.Diagnostics
                             .Where(d => d.Severity == DiagnosticSeverity.Error)
                             .Select(d => d.ToString()));
-                    
+
                     return new ScriptExecutionResult
                     {
                         Success = false,
@@ -84,6 +84,7 @@ public class __ScriptRunner
         return null;
     }
 }
+
 ";
 
         var syntaxTree = CSharpSyntaxTree.ParseText(wrappedCode);
@@ -122,7 +123,7 @@ public class __ScriptRunner
         {
             // Create isolated ALC with additional probing paths if needed
             var additionalPaths = new List<string>();
-            
+
             // Add NuGet package paths if available
             var nugetPackagesPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

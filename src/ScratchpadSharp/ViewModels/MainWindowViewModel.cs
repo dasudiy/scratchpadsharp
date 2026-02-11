@@ -69,15 +69,44 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
 
-    public MainWindowViewModel() : this(new ScriptExecutionService(), new PackageService(), new CodeFormatterService())
+    private string htmlOutput = string.Empty;
+    private bool showHtmlOutput = true;
+    private readonly Services.HtmlDumpService? htmlDumpService;
+
+    public string HtmlOutput
+    {
+        get => htmlOutput;
+        set => this.RaiseAndSetIfChanged(ref htmlOutput, value);
+    }
+
+    public bool ShowHtmlOutput
+    {
+        get => showHtmlOutput;
+        set => this.RaiseAndSetIfChanged(ref showHtmlOutput, value);
+    }
+
+    public ReactiveCommand<Unit, Unit> ToggleOutputViewCommand { get; }
+
+    public MainWindowViewModel() : this(new ScriptExecutionService(), new PackageService(), new CodeFormatterService(), null)
     {
     }
 
-    public MainWindowViewModel(IScriptExecutionService scriptService, IPackageService packageService, CodeFormatterService formatterService)
+    public MainWindowViewModel(IScriptExecutionService scriptService, IPackageService packageService, CodeFormatterService formatterService, Services.HtmlDumpService? htmlDumpService = null)
     {
         this.scriptService = scriptService;
         this.packageService = packageService;
         this.formatterService = formatterService;
+        this.htmlDumpService = htmlDumpService;
+
+        if (this.htmlDumpService != null)
+        {
+            this.htmlDumpService.SetUpdateCallback(html =>
+            {
+                // Ensure UI update happens on UI thread if needed, though ReactiveUI properties usually handle it.
+                // For safety with async updates:
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => HtmlOutput = html);
+            });
+        }
 
         codeText = string.Empty;
         currentPackage = new ScriptPackage();
@@ -89,6 +118,7 @@ public class MainWindowViewModel : ReactiveObject
         SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync);
         CancelCommand = ReactiveCommand.Create(Cancel);
         FormatCommand = ReactiveCommand.CreateFromTask(FormatCodeAsync);
+        ToggleOutputViewCommand = ReactiveCommand.Create(() => { ShowHtmlOutput = !ShowHtmlOutput; });
         ExitCommand = ReactiveCommand.Create(() =>
         {
             System.Diagnostics.Process.GetCurrentProcess().Kill();
@@ -99,6 +129,8 @@ public class MainWindowViewModel : ReactiveObject
     {
         CodeText = string.Empty;
         Output = string.Empty;
+        HtmlOutput = string.Empty;
+        htmlDumpService?.Clear();
         currentFilePath = null;
         currentPackage = new ScriptPackage();
         StatusText = "New script created";
@@ -215,6 +247,10 @@ public class MainWindowViewModel : ReactiveObject
         try
         {
             StatusText = "Executing...";
+
+            // Clear previous outputs
+            Output = string.Empty;
+            htmlDumpService?.Clear();
 
             var code = CodeText;
             var config = currentPackage.Config;

@@ -3,6 +3,7 @@
     xmlns:avaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
     xmlns:views="using:ScratchpadSharp.Views"
     xmlns:converters="using:ScratchpadSharp.Converters"
+    xmlns:the="clr-namespace:TheArtOfDev.HtmlRenderer.Avalonia;assembly=Avalonia.HtmlRenderer"
     x:Class="ScratchpadSharp.Views.MainWindow"
     Title="ScratchpadSharp"
     Width="1200"
@@ -76,16 +77,33 @@
             <!-- Results Panel -->
             <Border Grid.Row="2" BorderThickness="0,1,0,0">
                 <Grid RowDefinitions="Auto, *">
-                    <TextBlock Grid.Row="0"
-                        Text="Output"
-                        FontWeight="Bold"
-                        Padding="8,4" />
-                    <ScrollViewer Grid.Row="1">
-                        <SelectableTextBlock Text="{Binding Output}"
-                            FontFamily="Cascadia Code, Consolas, monospace"
-                            Padding="8,4"
-                            TextWrapping="Wrap" />
-                    </ScrollViewer>
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto">
+                        <TextBlock Grid.Column="0"
+                            Text="Output"
+                            FontWeight="Bold"
+                            Padding="8,4" 
+                            VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                            Command="{Binding ToggleOutputViewCommand}"
+                            Content="{Binding ShowHtmlOutput, Converter={StaticResource HighlightBoolConverter}, ConverterParameter='HTML|Text'}" 
+                            Margin="4"
+                            Padding="8,2"/>
+                    </Grid>
+                    
+                    <Panel Grid.Row="1">
+                        <!-- HTML Output from Dumpify -->
+                        <ScrollViewer IsVisible="{Binding ShowHtmlOutput}">
+                             <the:HtmlPanel Text="{Binding HtmlOutput}" />
+                        </ScrollViewer>
+                        
+                        <!-- Raw Text Output -->
+                        <ScrollViewer IsVisible="{Binding !ShowHtmlOutput}">
+                            <SelectableTextBlock Text="{Binding Output}"
+                                FontFamily="Cascadia Code, Consolas, monospace"
+                                Padding="8,4"
+                                TextWrapping="Wrap" />
+                        </ScrollViewer>
+                    </Panel>
                 </Grid>
             </Border>
         </Grid>

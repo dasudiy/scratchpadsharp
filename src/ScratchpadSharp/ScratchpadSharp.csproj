@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.0.*" />
     <PackageReference Include="Avalonia.Desktop" Version="11.0.*" />
+    <PackageReference Include="Avalonia.HtmlRenderer" Version="11.0.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.*" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.*" />
     <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.0.*" />
@@ -18,6 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.*" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.*" />
+    <PackageReference Include="Spectre.Console" Version="0.54.0" />
   </ItemGroup>
 
   <ItemGroup>
