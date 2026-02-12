@@ -121,6 +121,10 @@ public class __ScriptRunner
 
         try
         {
+            // Set the Dump Sink to our custom one
+            // This ensures .Dump() calls go through ScratchpadDumpSink -> HtmlPresenter -> DumpDispatcher
+            ScratchpadSharp.Core.External.NetPad.Presentation.DumpExtension.UseSink(new DumpDispatcher());
+
             // Create isolated ALC with additional probing paths if needed
             var additionalPaths = new List<string>();
 
@@ -164,13 +168,28 @@ public class __ScriptRunner
             var connectionStringProp = type.GetProperty("__ConnectionString", BindingFlags.Public | BindingFlags.Static);
             connectionStringProp?.SetValue(null, config.ConnectionString);
 
-            // Redirect console output
+            // Redirect console output to capture Console.WriteLine
             using var outputWriter = new StringWriter();
             var originalOut = Console.Out;
+            var originalError = Console.Error;
+
+            // Create a custom writer that forwards to outputWriter AND DumpDispatcher immediately
+            // This allows real-time output in the UI
+            using var realTimeWriter = new RealTimeConsoleWriter(outputWriter, (text) =>
+            {
+                // Dispatch specialized text message, or just generic text
+                // We wrap it in a span or div to differentiate from HTML dumps
+                // For now, let's just dispatch it as text wrapped in pre
+                if (!string.IsNullOrEmpty(text))
+                {
+                    DumpDispatcher.DispatchHtml($"<div class='text'>{System.Web.HttpUtility.HtmlEncode(text)}</div>");
+                }
+            });
 
             try
             {
-                Console.SetOut(outputWriter);
+                Console.SetOut(realTimeWriter);
+                Console.SetError(realTimeWriter);
 
                 // Execute with timeout
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.TimeoutSeconds));
@@ -198,6 +217,7 @@ public class __ScriptRunner
             finally
             {
                 Console.SetOut(originalOut);
+                Console.SetError(originalError);
             }
         }
         catch (OperationCanceledException)
@@ -252,6 +272,39 @@ public class __ScriptRunner
 
             assemblyStream?.Dispose();
         }
+    }
+
+    // Helper class for real-time console redirection
+    private class RealTimeConsoleWriter : StringWriter
+    {
+        private readonly StringWriter _backingWriter;
+        private readonly Action<string> _onWrite;
+
+        public RealTimeConsoleWriter(StringWriter backingWriter, Action<string> onWrite)
+        {
+            _backingWriter = backingWriter;
+            _onWrite = onWrite;
+        }
+
+        public override void Write(char value)
+        {
+            _backingWriter.Write(value);
+            _onWrite(value.ToString());
+        }
+
+        public override void Write(string? value)
+        {
+            _backingWriter.Write(value);
+            if (value != null) _onWrite(value);
+        }
+
+        public override void WriteLine(string? value)
+        {
+            _backingWriter.WriteLine(value);
+            if (value != null) _onWrite(value + Environment.NewLine);
+        }
+
+        public override Encoding Encoding => _backingWriter.Encoding;
     }
 }
 

@@ -32,3 +32,4 @@ Thumbs.db
 *.lqpkg.backup
 .idea/
 src/SvgExtractor/
+src/Reproduction/

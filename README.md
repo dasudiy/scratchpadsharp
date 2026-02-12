@@ -7,7 +7,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 - **Fast Script Execution**: Roslyn-based C# compilation
 - **Memory Isolation**: AssemblyLoadContext with unloading
 - **IntelliSense Support**: Code completion, signature help, and formatting
-- **Rich Object Visualization**: Dumpify integration
+- **Rich Object Visualization**: HTML-based dumping (NetPad/O2Html)
 - **NuGet Support**: Dynamic package resolution
 - **EF Core Ready**: Built-in database support
 - **Git-Friendly Storage**: .lqpkg zip format with Developer Mode
@@ -55,11 +55,12 @@ dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 - [x] Thread-safe document updates
 - [x] Async initialization with JIT warmup
 
-### Phase 3: NuGet & Dumpify (In Progress)
+### Phase 3: NuGet & Object Visualization ✓ Complete
 - [x] MetadataReference management with XML docs
-- [ ] NuGet package resolution
-- [ ] Dumpify integration
-- [ ] config.json support
+- [x] NuGet package resolution (via config.json)
+- [x] Rich Object Dumping (NetPad/O2Html integration)
+- [x] Memory leak prevention for Dumps
+- [x] config.json support
 
 ### Phase 4: EF Core & Polish
 - [ ] EF Core integration
@@ -72,6 +73,10 @@ dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 
 See [SPECIFICATION.md](SPECIFICATION.md) for detailed technical design.
 
+## Acknowledgements
+
+Special thanks to [NetPad](https://github.com/tareqimbasher/NetPad) by Tareq Imbasher for the excellent HTML dumping implementation that ScratchpadSharp leverages.
+
 ## License
 
-MIT (TBD)
+MIT

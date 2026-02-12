@@ -254,62 +254,46 @@ Task UnpackAsync(string zipPath, string folderPath);
 
 ---
 
-## 5. Dumpify Integration
+## 5. Rich Object Visualization (NetPad/O2Html)
 
 ### 5.1 Overview
 
-**Dumpify** is a rich object visualization library built on Spectre.Console.
+ScratchpadSharp utilizes a ported version of **NetPad**'s presentation layer, powered by **O2Html**, to provide rich, interactive object visualization similar to LINQPad.
 
-**Features Used**:
-- Structured tables for collections
-- Nested object trees
-- Circular reference handling
-- Max depth control
-- Custom output redirection
+**Features**:
+-   **HTML-Based**: Objects are serialized to structured HTML.
+-   **Interactive**: Collapsible trees for complex objects/collections.
+-   **Cyclic Reference Handling**: Gracefully handles circular dependencies.
+-   **Memory Safe**: Designed to work with `AssemblyLoadContext` unloading (no static leaks).
 
-### 5.2 Integration Approach
+### 5.2 Integration Architecture
 
 **In Roslyn Scripts**:
 ```csharp
 // Users write:
 var data = new { Name = "Test", Value = 42 };
-data.Dump();
+data.Dump(); // Extension method from ScratchpadSharp.Core.External.NetPad.Presentation
 
 var users = GetUsers();
-users.Dump(maxDepth: 2);
+users.Dump("User List");
 ```
 
-**Output Redirection**:
-```csharp
-// In ScriptExecutionService:
-using var writer = new StringWriter();
-var dumpOutput = new DumpOutput(writer);
+**Under the Hood**:
+1.  **Compilation**: `ScriptExecutionService` automatically adds the `ScratchpadSharp.Core.External.NetPad.Presentation` namespace.
+2.  **Dispatch**: Calls `DumpDispatcher.Dispatch(obj)`.
+3.  **Serialization**: `HtmlPresenter` (wrapping `O2Html`) serializes the object to an HTML string.
+4.  **Rendering**: The HTML string is passed to `HtmlDumpService` in the UI layer for display.
 
-// Configure Dumpify for plain text (no ANSI colors initially)
-DumpConfig.Default.ColorConfig = ColorConfig.NoColors;
+ See [docs/dump-workflow.md](docs/dump-workflow.md) for a detailed flow.
 
-// Execute script with Dumpify available
-var options = ScriptOptions.Default
-    .AddReferences(typeof(DumpExtensions).Assembly)
-    .AddReferences(typeof(Spectre.Console.AnsiConsole).Assembly)
-    .AddImports("Dumpify");
+### 5.3 Future Enhancement: WebView
 
-// Capture output
-string output = writer.ToString();
-```
+**Goal**: Replace the current `SelectableTextBlock` (or simple HTML renderer) with a full `WebView` (e.g., CefGlue or similar) for full CSS/JS support and interactivity.
 
-### 5.3 Future Enhancement: ANSI Color Support
-
-**Goal**: Parse Dumpify's ANSI output and render in Avalonia with colors.
-
-**Approach**:
-1. Enable colors: `DumpConfig.Default.ColorConfig = ColorConfig.Default`
-2. Capture ANSI output
-3. Parse VT100 escape sequences (e.g., `\x1b[31m` = red)
-4. Convert to Avalonia `TextBlock` with styled `Run` elements
-5. Apply `Foreground`/`Background` brushes
-
-**Alternative**: Use Avalonia terminal control for native ANSI rendering.
+**Current State**:
+-   Objects are serialized to HTML.
+-   Output is currently displayed in a basic text/HTML viewer (AvaloniaEdit or processed TextBlock).
+-   Full interactivity (expanding/collapsing) requires a browser-based control.
 
 ---
 

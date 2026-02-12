@@ -1,6 +1,5 @@
 using System;
 using System.Net;
-using System.Text.RegularExpressions;
 using Dumpify;
 using ScratchpadSharp.Core.Services;
 
@@ -9,28 +8,55 @@ namespace ScratchpadSharp.Services;
 public class HtmlDumpService
 {
     private Action<string>? _updateCallback;
-    // Regex to strip ANSI escape sequences
-    private static readonly Regex AnsiRegex = new Regex(@"\x1B\[[0-9;]*[a-zA-Z]", RegexOptions.Compiled);
-
-    private const string CssStyles = @"
-        <style>
-            body { 
-                background-color: #ffffff; 
-                color: #000000; 
-                font-family: 'Cascadia Code', Consolas, monospace; 
-                padding: 10px; 
-                margin: 0;
-            }
-            pre { 
-                margin: 0; 
-                white-space: pre-wrap;
-            }
-        </style>";
+    private readonly string _htmlLoopTemplate;
 
     public HtmlDumpService()
     {
         // Register this service as the HTML renderer in the core dispatcher
         DumpDispatcher.RegisterHtmlRenderer(RenderHtml);
+
+        // Load NetPad styles from embedded resource in Core assembly
+        var assembly = typeof(DumpDispatcher).Assembly;
+        var resourceName = "ScratchpadSharp.Core.External.NetPad.Presentation.NetPadStyles.css";
+
+        // Debugging: List all resources
+        foreach (var name in assembly.GetManifestResourceNames())
+        {
+            // System.Diagnostics.Debug.WriteLine($"Resource: {name}");
+            _updateCallback?.Invoke($"Resource found: {name}");
+        }
+
+        string css = "";
+        using (var stream = assembly.GetManifestResourceStream(resourceName))
+        {
+            if (stream != null)
+            {
+                using var reader = new System.IO.StreamReader(stream);
+                css = reader.ReadToEnd();
+            }
+            else
+            {
+                // Fallback if resource not found (shouldn't happen if build is correct)
+                css = "/* Error loading NetPad styles */";
+            }
+        }
+
+        _htmlLoopTemplate = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        {css}
+    </style>
+</head>
+<body>
+    <output-pane>
+        <div class='dump-container-wrapper'>
+            {{{{BODY}}}}
+        </div>
+    </output-pane>
+</body>
+</html>";
     }
 
     public void SetUpdateCallback(Action<string> callback)
@@ -43,21 +69,16 @@ public class HtmlDumpService
         _updateCallback?.Invoke(string.Empty);
     }
 
-    private void RenderHtml(object? obj, string? label)
+    private void RenderHtml(object? data, string? label)
     {
         try
         {
-            // Dump using Table renderer (default) to get string representation
-            var textWithAnsi = obj.DumpText(renderer: Renderers.Table);
+            // The dispatcher sends the HTML string as the first argument
+            string htmlContent = data as string ?? data?.ToString() ?? string.Empty;
 
-            // Strip ANSI codes for clean text display in UI
-            var text = AnsiRegex.Replace(textWithAnsi, "");
-
-            // Encoded HTML with injected CSS styles
-            var htmle = WebUtility.HtmlEncode(text);
-            var html = $"{CssStyles}<pre>{htmle}</pre>";
-
-            _updateCallback?.Invoke(html);
+            // Wrap the HTML content in our template with styles
+            var output = _htmlLoopTemplate.Replace("{{BODY}}", htmlContent);
+            _updateCallback?.Invoke(output);
         }
         catch (Exception ex)
         {
