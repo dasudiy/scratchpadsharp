@@ -31,16 +31,21 @@ public class ScriptExecutionService : IScriptExecutionService
                 var compilation = CompileScriptAsync(code, config);
                 if (compilation.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
                 {
-                    var errors = string.Join(Environment.NewLine,
-                        compilation.Diagnostics
-                            .Where(d => d.Severity == DiagnosticSeverity.Error)
-                            .Select(d => d.ToString()));
+                    var errors = compilation.Diagnostics
+                        .Where(d => d.Severity == DiagnosticSeverity.Error)
+                        .ToList();
+
+                    var errorText = string.Join(Environment.NewLine, errors.Select(d => d.ToString()));
+
+                    // Format errors as HTML for the output pane
+                    var htmlErrors = FormatCompilationErrors(errors);
+                    DumpDispatcher.DispatchHtml(htmlErrors);
 
                     return new ScriptExecutionResult
                     {
                         Success = false,
                         ErrorMessage = "Compilation failed",
-                        Output = errors
+                        Output = errorText
                     };
                 }
 
@@ -58,6 +63,37 @@ public class ScriptExecutionService : IScriptExecutionService
                 Exception = ex
             };
         }
+    }
+
+    private string FormatCompilationErrors(List<Diagnostic> diagnostics)
+    {
+        // Filter out errors that point to the wrapper code (empty path or not Script.cs)
+        // unless we have no errors mapped to user code, in which case we show everything.
+        var userDiagnostics = diagnostics
+            .Where(d => d.Location.GetMappedLineSpan().Path == "Script.cs")
+            .ToList();
+
+        var diagnosticsToShow = userDiagnostics.Count > 0 ? userDiagnostics : diagnostics;
+
+        var sb = new StringBuilder();
+        sb.Append("<div class='group error'>");
+
+        foreach (var diagnostic in diagnosticsToShow)
+        {
+            var lineSpan = diagnostic.Location.GetMappedLineSpan();
+            var line = lineSpan.StartLinePosition.Line + 1;
+            var column = lineSpan.StartLinePosition.Character + 1;
+
+            sb.Append("<div>");
+            sb.Append(System.Web.HttpUtility.HtmlEncode(diagnostic.Id));
+            sb.Append(": ");
+            sb.Append(System.Web.HttpUtility.HtmlEncode(diagnostic.GetMessage()));
+            sb.Append($" (Line {line}, Column {column})");
+            sb.Append("</div>");
+        }
+
+        sb.Append("</div>");
+        return sb.ToString();
     }
 
     private (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
