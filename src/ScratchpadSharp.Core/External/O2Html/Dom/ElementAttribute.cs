@@ -1,3 +1,5 @@
+using ScratchpadSharp.Core.External.O2Html.Common;
+
 namespace ScratchpadSharp.Core.External.O2Html.Dom;
 
 public class ElementAttribute
@@ -66,6 +68,6 @@ public class ElementAttribute
 
     public override string ToString()
     {
-        return $"{Name}=\"{Value}\"";
+        return $"{Name}=\"{Util.EscapeStringForHtml(Value)}\"";
     }
 }

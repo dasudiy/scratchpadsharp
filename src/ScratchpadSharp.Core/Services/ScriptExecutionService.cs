@@ -37,9 +37,26 @@ public class ScriptExecutionService : IScriptExecutionService
 
                     var errorText = string.Join(Environment.NewLine, errors.Select(d => d.ToString()));
 
-                    // Format errors as HTML for the output pane
-                    var htmlErrors = FormatCompilationErrors(errors);
-                    DumpDispatcher.DispatchHtml(htmlErrors);
+                    // Filter out errors that point to the wrapper code (empty path or not Script.cs)
+                    // unless we have no errors mapped to user code, in which case we show everything.
+                    var userDiagnostics = errors
+                        .Where(d => d.Location.GetMappedLineSpan().Path == "Script.cs")
+                        .ToList();
+
+                    var diagnosticsToShow = userDiagnostics.Count > 0 ? userDiagnostics : errors;
+
+                    var errorRecords = diagnosticsToShow.Select(d =>
+                    {
+                        var lineSpan = d.Location.GetMappedLineSpan();
+                        return new CompilationError(
+                            d.Id,
+                            d.GetMessage(),
+                            lineSpan.StartLinePosition.Line + 1,
+                            lineSpan.StartLinePosition.Character + 1
+                        );
+                    }).ToList();
+
+                    DumpDispatcher.Dispatch(errorRecords);
 
                     return new ScriptExecutionResult
                     {
@@ -65,36 +82,7 @@ public class ScriptExecutionService : IScriptExecutionService
         }
     }
 
-    private string FormatCompilationErrors(List<Diagnostic> diagnostics)
-    {
-        // Filter out errors that point to the wrapper code (empty path or not Script.cs)
-        // unless we have no errors mapped to user code, in which case we show everything.
-        var userDiagnostics = diagnostics
-            .Where(d => d.Location.GetMappedLineSpan().Path == "Script.cs")
-            .ToList();
 
-        var diagnosticsToShow = userDiagnostics.Count > 0 ? userDiagnostics : diagnostics;
-
-        var sb = new StringBuilder();
-        sb.Append("<div class='group error'>");
-
-        foreach (var diagnostic in diagnosticsToShow)
-        {
-            var lineSpan = diagnostic.Location.GetMappedLineSpan();
-            var line = lineSpan.StartLinePosition.Line + 1;
-            var column = lineSpan.StartLinePosition.Character + 1;
-
-            sb.Append("<div>");
-            sb.Append(System.Web.HttpUtility.HtmlEncode(diagnostic.Id));
-            sb.Append(": ");
-            sb.Append(System.Web.HttpUtility.HtmlEncode(diagnostic.GetMessage()));
-            sb.Append($" (Line {line}, Column {column})");
-            sb.Append("</div>");
-        }
-
-        sb.Append("</div>");
-        return sb.ToString();
-    }
 
     private static (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
         string code, ScriptConfig config)
@@ -213,11 +201,9 @@ public class __ScriptRunner
             using var realTimeWriter = new RealTimeConsoleWriter(outputWriter, (text) =>
             {
                 // Dispatch specialized text message, or just generic text
-                // We wrap it in a span or div to differentiate from HTML dumps
-                // For now, let's just dispatch it as text wrapped in pre
                 if (!string.IsNullOrEmpty(text))
                 {
-                    DumpDispatcher.DispatchHtml($"<div class='text'>{System.Web.HttpUtility.HtmlEncode(text)}</div>");
+                    DumpDispatcher.Dispatch(text);
                 }
             });
 
@@ -347,3 +333,5 @@ public class ScriptGlobals
 {
     public string ConnectionString { get; set; } = string.Empty;
 }
+
+public record CompilationError(string Id, string Message, int Line, int Column);

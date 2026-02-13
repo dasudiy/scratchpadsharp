@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Text;
 using Dumpify;
 using ScratchpadSharp.Core.Services;
 
@@ -9,6 +10,8 @@ public class HtmlDumpService
 {
     private Action<string>? _updateCallback;
     private readonly string _htmlLoopTemplate;
+
+    private readonly StringBuilder _contentBuffer = new StringBuilder();
 
     public HtmlDumpService()
     {
@@ -66,7 +69,10 @@ public class HtmlDumpService
 
     public void Clear()
     {
-        _updateCallback?.Invoke(string.Empty);
+        _contentBuffer.Clear();
+        // Invoke with empty template to clear the view but keep styles/structure ready
+        var output = _htmlLoopTemplate.Replace("{{BODY}}", string.Empty);
+        _updateCallback?.Invoke(output);
     }
 
     private void RenderHtml(object? data, string? label)
@@ -76,13 +82,21 @@ public class HtmlDumpService
             // The dispatcher sends the HTML string as the first argument
             string htmlContent = data as string ?? data?.ToString() ?? string.Empty;
 
-            // Wrap the HTML content in our template with styles
-            var output = _htmlLoopTemplate.Replace("{{BODY}}", htmlContent);
+            // Append the new content to our buffer
+            _contentBuffer.Append(htmlContent);
+
+            // Wrap the full accumulated content in our template with styles
+            var output = _htmlLoopTemplate.Replace("{{BODY}}", _contentBuffer.ToString());
             _updateCallback?.Invoke(output);
         }
         catch (Exception ex)
         {
-            _updateCallback?.Invoke($"<div style='color:red'>Error rendering HTML: {ex.Message}</div>");
+            // For errors, we might want to append them too, or just log them.
+            // Let's append a red error message to the buffer so the user sees it in context.
+            var errorHtml = $"<div style='color:red'>Error rendering HTML: {ex.Message}</div>";
+            _contentBuffer.Append(errorHtml);
+            var output = _htmlLoopTemplate.Replace("{{BODY}}", _contentBuffer.ToString());
+            _updateCallback?.Invoke(output);
         }
     }
 }
