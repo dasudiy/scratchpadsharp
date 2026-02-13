@@ -44,6 +44,11 @@ public interface IRoslynCompletionService
         CompletionItem item,
         List<string> usings,
         CancellationToken cancellationToken = default);
+
+    Task<string?> GetCompletionDescriptionAsync(
+        string tabId,
+        CompletionItem item,
+        CancellationToken cancellationToken = default);
 }
 
 public class CompletionResult
@@ -97,7 +102,7 @@ public class RoslynCompletionService : IRoslynCompletionService
     private const int DefaultDebounceMs = 100;
     private const int MaxCompletionItems = 1000;
 
-    public async Task  UpdateReferencesAsync(string tabId, Dictionary<string, string> nugetPackages)
+    public async Task UpdateReferencesAsync(string tabId, Dictionary<string, string> nugetPackages)
     {
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, nugetPackages);
     }
@@ -112,10 +117,11 @@ public class RoslynCompletionService : IRoslynCompletionService
     {
         try
         {
+            var startTime = DateTime.Now;
             if (!RoslynWorkspaceService.Instance.IsInitialized)
             {
                 System.Diagnostics.Debug.WriteLine("[Completion] Workspace not initialized yet");
-                return new CompletionResult { Items = ImmutableArray<EnhancedCompletionItem>.Empty };
+                return new CompletionResult { Items = [] };
             }
 
             // Update references if packages are provided
@@ -124,7 +130,7 @@ public class RoslynCompletionService : IRoslynCompletionService
                 await UpdateReferencesAsync(tabId, nugetPackages);
             }
 
- 
+
 
             // Get the current document
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
@@ -137,7 +143,7 @@ public class RoslynCompletionService : IRoslynCompletionService
             if (completionService == null)
             {
                 System.Diagnostics.Debug.WriteLine("[Completion] CompletionService is null");
-                return new CompletionResult { Items = ImmutableArray<EnhancedCompletionItem>.Empty };
+                return new CompletionResult { Items = [] };
             }
 
             // 确定触发字符
@@ -162,7 +168,7 @@ public class RoslynCompletionService : IRoslynCompletionService
             if (completions == null || completions.ItemsList.Count == 0)
             {
                 System.Diagnostics.Debug.WriteLine($"[Completion] No completions at position {position}");
-                return new CompletionResult { Items = ImmutableArray<EnhancedCompletionItem>.Empty };
+                return new CompletionResult { Items = [] };
             }
 
             // Filter out keywords early if requested
@@ -172,7 +178,7 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             if (meaningfulItems.Length == 0)
             {
-                return new CompletionResult { Items = ImmutableArray<EnhancedCompletionItem>.Empty };
+                return new CompletionResult { Items = [] };
             }
 
             System.Diagnostics.Debug.WriteLine($"[Completion] Found {meaningfulItems.Length} meaningful items");
@@ -181,7 +187,7 @@ public class RoslynCompletionService : IRoslynCompletionService
             var usingsOffset = RoslynWorkspaceService.Instance.GetUsingsOffset(usings);
 
             // 增强和过滤补全项
-            var enhancedItems = await EnhanceCompletionItems(
+            var enhancedItems = EnhanceCompletionItems(
                 meaningfulItems,
                 completionService,
                 document,
@@ -264,7 +270,30 @@ public class RoslynCompletionService : IRoslynCompletionService
 
 
 
-    private async Task<List<EnhancedCompletionItem>> EnhanceCompletionItems(
+    public async Task<string?> GetCompletionDescriptionAsync(
+        string tabId,
+        CompletionItem item,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
+            if (document == null) return null;
+
+            var completionService = CompletionService.GetService(document);
+            if (completionService == null) return null;
+
+            var description = await completionService.GetDescriptionAsync(document, item, cancellationToken);
+            return description?.Text;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Completion] Error getting description: {ex.Message}");
+            return null;
+        }
+    }
+
+    private List<EnhancedCompletionItem> EnhanceCompletionItems(
         ImmutableArray<CompletionItem> items,
         CompletionService completionService,
         Document document,
@@ -292,19 +321,9 @@ public class RoslynCompletionService : IRoslynCompletionService
                 CompletionSpan = adjustedSpan
             };
 
-            // 获取详细文档
-            try
-            {
-                var description = await completionService.GetDescriptionAsync(document, item, cancellationToken);
-                if (description != null)
-                {
-                    enhancedItem.Documentation = description.Text;
-                }
-            }
-            catch
-            {
-                // 如果获取文档失败,继续处理
-            }
+            // Description is now loaded lazily
+            // enhancedItem.Documentation = ... 
+
 
             // 标记推荐项
             enhancedItem.IsRecommended = IsRecommendedItem(item);

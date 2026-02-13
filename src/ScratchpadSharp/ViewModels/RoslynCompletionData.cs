@@ -123,27 +123,73 @@ public class RoslynCompletionData : ICompletionData
             // 文档
             if (!string.IsNullOrEmpty(enhancedItem.Documentation))
             {
-                var separator = new Border
+                AddDocumentation(panel, enhancedItem.Documentation);
+            }
+            else
+            {
+                // Lazy load documentation
+                var loadingText = new TextBlock
                 {
-                    Height = 1,
-                    Background = new SolidColorBrush(Color.FromRgb(224, 224, 224)),
+                    Text = "Loading documentation...",
+                    FontStyle = FontStyle.Italic,
+                    Foreground = Brushes.Gray,
                     Margin = new Avalonia.Thickness(0, 0, 0, 8)
                 };
-                panel.Children.Add(separator);
-
-                var docText = new TextBlock
-                {
-                    Text = enhancedItem.Documentation,
-                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                    Foreground = new SolidColorBrush(Color.FromRgb(80, 80, 80))
-                };
-                panel.Children.Add(docText);
+                panel.Children.Add(loadingText);
+                LoadDescriptionAsync(panel, loadingText);
             }
 
             description = panel;
             return description;
         }
     }
+
+    private void AddDocumentation(StackPanel panel, string doc)
+    {
+        var separator = new Border
+        {
+            Height = 1,
+            Background = new SolidColorBrush(Color.FromRgb(224, 224, 224)),
+            Margin = new Avalonia.Thickness(0, 0, 0, 8)
+        };
+        panel.Children.Add(separator);
+
+        var docText = new TextBlock
+        {
+            Text = doc,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(80, 80, 80))
+        };
+        panel.Children.Add(docText);
+    }
+
+    private async void LoadDescriptionAsync(StackPanel panel, TextBlock loadingPlaceholder)
+    {
+        try
+        {
+            var doc = await completionService.GetCompletionDescriptionAsync(tabId, enhancedItem.RoslynItem);
+
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                panel.Children.Remove(loadingPlaceholder);
+
+                if (!string.IsNullOrEmpty(doc))
+                {
+                    enhancedItem.Documentation = doc;
+                    AddDocumentation(panel, doc);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CompletionData] Error loading description: {ex.Message}");
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                panel.Children.Remove(loadingPlaceholder);
+            });
+        }
+    }
+
 
     public double Priority => enhancedItem.Priority;
 
