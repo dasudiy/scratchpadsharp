@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -18,7 +19,7 @@ public class RoslynWorkspaceService
     public static RoslynWorkspaceService Instance => instance.Value;
 
     private AdhocWorkspace? workspace;
-    private readonly Dictionary<string, ProjectId> tabMappings = new();
+    private readonly ConcurrentDictionary<string, RoslynSession> _sessions = new();
     private readonly SemaphoreSlim semaphore = new(1, 1);
     private bool isInitialized;
 
@@ -117,7 +118,7 @@ public class RoslynWorkspaceService
         if (!isInitialized || workspace == null)
             throw new InvalidOperationException("Workspace not initialized. Call InitializeAsync first.");
 
-        if (tabMappings.ContainsKey(tabId))
+        if (_sessions.ContainsKey(tabId))
             throw new InvalidOperationException($"Project for tab '{tabId}' already exists.");
 
         var projectId = ProjectId.CreateNewId(tabId);
@@ -145,23 +146,22 @@ public class RoslynWorkspaceService
 
         workspace.AddDocument(documentInfo);
 
-        tabMappings[tabId] = projectId;
+        var session = new RoslynSession(tabId, projectId, documentId);
+        _sessions.TryAdd(tabId, session);
 
         System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Created project for tab '{tabId}'");
     }
 
     public void RemoveProject(string tabId)
     {
-        if (!tabMappings.TryGetValue(tabId, out var projectId))
+        if (!_sessions.TryRemove(tabId, out var session))
             return;
 
         if (workspace != null)
         {
-            var solution = workspace.CurrentSolution.RemoveProject(projectId);
+            var solution = workspace.CurrentSolution.RemoveProject(session.ProjectId);
             workspace.TryApplyChanges(solution);
         }
-
-        tabMappings.Remove(tabId);
 
         System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Removed project for tab '{tabId}'");
     }
@@ -171,16 +171,12 @@ public class RoslynWorkspaceService
         if (!isInitialized || workspace == null)
             throw new InvalidOperationException("Workspace not initialized.");
 
-        if (!tabMappings.TryGetValue(tabId, out var projectId))
-            throw new ArgumentException($"No project found for tab '{tabId}'");
+        if (!_sessions.TryGetValue(tabId, out var session))
+            throw new ArgumentException($"No session found for tab '{tabId}'");
 
-        var project = workspace.CurrentSolution.GetProject(projectId);
-        if (project == null)
-            throw new InvalidOperationException($"Project for tab '{tabId}' not found in solution.");
-
-        var document = project.Documents.FirstOrDefault();
+        var document = workspace.CurrentSolution.GetDocument(session.DocumentId);
         if (document == null)
-            throw new InvalidOperationException($"No document found in project for tab '{tabId}'");
+            throw new InvalidOperationException($"Document for tab '{tabId}' not found in solution.");
 
         return document;
     }
@@ -190,6 +186,16 @@ public class RoslynWorkspaceService
         await semaphore.WaitAsync();
         try
         {
+            if (!_sessions.TryGetValue(tabId, out var session))
+                return;
+
+            // Check loop optimization
+            if (string.Equals(session.LastCode, code, StringComparison.Ordinal) &&
+                AreUsingsEqual(session.LastUsings, usings))
+            {
+                return;
+            }
+
             var document = GetDocument(tabId);
 
             var usingStatements = string.Join(Environment.NewLine, usings.Select(u => $"using {u};"));
@@ -199,7 +205,12 @@ public class RoslynWorkspaceService
             var newDocument = document.WithText(sourceText);
             var newSolution = newDocument.Project.Solution;
 
-            if (!workspace!.TryApplyChanges(newSolution))
+            if (workspace!.TryApplyChanges(newSolution))
+            {
+                session.LastCode = code;
+                session.LastUsings = new List<string>(usings);
+            }
+            else
             {
                 System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Failed to apply changes for tab '{tabId}'");
             }
@@ -215,17 +226,30 @@ public class RoslynWorkspaceService
         await semaphore.WaitAsync();
         try
         {
-            if (!tabMappings.TryGetValue(tabId, out var projectId))
+            if (!_sessions.TryGetValue(tabId, out var session))
                 return;
 
-            var project = workspace!.CurrentSolution.GetProject(projectId);
+            // Check if packages are the same
+            if (ArePackagesEqual(session.LastAppliedPackages, nugetPackages))
+            {
+                return;
+            }
+
+            var project = workspace!.CurrentSolution.GetProject(session.ProjectId);
             if (project == null)
                 return;
 
             var references = MetadataReferenceProvider.GetReferencesWithPackages(nugetPackages);
             var updatedProject = project.WithMetadataReferences(references);
 
-            if (!workspace.TryApplyChanges(updatedProject.Solution))
+            if (workspace.TryApplyChanges(updatedProject.Solution))
+            {
+                session.LastAppliedPackages = nugetPackages != null
+                    ? new Dictionary<string, string>(nugetPackages)
+                    : new Dictionary<string, string>();
+                System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Updated references for tab '{tabId}'");
+            }
+            else
             {
                 System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Failed to update references for tab '{tabId}'");
             }
@@ -234,6 +258,27 @@ public class RoslynWorkspaceService
         {
             semaphore.Release();
         }
+    }
+
+    private bool AreUsingsEqual(List<string>? u1, List<string>? u2)
+    {
+        if (u1 == u2) return true;
+        if (u1 == null || u2 == null) return false;
+        return u1.SequenceEqual(u2);
+    }
+
+    private bool ArePackagesEqual(Dictionary<string, string>? p1, Dictionary<string, string>? p2)
+    {
+        if (p1 == p2) return true;
+        if (p1 == null || p2 == null) return false;
+        if (p1.Count != p2.Count) return false;
+
+        foreach (var kvp in p1)
+        {
+            if (!p2.TryGetValue(kvp.Key, out var value) || value != kvp.Value)
+                return false;
+        }
+        return true;
     }
 
     public int CalculateAdjustedPosition(int position, List<string> usings)

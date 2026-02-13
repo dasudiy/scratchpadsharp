@@ -97,7 +97,7 @@ public class RoslynCompletionService : IRoslynCompletionService
     private const int DefaultDebounceMs = 100;
     private const int MaxCompletionItems = 1000;
 
-    public async Task UpdateReferencesAsync(string tabId, Dictionary<string, string> nugetPackages)
+    public async Task  UpdateReferencesAsync(string tabId, Dictionary<string, string> nugetPackages)
     {
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, nugetPackages);
     }
@@ -124,8 +124,7 @@ public class RoslynCompletionService : IRoslynCompletionService
                 await UpdateReferencesAsync(tabId, nugetPackages);
             }
 
-            // Update document with current code
-            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, usings);
+ 
 
             // Get the current document
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);

@@ -6,9 +6,11 @@ namespace ScratchpadSharp.Core.Services;
 
 public class ScriptPreprocessor
 {
-    public (string CleanCode, List<string> Usings, int RemovedLineCount) ExtractUsingsAndComments(string code)
+    private static readonly string[] separator = ["\r\n", "\r", "\n"];
+
+    public static (string CleanCode, List<string> Usings, int RemovedLineCount) ExtractUsingsAndComments(string code)
     {
-        var lines = code.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        var lines = code.Split(separator, StringSplitOptions.None);
         var usings = new List<string>();
         var cleanLines = new List<string>();
         var inBlockComment = false;

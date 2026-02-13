@@ -96,11 +96,10 @@ public class ScriptExecutionService : IScriptExecutionService
         return sb.ToString();
     }
 
-    private (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
+    private static (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
         string code, ScriptConfig config)
     {
-        var preprocessor = new ScriptPreprocessor();
-        var (cleanCode, userUsings, removedLineCount) = preprocessor.ExtractUsingsAndComments(code);
+        var (cleanCode, userUsings, removedLineCount) = ScriptPreprocessor.ExtractUsingsAndComments(code);
 
         var allUsings = config.DefaultUsings.Concat(userUsings).Distinct();
         var usingsBlock = string.Join(Environment.NewLine, allUsings.Select(u => $"using {u};"));
@@ -130,7 +129,7 @@ public class __ScriptRunner
 
         var compilation = CSharpCompilation.Create(
             $"__ScriptAssembly_{Guid.NewGuid():N}",
-            new[] { syntaxTree },
+            [syntaxTree],
             references,
             new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
