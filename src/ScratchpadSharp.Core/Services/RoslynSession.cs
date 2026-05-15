@@ -9,8 +9,8 @@ public class RoslynSession
     public ProjectId ProjectId { get; }
     public DocumentId DocumentId { get; }
 
-    // Caching fields to prevent redundant updates
-    public Dictionary<string, string>? LastAppliedPackages { get; set; }
+    // Caching fields to prevent redundant updates, abs path;
+    public List<string>? LastAppliedPackages { get; set; }
     public string? LastCode { get; set; }
     public List<string>? LastUsings { get; set; }
 

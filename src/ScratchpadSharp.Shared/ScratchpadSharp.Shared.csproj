@@ -6,4 +6,13 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Reference Include="NuGet.Packaging">
+      <HintPath>..\..\..\..\..\home\asuka\.nuget\packages\nuget.packaging\6.8.1\lib\net5.0\NuGet.Packaging.dll</HintPath>
+    </Reference>
+    <Reference Include="NuGet.Protocol">
+      <HintPath>..\..\..\..\..\home\asuka\.nuget\packages\nuget.protocol\6.8.1\lib\net5.0\NuGet.Protocol.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>

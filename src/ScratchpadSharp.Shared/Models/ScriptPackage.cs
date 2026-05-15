@@ -8,4 +8,5 @@ public class ScriptPackage
     public ScriptConfig Config { get; set; } = new();
     public PackageManifest Manifest { get; set; } = new();
     public string Output { get; set; } = string.Empty;
+    public string RootPath { get; set; }
 }

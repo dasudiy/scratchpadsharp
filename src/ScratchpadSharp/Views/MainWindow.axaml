@@ -18,6 +18,7 @@
         <KeyBinding Gesture="Ctrl+Alt+F" Command="{Binding FormatCommand}" />
         <KeyBinding Gesture="F5" Command="{Binding ExecuteCommand}" />
         <KeyBinding Gesture="Shift+F5" Command="{Binding CancelCommand}" />
+        <KeyBinding Gesture="F4" Command="{Binding ManageReferencesCommand}" />
     </Window.KeyBindings>
 
     <Window.Resources>
@@ -38,6 +39,8 @@
             </MenuItem>
             <MenuItem Header="Edit">
                 <MenuItem Header="Format Document" Command="{Binding FormatCommand}" InputGesture="Ctrl+Shift+F" />
+                <Separator />
+                <MenuItem Header="Manage References..." Command="{Binding ManageReferencesCommand}" InputGesture="F4" />
             </MenuItem>
             <MenuItem Header="Run">
                 <MenuItem Header="Execute Script" Command="{Binding ExecuteCommand}"
@@ -49,7 +52,11 @@
         <!-- Status Bar -->
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Height="24"
             Background="#F0F0F0">
-            <TextBlock Text="Ready" Foreground="#666666" Margin="8,4" />
+            <TextBlock Text="Ready" Foreground="#666666" Margin="8,4" IsVisible="{Binding !IsDownloading}"/>
+            <StackPanel Orientation="Horizontal" IsVisible="{Binding IsDownloading}" Margin="8,0">
+                <ProgressBar Minimum="0" Maximum="100" Value="{Binding DownloadProgress}" Width="100" Height="10" Margin="0,7,8,0"/>
+                <TextBlock Text="{Binding DownloadMessage}" Foreground="#0066CC" VerticalAlignment="Center"/>
+            </StackPanel>
             <TextBlock Margin="8,4,0,4" Text="{Binding StatusText}" Foreground="#666666" />
         </StackPanel>
 

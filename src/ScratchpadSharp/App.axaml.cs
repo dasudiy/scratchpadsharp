@@ -39,7 +39,7 @@ public partial class App : Application
         if (lifetime != null)
         {
             var htmlDumpService = new Services.HtmlDumpService();
-            var viewModel = new MainWindowViewModel(new ScriptExecutionService(), new PackageService(), new CodeFormatterService(), htmlDumpService);
+            var viewModel = new MainWindowViewModel(new ScriptExecutionService(), htmlDumpService);
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel

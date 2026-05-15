@@ -2,6 +2,7 @@ using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Services;
 
@@ -33,8 +34,7 @@ public interface ISignatureProvider
         string tabId,
         string code,
         int position,
-        List<string> usings,
-        Dictionary<string, string> nugetPackages,
+        ProjectContext context,
         CancellationToken cancellationToken = default);
 }
 
@@ -44,8 +44,7 @@ public class SignatureProvider : ISignatureProvider
         string tabId,
         string code,
         int position,
-        List<string> usings,
-        Dictionary<string, string> nugetPackages,
+        ProjectContext context,
         CancellationToken cancellationToken = default)
     {
         try
@@ -56,17 +55,18 @@ public class SignatureProvider : ISignatureProvider
                 return (new List<MethodSignature>(), -1, -1);
             }
 
-            if (nugetPackages?.Count > 0)
+            if (context.AbsoluteCompileReferences.Count > 0)
             {
-                await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, nugetPackages);
+                await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
             }
 
-            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, usings);
+            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, context.Config.Usings);
 
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
-            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(position, usings);
+            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(position, context.Config.Usings);
 
-            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Code length: {code.Length}, Position: {position}, Adjusted: {adjustedPosition}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[SignatureProvider] Code length: {code.Length}, Position: {position}, Adjusted: {adjustedPosition}");
 
             var root = await document.GetSyntaxRootAsync(cancellationToken);
             if (root == null)
@@ -84,7 +84,8 @@ public class SignatureProvider : ISignatureProvider
                 return (new List<MethodSignature>(), -1, -1);
             }
 
-            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Found invocation: {invocationContext.Node.GetType().Name}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[SignatureProvider] Found invocation: {invocationContext.Node.GetType().Name}");
 
             var symbols = GetInvokedSymbols(invocationContext.Node, semanticModel);
             if (!symbols.Any())
@@ -95,7 +96,8 @@ public class SignatureProvider : ISignatureProvider
             // 计算当前参数索引和活动参数
             var (argIndex, activeParam) = CalculateParameterPosition(invocationContext, adjustedPosition);
 
-            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Found {signatures.Count} signatures, arg index: {argIndex}, active param: {activeParam}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[SignatureProvider] Found {signatures.Count} signatures, arg index: {argIndex}, active param: {activeParam}");
 
             return (signatures, argIndex, activeParam);
         }
@@ -133,7 +135,8 @@ public class SignatureProvider : ISignatureProvider
         int depth = 0;
         while (node != null && depth < 20)
         {
-            System.Diagnostics.Debug.WriteLine($"[SignatureProvider] Checking node depth {depth}: {node.GetType().Name}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[SignatureProvider] Checking node depth {depth}: {node.GetType().Name}");
 
             if (node is InvocationExpressionSyntax invocation)
             {
@@ -166,8 +169,8 @@ public class SignatureProvider : ISignatureProvider
         // 查找所有可能的调用表达式
         var candidates = root.DescendantNodes()
             .Where(n => n is InvocationExpressionSyntax ||
-                       n is ObjectCreationExpressionSyntax ||
-                       n is BaseObjectCreationExpressionSyntax)
+                        n is ObjectCreationExpressionSyntax ||
+                        n is BaseObjectCreationExpressionSyntax)
             .Select(n =>
             {
                 ArgumentListSyntax? argList = n switch
@@ -376,7 +379,9 @@ public class SignatureProvider : ISignatureProvider
                 Type = param.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
                 IsParams = param.IsParams,
                 IsOptional = param.HasExplicitDefaultValue,
-                DefaultValue = param.HasExplicitDefaultValue ? FormatDefaultValue(param.ExplicitDefaultValue) : string.Empty
+                DefaultValue = param.HasExplicitDefaultValue
+                    ? FormatDefaultValue(param.ExplicitDefaultValue)
+                    : string.Empty
             };
 
             // 从文档中获取参数说明
@@ -450,8 +455,8 @@ public class SignatureProvider : ISignatureProvider
 
         // 移除多余的空白和换行
         var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                       .Select(line => line.Trim())
-                       .Where(line => !string.IsNullOrEmpty(line));
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrEmpty(line));
 
         return string.Join(" ", lines);
     }

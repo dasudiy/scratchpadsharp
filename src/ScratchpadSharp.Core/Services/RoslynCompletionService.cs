@@ -9,21 +9,21 @@ using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Tags;
 using Microsoft.CodeAnalysis.Text;
+using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Services;
 
-public class CompletionChangeInfo
+public class CompletionChangeInfo(
+    ImmutableArray<TextChange> textChanges,
+    int? newPosition,
+    bool includesCommitCharacter,
+    ImmutableArray<string> newUsings = default)
 {
-    public ImmutableArray<TextChange> TextChanges { get; }
-    public int? NewPosition { get; }
-    public bool IncludesCommitCharacter { get; }
-
-    public CompletionChangeInfo(ImmutableArray<TextChange> textChanges, int? newPosition, bool includesCommitCharacter)
-    {
-        TextChanges = textChanges;
-        NewPosition = newPosition;
-        IncludesCommitCharacter = includesCommitCharacter;
-    }
+    public ImmutableArray<TextChange> TextChanges { get; } = textChanges;
+    public int? NewPosition { get; } = newPosition;
+    public bool IncludesCommitCharacter { get; } = includesCommitCharacter;
+    /// <summary>Namespace names that should be added as using directives (e.g. "Newtonsoft.Json")</summary>
+    public ImmutableArray<string> NewUsings { get; } = newUsings.IsDefault ? ImmutableArray<string>.Empty : newUsings;
 }
 
 public interface IRoslynCompletionService
@@ -32,11 +32,8 @@ public interface IRoslynCompletionService
         string tabId,
         string code,
         int position,
-        List<string> usings,
-        Dictionary<string, string> nugetPackages,
+        ProjectContext context,
         CancellationToken cancellationToken = default);
-
-    Task UpdateReferencesAsync(string tabId, Dictionary<string, string> nugetPackages);
 
     Task<CompletionChangeInfo> GetCompletionChangeAsync(
         string tabId,
@@ -102,17 +99,11 @@ public class RoslynCompletionService : IRoslynCompletionService
     private const int DefaultDebounceMs = 100;
     private const int MaxCompletionItems = 1000;
 
-    public async Task UpdateReferencesAsync(string tabId, Dictionary<string, string> nugetPackages)
-    {
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, nugetPackages);
-    }
-
     public async Task<CompletionResult> GetCompletionsAsync(
         string tabId,
         string code,
         int position,
-        List<string> usings,
-        Dictionary<string, string> nugetPackages,
+        ProjectContext context,
         CancellationToken cancellationToken = default)
     {
         try
@@ -125,18 +116,17 @@ public class RoslynCompletionService : IRoslynCompletionService
             }
 
             // Update references if packages are provided
-            if (nugetPackages?.Count > 0)
+            if (context.AbsoluteCompileReferences.Count > 0)
             {
-                await UpdateReferencesAsync(tabId, nugetPackages);
+                await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
             }
-
 
 
             // Get the current document
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
 
             // Calculate adjusted position
-            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(position, usings);
+            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(position, context.Config.Usings);
 
             // Get completion service
             var completionService = CompletionService.GetService(document);
@@ -162,7 +152,9 @@ public class RoslynCompletionService : IRoslynCompletionService
             var completions = await completionService.GetCompletionsAsync(
                 document,
                 adjustedPosition,
-                trigger: triggerChar != null ? CompletionTrigger.CreateInsertionTrigger(triggerChar[0]) : CompletionTrigger.Invoke,
+                trigger: triggerChar != null
+                    ? CompletionTrigger.CreateInsertionTrigger(triggerChar[0])
+                    : CompletionTrigger.Invoke,
                 cancellationToken: cancellationToken);
 
             if (completions == null || completions.ItemsList.Count == 0)
@@ -184,7 +176,7 @@ public class RoslynCompletionService : IRoslynCompletionService
             System.Diagnostics.Debug.WriteLine($"[Completion] Found {meaningfulItems.Length} meaningful items");
 
             // Calculate usings offset for span adjustment
-            var usingsOffset = RoslynWorkspaceService.Instance.GetUsingsOffset(usings);
+            var usingsOffset = RoslynWorkspaceService.Instance.GetUsingsOffset(context.Config.Usings);
 
             // 增强和过滤补全项
             var enhancedItems = EnhanceCompletionItems(
@@ -232,7 +224,8 @@ public class RoslynCompletionService : IRoslynCompletionService
             if (document == null) return new CompletionChangeInfo(ImmutableArray<TextChange>.Empty, null, false);
 
             var completionService = CompletionService.GetService(document);
-            if (completionService == null) return new CompletionChangeInfo(ImmutableArray<TextChange>.Empty, null, false);
+            if (completionService == null)
+                return new CompletionChangeInfo(ImmutableArray<TextChange>.Empty, null, false);
 
             var change = await completionService.GetChangeAsync(document, item, cancellationToken: cancellationToken);
 
@@ -240,26 +233,35 @@ public class RoslynCompletionService : IRoslynCompletionService
             var offset = RoslynWorkspaceService.Instance.GetUsingsOffset(usings);
 
             var adjustedChanges = new List<TextChange>();
+            var newUsings = new List<string>();
+            var existingUsingNamespaces = new HashSet<string>(usings, StringComparer.Ordinal);
+
             foreach (var textChange in change.TextChanges)
             {
-                // If the change is within the hidden usings area, we might need to ignore it or handle carefully.
-                // Usually completions happen at the caret, which is after usings.
-                // However, imports might be added to the usings area. 
-                // For now, if it's in the usings area (Span.Start < offset), we might ignore it or we'd need to handle global usings updates.
-                // But the editor doesn't see those lines. 
-                // A better approach for "Add using" is checking if it's in the header.
-
                 if (textChange.Span.Start >= offset)
                 {
+                    // Normal change in user-visible code area
                     var newSpan = new TextSpan(textChange.Span.Start - offset, textChange.Span.Length);
                     adjustedChanges.Add(new TextChange(newSpan, textChange.NewText ?? string.Empty));
+                }
+                else if (!string.IsNullOrEmpty(textChange.NewText))
+                {
+                    // Change is in the hidden usings section — extract new namespace names
+                    foreach (var line in textChange.NewText.Split('\n').Select(l => l.Trim('\r', ' ')))
+                    {
+                        if (!line.StartsWith("using ") || !line.EndsWith(";")) continue;
+                        var ns = line[6..^1].Trim();
+                        if (!string.IsNullOrEmpty(ns) && existingUsingNamespaces.Add(ns))
+                            newUsings.Add(ns);
+                    }
                 }
             }
 
             return new CompletionChangeInfo(
                 adjustedChanges.ToImmutableArray(),
                 change.NewPosition.HasValue ? change.NewPosition.Value - offset : null,
-                change.IncludesCommitCharacter);
+                change.IncludesCommitCharacter,
+                newUsings.ToImmutableArray());
         }
         catch (Exception ex)
         {
@@ -267,7 +269,6 @@ public class RoslynCompletionService : IRoslynCompletionService
             return new CompletionChangeInfo(ImmutableArray<TextChange>.Empty, null, false);
         }
     }
-
 
 
     public async Task<string?> GetCompletionDescriptionAsync(
@@ -348,6 +349,7 @@ public class RoslynCompletionService : IRoslynCompletionService
                 return CompletionItemKind.ExtensionMethod;
             return CompletionItemKind.Method;
         }
+
         if (tags.Contains(WellKnownTags.Property)) return CompletionItemKind.Property;
         if (tags.Contains(WellKnownTags.Field)) return CompletionItemKind.Field;
         if (tags.Contains(WellKnownTags.Event)) return CompletionItemKind.Event;

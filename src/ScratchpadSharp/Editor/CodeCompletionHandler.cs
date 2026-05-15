@@ -16,40 +16,27 @@ using ScratchpadSharp.ViewModels;
 
 namespace ScratchpadSharp.Editor;
 
-public class CodeCompletionHandler
+public class CodeCompletionHandler(
+    TextEditor editor,
+    IRoslynCompletionService completionService,
+    Func<MainWindowViewModel?> viewModelProvider,
+    string tabId)
 {
-    private readonly TextEditor _editor;
-    private readonly IRoslynCompletionService _completionService;
-    private readonly Func<MainWindowViewModel?> _viewModelProvider;
-    private readonly string _tabId;
-
-    private CompletionWindow? _completionWindow;
-    private CancellationTokenSource? _completionCts;
-    private DateTime _lastCompletionRequest = DateTime.MinValue;
-    private DateTime _lastTextChange = DateTime.MinValue;
     private const int CompletionDebounceMs = 150;
-
-    public CodeCompletionHandler(
-        TextEditor editor,
-        IRoslynCompletionService completionService,
-        Func<MainWindowViewModel?> viewModelProvider,
-        string tabId)
-    {
-        _editor = editor;
-        _completionService = completionService;
-        _viewModelProvider = viewModelProvider;
-        _tabId = tabId;
-    }
+    private CompletionWindow? completionWindow;
+    private CancellationTokenSource? completionCts;
+    private DateTime lastCompletionRequest = DateTime.MinValue;
+    private DateTime lastTextChange = DateTime.MinValue;
 
     public void OnTextChanged()
     {
-        _lastTextChange = DateTime.UtcNow;
+        lastTextChange = DateTime.UtcNow;
     }
 
     public void OnTextEntering(TextInputEventArgs e)
     {
         // 如果用户输入的字符会导致当前补全项失效,关闭窗口
-        if (_completionWindow != null && e.Text?.Length > 0)
+        if (completionWindow != null && e.Text?.Length > 0)
         {
             var ch = e.Text[0];
             // 某些字符会提交补全
@@ -62,7 +49,7 @@ public class CodeCompletionHandler
 
     public void OnTextEntered(TextInputEventArgs e)
     {
-        if (_editor == null || e.Text == null) return;
+        if (e.Text == null) return;
 
         // 触发条件更智能
         var shouldTrigger = ShouldTriggerCompletion(e.Text);
@@ -86,12 +73,23 @@ public class CodeCompletionHandler
         // Escape: 关闭所有弹窗
         if (e.Key == Key.Escape)
         {
-            if (_completionWindow != null)
+            if (completionWindow != null)
             {
-                _completionWindow.Close();
+                completionWindow.Close();
                 e.Handled = true;
                 return true;
             }
+        }
+
+        // Home/End: 关闭补全窗口，让编辑器自己处理
+        if (e.Key == Key.Home || e.Key == Key.End)
+        {
+            if (completionWindow != null)
+            {
+                completionWindow.Close();
+                // 不 e.Handled = true，让事件继续传递给编辑器
+            }
+            return false;
         }
 
         return false;
@@ -102,7 +100,7 @@ public class CodeCompletionHandler
         if (string.IsNullOrEmpty(text)) return false;
 
         // 如果窗口已打开,只在特定字符时重新触发
-        if (_completionWindow != null)
+        if (completionWindow != null)
         {
             return text == "." || text == "<";
         }
@@ -120,7 +118,7 @@ public class CodeCompletionHandler
             if (char.IsLetterOrDigit(ch) || ch == '_')
             {
                 // 简单检查:如果最近没有文本变化,可能是用户刚开始输入
-                var timeSinceLastChange = (DateTime.UtcNow - _lastTextChange).TotalMilliseconds;
+                var timeSinceLastChange = (DateTime.UtcNow - lastTextChange).TotalMilliseconds;
                 return timeSinceLastChange < 2000; // 2秒内的连续输入
             }
         }
@@ -130,34 +128,32 @@ public class CodeCompletionHandler
 
     private async Task ShowCompletionWindowAsync()
     {
-        if (_editor?.TextArea == null) return;
+        if (editor?.TextArea == null) return;
 
         // Cancel previous completion request
-        _completionCts?.Cancel();
-        _completionCts = new CancellationTokenSource();
-        var token = _completionCts.Token;
+        completionCts?.Cancel();
+        completionCts = new CancellationTokenSource();
+        var token = completionCts.Token;
 
         // Debounce
-        _lastCompletionRequest = DateTime.UtcNow;
-        var requestTime = _lastCompletionRequest;
+        lastCompletionRequest = DateTime.UtcNow;
+        var requestTime = lastCompletionRequest;
         await Task.Delay(CompletionDebounceMs, token);
 
-        if (requestTime != _lastCompletionRequest || token.IsCancellationRequested)
+        if (requestTime != lastCompletionRequest || token.IsCancellationRequested)
             return;
 
         try
         {
-            var code = _editor.Document.Text;
-            var offset = _editor.CaretOffset;
+            var code = editor.Document.Text;
+            var offset = editor.CaretOffset;
 
-            var viewModel = _viewModelProvider();
-            var config = viewModel?.CurrentPackage?.Config ?? new ScriptConfig();
-            var usings = config.DefaultUsings;
-            var packages = config.NuGetPackages;
+            var viewModel = viewModelProvider();
+            var usings = viewModel?.ProjectContext.Config.Usings;
 
             // Fetch completions
             var result = await Task.Run(
-                () => _completionService.GetCompletionsAsync(_tabId, code, offset, usings, packages, token),
+                () => completionService.GetCompletionsAsync(tabId, code, offset, viewModel?.ProjectContext, token),
                 token);
 
             if (token.IsCancellationRequested || result.Items.IsEmpty)
@@ -169,22 +165,22 @@ public class CodeCompletionHandler
                 if (token.IsCancellationRequested) return;
 
                 // Close existing window
-                _completionWindow?.Close();
+                completionWindow?.Close();
 
                 // Create new completion window
-                _completionWindow = new CompletionWindow(_editor.TextArea);
-                _completionWindow.Closed += (s, e) => _completionWindow = null;
+                completionWindow = new CompletionWindow(editor.TextArea);
+                completionWindow.Closed += (s, e) => completionWindow = null;
 
                 // Set window size
-                _completionWindow.Width = 650;
-                _completionWindow.Height = 450;
-                _completionWindow.MinWidth = 450;
-                _completionWindow.MinHeight = 250;
+                completionWindow.Width = 650;
+                completionWindow.Height = 450;
+                completionWindow.MinWidth = 450;
+                completionWindow.MinHeight = 250;
 
-                var data = _completionWindow.CompletionList.CompletionData;
+                var data = completionWindow.CompletionList.CompletionData;
                 foreach (var item in result.Items)
                 {
-                    data.Add(new RoslynCompletionData(item, _completionService, _tabId, usings));
+                    data.Add(new RoslynCompletionData(item, completionService, tabId, usings));
                 }
 
                 if (data.Count > 0)
@@ -197,13 +193,13 @@ public class CodeCompletionHandler
                     if (span.Length >= 0)
                     {
                         var startOffset = span.Start;
-                        _completionWindow.StartOffset = startOffset;
+                        completionWindow.StartOffset = startOffset;
                     }
                     else
                     {
                         // Fallback to manual word finding if span is invalid (shouldn't happen)
                         // Find start of the word being completed to enable correct filtering
-                        var caretOffset = _editor.CaretOffset;
+                        var caretOffset = editor.CaretOffset;
                         var startOffset = caretOffset;
                         while (startOffset > 0)
                         {
@@ -212,11 +208,11 @@ public class CodeCompletionHandler
                                 break;
                             startOffset--;
                         }
-                        _completionWindow.StartOffset = startOffset;
+                        completionWindow.StartOffset = startOffset;
                     }
 
-                    _completionWindow.CompletionList.SelectItem(string.Empty);
-                    _completionWindow.Show();
+                    completionWindow.CompletionList.SelectItem(string.Empty);
+                    completionWindow.Show();
                 }
             });
         }

@@ -10,20 +10,24 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Completion;
+using ScratchpadSharp.Shared.Models; // Updated to Shared
+using ScratchpadSharp.Core.PackageManagement; // Added
 
 namespace ScratchpadSharp.Core.Services;
 
 public class RoslynWorkspaceService
 {
-    private static readonly Lazy<RoslynWorkspaceService> instance = new(() => new RoslynWorkspaceService());
-    public static RoslynWorkspaceService Instance => instance.Value;
+    private static readonly Lazy<RoslynWorkspaceService> LazyInstance = new(() => new RoslynWorkspaceService());
+    public static RoslynWorkspaceService Instance => LazyInstance.Value;
 
     private AdhocWorkspace? workspace;
     private readonly ConcurrentDictionary<string, RoslynSession> _sessions = new();
     private readonly SemaphoreSlim semaphore = new(1, 1);
     private bool isInitialized;
 
-    private RoslynWorkspaceService() { }
+    private RoslynWorkspaceService()
+    {
+    }
 
     public async Task InitializeAsync()
     {
@@ -45,7 +49,8 @@ public class RoslynWorkspaceService
             assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.CSharp.Workspaces"));
             assemblies.Add(Assembly.Load("Microsoft.CodeAnalysis.Workspaces"));
 
-            System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Loaded {assemblies.Distinct().Count()} MEF assemblies");
+            System.Diagnostics.Debug.WriteLine(
+                $"[RoslynWorkspace] Loaded {assemblies.Distinct().Count()} MEF assemblies");
         }
         catch (Exception ex)
         {
@@ -131,8 +136,8 @@ public class RoslynWorkspaceService
             compilationOptions: new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
                 allowUnsafe: false).WithXmlReferenceResolver(
-                    XmlFileResolver.Default
-                ),
+                XmlFileResolver.Default
+            ),
             parseOptions: new CSharpParseOptions(LanguageVersion.Latest),
             metadataReferences: MetadataReferenceProvider.GetDefaultReferences());
 
@@ -221,7 +226,85 @@ public class RoslynWorkspaceService
         }
     }
 
-    public async Task UpdateReferencesAsync(string tabId, Dictionary<string, string> nugetPackages)
+
+    public async Task UpdateReferencesFromManifestAsync(string tabId, PackageManifest manifest, string projectRoot)
+    {
+        await semaphore.WaitAsync();
+        try
+        {
+            if (!_sessions.TryGetValue(tabId, out var session)) return;
+
+            var project = workspace!.CurrentSolution.GetProject(session.ProjectId);
+            if (project == null) return;
+
+            var references = new List<MetadataReference>();
+            references.AddRange(MetadataReferenceProvider.GetDefaultReferences());
+
+            // Get Global Packages Folder
+            var settings = NuGet.Configuration.Settings.LoadDefaultSettings(null);
+            var globalCache = NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(settings);
+
+            foreach (var assembly in manifest.ResolvedState.Assemblies)
+            {
+                var physicalPath = Storage.PackageService.GetPhysicalPath(assembly, projectRoot, globalCache);
+
+                if (System.IO.File.Exists(physicalPath))
+                {
+                    references.Add(MetadataReference.CreateFromFile(physicalPath));
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[RoslynWorkspace] Manifest reference not found: {physicalPath}");
+                }
+            }
+
+            var updatedProject = project.WithMetadataReferences(references);
+
+            var compilationOptions = ((CSharpCompilationOptions)project.CompilationOptions!)
+                .WithAllowUnsafe(manifest.Compilation.AllowUnsafe);
+
+            if (Enum.TryParse<NullableContextOptions>(manifest.Compilation.Nullable, true, out var nullableOptions))
+            {
+                compilationOptions = compilationOptions.WithNullableContextOptions(nullableOptions);
+            }
+
+            updatedProject = updatedProject.WithCompilationOptions(compilationOptions);
+
+            if (workspace.TryApplyChanges(updatedProject.Solution))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[RoslynWorkspace] Updated references from Manifest for tab '{tabId}'");
+            }
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
+    public async Task<PackageManifest> ArbitrateManifestAsync(string tabId, ScriptConfig config,
+        ResolvedEnvironment env, string projectRoot, PackageManifest? existingManifest = null)
+    {
+        // 1. Create/Update Manifest Model
+        var manifest = existingManifest ?? new PackageManifest();
+
+        // Ensure core project settings are set if new or missing
+        if (string.IsNullOrEmpty(manifest.Project.EntryPoint)) manifest.Project.EntryPoint = "script.cs";
+        if (string.IsNullOrEmpty(manifest.Project.TargetFramework)) manifest.Project.TargetFramework = "net8.0";
+
+        // Update Resolves State (Package Version Locking)
+        // Note: env (ResolvedEnvironment) has List<ResolvedAsset> Assemblies and Dict<string, List<ResolvedAsset>> NativeAssets
+        // PackageManifest has similar structure now.
+        manifest.ResolvedState.Assemblies = env.Assemblies;
+        manifest.ResolvedState.NativeAssets = env.NativeAssets;
+
+        await UpdateReferencesFromManifestAsync(tabId, manifest, projectRoot);
+
+        return manifest;
+    }
+
+    public async Task UpdateReferencesAsync(string tabId, List<string>? nugetPackages)
     {
         await semaphore.WaitAsync();
         try
@@ -245,8 +328,8 @@ public class RoslynWorkspaceService
             if (workspace.TryApplyChanges(updatedProject.Solution))
             {
                 session.LastAppliedPackages = nugetPackages != null
-                    ? new Dictionary<string, string>(nugetPackages)
-                    : new Dictionary<string, string>();
+                    ? [..nugetPackages]
+                    : [];
                 System.Diagnostics.Debug.WriteLine($"[RoslynWorkspace] Updated references for tab '{tabId}'");
             }
             else
@@ -267,18 +350,13 @@ public class RoslynWorkspaceService
         return u1.SequenceEqual(u2);
     }
 
-    private bool ArePackagesEqual(Dictionary<string, string>? p1, Dictionary<string, string>? p2)
+    private bool ArePackagesEqual(List<string>? p1, List<string>? p2)
     {
         if (p1 == p2) return true;
         if (p1 == null || p2 == null) return false;
         if (p1.Count != p2.Count) return false;
 
-        foreach (var kvp in p1)
-        {
-            if (!p2.TryGetValue(kvp.Key, out var value) || value != kvp.Value)
-                return false;
-        }
-        return true;
+        return p1.All(p2.Contains);
     }
 
     public int CalculateAdjustedPosition(int position, List<string> usings)
@@ -286,7 +364,7 @@ public class RoslynWorkspaceService
         return position + GetUsingsOffset(usings);
     }
 
-    public int GetUsingsOffset(List<string> usings)
+    public int GetUsingsOffset(List<string>? usings)
     {
         if (usings == null || usings.Count == 0)
             return 0;

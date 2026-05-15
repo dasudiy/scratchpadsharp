@@ -1,26 +1,21 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ScratchpadSharp.Shared.Models;
 using ScratchpadSharp.Shared.Exceptions;
+using ScratchpadSharp.Core.PackageManagement;
+using NuGet.Configuration;
 
 namespace ScratchpadSharp.Core.Storage;
 
-public interface IPackageService
+public class PackageService
 {
-    Task SaveAsync(ScriptPackage package, string path);
-    Task<ScriptPackage> LoadAsync(string path);
-    Task PackAsync(string folderPath, string zipPath);
-    Task UnpackAsync(string zipPath, string folderPath);
-    bool IsZipPackage(string path);
-    bool IsFolderPackage(string path);
-}
-
-public class PackageService : IPackageService
-{
+    public static readonly PackageService Instance = new();
+    
     private const string ManifestFileName = "manifest.json";
     private const string CodeFileName = "code.cs";
     private const string ConfigFileName = "config.json";
@@ -39,17 +34,65 @@ public class PackageService : IPackageService
 
     public async Task<ScriptPackage> LoadAsync(string path)
     {
+        ScriptPackage package;
         if (File.Exists(path) && path.EndsWith(".lqpkg", StringComparison.OrdinalIgnoreCase))
-            return await LoadFromZipAsync(path);
-
-        if (Directory.Exists(path))
+            package = await LoadFromZipAsync(path);
+        else if (Directory.Exists(path))
         {
             var markerPath = Path.Combine(path, DeveloperMarkerFileName);
             if (Directory.Exists(markerPath) || File.Exists(Path.Combine(markerPath, ManifestFileName)))
-                return await LoadFromFolderAsync(path);
+                package = await LoadFromFolderAsync(path);
+            else
+                throw new FileNotFoundException($"Package not found at {path}");
+        }
+        else
+            throw new FileNotFoundException($"Package not found at {path}");
+
+        // Hydrate local assets from package if needed (for .lqpkg)
+        // TODO: move to ProjectManager
+        if (IsZipPackage(path))
+        {
+            await HydrateLocalAssetsAsync(package, path);
         }
 
-        throw new FileNotFoundException($"Package not found at {path}");
+        return package;
+    }
+
+    private async Task HydrateLocalAssetsAsync(ScriptPackage package, string packagePath)
+    {
+        await Task.CompletedTask;
+        var localAssemblies = package.Manifest.ResolvedState.Assemblies.Where(a => a.Origin == AssetOrigin.Local)
+            .ToList();
+        var localNative = package.Manifest.ResolvedState.NativeAssets.Values.SelectMany(l => l)
+            .Where(a => a.Origin == AssetOrigin.Local).ToList();
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ScratchpadSharp", "Packages",
+            Path.GetFileNameWithoutExtension(packagePath));
+
+        // Always set RootPath to the temp dir for zip packages so HydratePaths can resolve local assets
+        package.RootPath = tempRoot;
+
+        if (!localAssemblies.Any() && !localNative.Any()) return;
+
+        if (!Directory.Exists(tempRoot)) Directory.CreateDirectory(tempRoot);
+
+        using var archive = System.IO.Compression.ZipFile.OpenRead(packagePath);
+
+        foreach (var asset in localAssemblies.Concat(localNative))
+        {
+            var entry = archive.GetEntry(asset.RelativePath.Replace('\\', '/'));
+            if (entry != null)
+            {
+                var destPath = Path.Combine(tempRoot, asset.RelativePath);
+                var destDir = Path.GetDirectoryName(destPath);
+                if (!Directory.Exists(destDir)) Directory.CreateDirectory(destDir!);
+
+                if (!File.Exists(destPath) || File.GetLastWriteTimeUtc(destPath) < entry.LastWriteTime.DateTime)
+                {
+                    entry.ExtractToFile(destPath, true);
+                }
+            }
+        }
     }
 
     public bool IsZipPackage(string path) => path.EndsWith(".lqpkg", StringComparison.OrdinalIgnoreCase);
@@ -61,6 +104,17 @@ public class PackageService : IPackageService
 
         var markerPath = Path.Combine(path, DeveloperMarkerFileName);
         return Directory.Exists(markerPath) || File.Exists(Path.Combine(markerPath, ManifestFileName));
+    }
+
+    public static string GetPhysicalPath(ResolvedAsset asset, string projectRoot, string globalCache)
+    {
+        if (asset.Origin == AssetOrigin.NuGet)
+        {
+            var ver = asset.Version ?? "0.0.0";
+            return Path.Combine(globalCache, asset.Id.ToLowerInvariant(), ver.ToLowerInvariant(), asset.RelativePath);
+        }
+
+        return Path.Combine(projectRoot, asset.RelativePath);
     }
 
     private async Task SaveAsZipAsync(ScriptPackage package, string path)
@@ -103,6 +157,7 @@ public class PackageService : IPackageService
             Directory.CreateDirectory(markerFolder);
 
         var manifestPath = Path.Combine(markerFolder, ManifestFileName);
+
         await File.WriteAllTextAsync(
             manifestPath,
             JsonSerializer.Serialize(package.Manifest, new JsonSerializerOptions { WriteIndented = true }));
@@ -138,7 +193,8 @@ public class PackageService : IPackageService
                 Manifest = manifest,
                 Code = code,
                 Config = config,
-                Output = output
+                Output = output,
+                RootPath = path
             };
         }
         catch (InvalidDataException ex)
@@ -160,10 +216,22 @@ public class PackageService : IPackageService
 
             PackageManifest manifest;
             if (File.Exists(manifestPath))
-                manifest = JsonSerializer.Deserialize<PackageManifest>(await File.ReadAllTextAsync(manifestPath)) ??
-                           new PackageManifest();
+            {
+                try
+                {
+                    manifest = JsonSerializer.Deserialize<PackageManifest>(await File.ReadAllTextAsync(manifestPath)) ??
+                               new PackageManifest();
+                    manifest.IsProvided = true;
+                }
+                catch (JsonException)
+                {
+                    manifest = new PackageManifest();
+                }
+            }
             else
+            {
                 manifest = new PackageManifest();
+            }
 
             var codePath = Path.Combine(path, CodeFileName);
             var code = File.Exists(codePath) ? await File.ReadAllTextAsync(codePath) : string.Empty;
@@ -184,7 +252,8 @@ public class PackageService : IPackageService
                 Manifest = manifest,
                 Code = code,
                 Config = config,
-                Output = output
+                Output = output,
+                RootPath = path
             };
         }
         catch (IOException ex)
@@ -242,7 +311,14 @@ public class PackageService : IPackageService
             return new PackageManifest();
 
         using var stream = entry.Open();
-        return await JsonSerializer.DeserializeAsync<PackageManifest>(stream) ?? new PackageManifest();
+        try
+        {
+            return await JsonSerializer.DeserializeAsync<PackageManifest>(stream) ?? new PackageManifest();
+        }
+        catch (JsonException)
+        {
+            return new PackageManifest();
+        }
     }
 
     private static async Task<string> ReadCodeAsync(ZipArchive archive)

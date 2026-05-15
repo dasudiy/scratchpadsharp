@@ -7,7 +7,7 @@ namespace ScratchpadSharp.Core.Services;
 
 public class CodeFormatterService
 {
-    public async Task<string> FormatCodeAsync(string tabId, string sourceCode)
+    public static async Task<string> FormatCodeAsync(string tabId, string sourceCode)
     {
         if (string.IsNullOrWhiteSpace(sourceCode))
             return sourceCode;

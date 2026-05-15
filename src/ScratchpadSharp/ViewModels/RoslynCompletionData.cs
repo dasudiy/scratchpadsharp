@@ -205,20 +205,13 @@ public class RoslynCompletionData : ICompletionData
                 usings);
 
             var document = textArea.Document;
+            int usingShift = 0;
 
             using (document.RunUpdate())
             {
-                // If we have text changes from Roslyn, apply them
+                // Step 1: Apply code-area text changes FIRST (offsets are valid before any top-insertion)
                 if (change.TextChanges.Length > 0)
                 {
-                    // Apply changes in reverse order to maintain offsets
-                    // Note: Roslyn usually returns them in a way that index order matters, 
-                    // but standard practice for multiple changes is reverse if they affect same doc.
-                    // However, Roslyn's TextChange is usually calculated against original text.
-                    // So we should apply them carefully.
-                    // For completion, there is usually just one change or a few.
-
-                    // We need to order by start position descending to apply safely
                     var changes = change.TextChanges.OrderByDescending(c => c.Span.Start).ToList();
 
                     foreach (var textChange in changes)
@@ -227,62 +220,49 @@ public class RoslynCompletionData : ICompletionData
                         var length = textChange.Span.Length;
                         var newText = textChange.NewText ?? "";
 
-                        // Check if this text change is likely the main completion replacement
-                        // (it overlaps with the completion segment)
+                        // Extend to cover the full user-typed segment if needed
                         if (offset <= completionSegment.EndOffset && (offset + length) >= completionSegment.Offset)
                         {
-                            // Ensure we consume the entire user-typed segment
-                            // This fixes the "Consoleons" bug where Roslyn returns a change for "C" 
-                            // but the user has already typed "Cons"
                             var changeEnd = offset + length;
                             if (completionSegment.EndOffset > changeEnd)
-                            {
                                 length += (completionSegment.EndOffset - changeEnd);
-                            }
                         }
 
-                        // Current document length check
                         if (offset >= 0 && offset + length <= document.TextLength)
-                        {
                             document.Replace(offset, length, newText);
-                        }
                     }
                 }
                 else
                 {
-                    // Fallback to simple replacement if no changes returned (unlikely)
-                    // Find the word start before the completion segment
+                    // Fallback to simple replacement
                     var startOffset = completionSegment.Offset;
-
-                    // Look back to find the start of the word
                     while (startOffset > 0)
                     {
-                        var charBefore = document.GetCharAt(startOffset - 1);
-                        if (!char.IsLetterOrDigit(charBefore) && charBefore != '_')
-                            break;
+                        var ch = document.GetCharAt(startOffset - 1);
+                        if (!char.IsLetterOrDigit(ch) && ch != '_') break;
                         startOffset--;
                     }
+                    document.Replace(startOffset, completionSegment.EndOffset - startOffset, Text);
+                }
 
-                    // Create extended segment that includes the typed prefix
-                    var length = completionSegment.EndOffset - startOffset;
-
-                    // Replace the entire word with the completion text
-                    document.Replace(startOffset, length, Text);
+                // Step 2: Prepend new using directives AFTER code changes so offsets don't conflict
+                if (!change.NewUsings.IsEmpty)
+                {
+                    var usingText = string.Join("\n", change.NewUsings.Select(ns => $"using {ns};")) + "\n";
+                    document.Insert(0, usingText);
+                    usingShift = usingText.Length;
                 }
             }
 
-            // Move caret if specified
+            // Adjust caret position to account for inserted usings
             if (change.NewPosition.HasValue)
-            {
-                textArea.Caret.Offset = change.NewPosition.Value;
-            }
+                textArea.Caret.Offset = change.NewPosition.Value + usingShift;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[CompletionData] Error applying completion: {ex.Message}");
         }
     }
-
     private class SimpleSegment : ISegment
     {
         public int Offset { get; }

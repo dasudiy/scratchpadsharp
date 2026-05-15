@@ -1,0 +1,175 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:ScratchpadSharp.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="ScratchpadSharp.Views.ReferenceManagementWindow"
+        Title="Reference Manager"
+        Width="900" Height="600"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- <Design.DataContext> -->
+  <!--   ~1~ <vm:ReferenceManagementViewModel/> @1@ -->
+  <!-- </Design.DataContext> -->
+
+  <Grid RowDefinitions="*, Auto">
+    <TabControl Grid.Row="0">
+      <!-- References Tab -->
+      <TabItem Header="References">
+        <Grid RowDefinitions="Auto, *, Auto">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="4">
+              <Button Name="AddReferenceButton" Content="Add Reference..." Click="OnAddReferenceClick"/>
+              <Button Content="Restore Packages" Command="{Binding RestorePackagesCommand}" IsVisible="{Binding ShowRestoreButton}" Background="#FFD700" Foreground="Black"/> 
+          </StackPanel>
+          
+          <DataGrid Grid.Row="1" ItemsSource="{Binding AssemblyReferences}" AutoGenerateColumns="False" Margin="4">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="200" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="100" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="*" IsReadOnly="True"/>
+              <DataGridTemplateColumn Header="Action" Width="80">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Button Content="Remove" 
+                            Command="{Binding $parent[Window].DataContext.RemoveAssemblyReferenceCommand}" 
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding !IsDefault}"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+        </Grid>
+      </TabItem>
+
+      <!-- Packages Tab -->
+      <TabItem Header="Packages">
+        <Grid RowDefinitions="Auto, *">
+          <!-- 3 Columns -->
+          <Grid Grid.Row="1" ColumnDefinitions="*, 4, *, 4, *">
+            <!-- Left: Local Cache -->
+            <Grid Grid.Column="0" RowDefinitions="Auto, Auto, *">
+                <TextBlock Grid.Row="0" Text="Local Cache" FontWeight="Bold" Margin="4"/>
+                <TextBox Grid.Row="1" Text="{Binding LocalSearchQuery}" Watermark="Filter local..." Margin="4,0,4,4"/>
+                <ListBox Grid.Row="2" ItemsSource="{Binding LocalPackages}" SelectedItem="{Binding SelectedPackage}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Identity.Id}" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Identity.Version}" FontSize="11" Foreground="Gray"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Background="#DDDDDD" ResizeBehavior="PreviousAndNext"/>
+
+            <!-- Middle: Online Search -->
+            <Grid Grid.Column="2" RowDefinitions="Auto, Auto, Auto, *, Auto">
+                <TextBlock Grid.Row="0" Text="Online Results" FontWeight="Bold" Margin="4"/>
+                <Grid Grid.Row="1" ColumnDefinitions="*, Auto" Margin="4,0,4,4">
+                    <TextBox Grid.Column="0" Text="{Binding OnlineSearchQuery}" Watermark="Search NuGet..." Margin="0,0,4,0"/>
+                </Grid>
+                <Grid Grid.Row="2" ColumnDefinitions="*, Auto" Margin="4,0,4,4">
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding PackageSources}" SelectedItem="{Binding SelectedSource}" Margin="0,0,4,0" HorizontalAlignment="Stretch"/>
+                    <CheckBox Grid.Column="1" Content="Pre-release" IsChecked="{Binding IncludePreRelease}"/>
+                </Grid>
+                
+                <ListBox Grid.Row="3" ItemsSource="{Binding OnlinePackages}" SelectedItem="{Binding SelectedPackage}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Identity.Id}" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Identity.Version}" FontSize="11" Foreground="Gray"/>
+                                <TextBlock Text="{Binding DownloadCount, StringFormat='{}Downloads: {0}'}" FontSize="11" Foreground="Gray"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                
+                <TextBlock Grid.Row="4" Text="{Binding StatusText}" Margin="4" FontStyle="Italic" HorizontalAlignment="Right" Foreground="Gray"/>
+            </Grid>
+
+            <GridSplitter Grid.Column="3" Background="#DDDDDD" ResizeBehavior="PreviousAndNext"/>
+
+            <!-- Right: Details -->
+            <Grid Grid.Column="4" Margin="4">
+                 <ScrollViewer IsVisible="{Binding SelectedPackage, Converter={x:Static ObjectConverters.IsNotNull}}">
+                     <StackPanel>
+                         <TextBlock Text="{Binding SelectedPackage.Identity.Id}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"/>
+                         <TextBlock Text="{Binding SelectedPackage.Identity.Version}" FontSize="12" Foreground="Gray" Margin="0,0,0,8"/>
+                         
+                         <TextBlock Text="{Binding SelectedPackage.Description}" TextWrapping="Wrap" Margin="0,8"/>
+                         
+                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4">
+                              <TextBlock Text="Authors:" FontWeight="Bold"/>
+                              <TextBlock Text="{Binding SelectedPackage.Authors}" TextWrapping="Wrap"/>
+                         </StackPanel>
+
+                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4" IsVisible="{Binding SelectedPackage.Published, Converter={x:Static ObjectConverters.IsNotNull}}">
+                              <TextBlock Text="Published:" FontWeight="Bold"/>
+                              <TextBlock Text="{Binding SelectedPackage.Published}"/>
+                         </StackPanel>
+
+                         <Button Content="Project URL" 
+                                 Command="{Binding $parent[Window].DataContext.OpenUrlCommand}"
+                                 CommandParameter="{Binding SelectedPackage.ProjectUrl}"
+                                 IsVisible="{Binding SelectedPackage.ProjectUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 Background="Transparent" BorderThickness="0" Foreground="Blue" HorizontalAlignment="Left" Padding="0"/>
+
+                         <Expander Header="Dependencies" Margin="0,8,0,0">
+                              <ItemsControl ItemsSource="{Binding SelectedPackage.DependencySets}">
+                                  <ItemsControl.ItemTemplate>
+                                      <DataTemplate>
+                                          <StackPanel Margin="0,4">
+                                              <TextBlock Text="{Binding TargetFramework}" FontWeight="Bold" FontSize="11"/>
+                                              <ItemsControl ItemsSource="{Binding Packages}">
+                                                  <ItemsControl.ItemTemplate>
+                                                      <DataTemplate>
+                                                          <TextBlock FontSize="11" Margin="8,1,0,0">
+                                                              <TextBlock.Text>
+                                                                  <MultiBinding StringFormat="{}{0} {1}">
+                                                                      <Binding Path="Id"/>
+                                                                      <Binding Path="VersionRange"/>
+                                                                  </MultiBinding>
+                                                              </TextBlock.Text>
+                                                          </TextBlock>
+                                                      </DataTemplate>
+                                                  </ItemsControl.ItemTemplate>
+                                              </ItemsControl>
+                                          </StackPanel>
+                                      </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                         </Expander>
+
+                         <Separator Margin="0,16"/>
+                         
+                         <TextBlock Text="Wait to Install:" FontWeight="Bold" Margin="0,8,0,0"/>
+                         <ComboBox ItemsSource="{Binding AvailableVersions}" SelectedItem="{Binding SelectedVersion}" HorizontalAlignment="Stretch"/>
+
+                         <Button Content="Install Package" 
+                                 Command="{Binding InstallPackageCommand}" 
+                                 HorizontalAlignment="Stretch" 
+                                 Margin="0,16,0,0"/>
+                         
+                         <TextBlock Text="{Binding StatusText}" Foreground="Green" Margin="0,8" TextWrapping="Wrap"/>
+                     </StackPanel>
+                 </ScrollViewer>
+                 
+                 <TextBlock Text="Select a package to view details" 
+                            IsVisible="{Binding SelectedPackage, Converter={x:Static ObjectConverters.IsNull}}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="Gray"/>
+            </Grid>
+          </Grid>
+        </Grid>
+      </TabItem>
+    </TabControl>
+    
+    <Button Grid.Row="1" Content="Close" HorizontalAlignment="Right" Margin="8" Command="{Binding CloseCommand}" Click="OnCloseClick"/>
+  </Grid>
+</Window>

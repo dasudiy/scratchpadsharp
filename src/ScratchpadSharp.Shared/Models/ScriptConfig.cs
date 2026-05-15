@@ -4,39 +4,29 @@ namespace ScratchpadSharp.Shared.Models;
 
 public class ScriptConfig
 {
-    public List<string> DefaultUsings { get; set; }
-    public List<string> DefaultReferences { get; set; }
-    public Dictionary<string, string> NuGetPackages { get; set; }
-    public string ConnectionString { get; set; }
-    public int TimeoutSeconds { get; set; }
+    public List<string> Usings { get; init; } = [
+        "System",
+        "System.Linq",
+        "System.Collections.Generic",
+        "System.Threading.Tasks",
+        "System.IO",
+        "ScratchpadSharp.Core.External.NetPad.Presentation"
+    ];
 
-    public ScriptConfig()
-    {
-        DefaultUsings = new List<string>
-        {
-            "System",
-            "System.Linq",
-            "System.Collections.Generic",
-            "System.Threading.Tasks",
-            "System.IO",
-            "ScratchpadSharp.Core.External.NetPad.Presentation"
-        };
+    public List<string> References { get; init; } =
+    [
+        "System.Runtime",
+        "System.Collections",
+        "System.Linq",
+        "System.Linq.Expressions",
+        "netstandard",
+        "System.Private.CoreLib",
+        "System.Text.RegularExpressions",
+        "System.IO.FileSystem",
+        "System.Net.Http"
+    ];
 
-        DefaultReferences = new List<string>
-        {
-            "System.Runtime",
-            "System.Collections",
-            "System.Linq",
-            "System.Linq.Expressions",
-            "netstandard",
-            "System.Private.CoreLib",
-            "System.Text.RegularExpressions",
-            "System.IO.FileSystem",
-            "System.Net.Http"
-        };
-
-        NuGetPackages = new Dictionary<string, string>();
-        ConnectionString = string.Empty;
-        TimeoutSeconds = 30;
-    }
+    public Dictionary<string, string> NuGetPackages { get; init; } = new();
+    public string ConnectionString { get; set; } = string.Empty;
+    public int TimeoutSeconds { get; set; } = 30;
 }

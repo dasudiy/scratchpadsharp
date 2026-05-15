@@ -44,7 +44,9 @@ public static class MetadataReferenceProvider
         {
             references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Private.CoreLib").Location));
         }
-        catch { }
+        catch
+        {
+        }
 
         // Add common assemblies for better IntelliSense
         try
@@ -53,7 +55,9 @@ public static class MetadataReferenceProvider
             references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.IO.FileSystem").Location));
             references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Net.Http").Location));
         }
-        catch { }
+        catch
+        {
+        }
 
         cachedReferences = references;
         return references;
@@ -94,9 +98,9 @@ public static class MetadataReferenceProvider
         references.Add(MetadataReference.CreateFromFile(typeof(ScriptExecutionService).Assembly.Location));
 
         // Add references from config
-        if (config.DefaultReferences?.Count > 0)
+        if (config.References?.Count > 0)
         {
-            references.AddRange(GetReferencesFromAssemblyNames(config.DefaultReferences));
+            references.AddRange(GetReferencesFromAssemblyNames(config.References));
         }
 
         // Add NuGet packages
@@ -108,14 +112,14 @@ public static class MetadataReferenceProvider
         return references;
     }
 
-    public static IEnumerable<MetadataReference> GetReferencesWithPackages(Dictionary<string, string> nugetPackages)
+    public static IEnumerable<MetadataReference> GetReferencesWithPackages(List<string>? nugetPackages)
     {
         var references = GetDefaultReferences().ToList();
 
         if (nugetPackages == null || nugetPackages.Count == 0)
             return references;
 
-        references.AddRange(GetPackageReferences(nugetPackages));
+        references.AddRange(nugetPackages.Select(pkg => MetadataReference.CreateFromFile(pkg)));
         return references;
     }
 
@@ -149,12 +153,16 @@ public static class MetadataReferenceProvider
                             {
                                 references.Add(MetadataReference.CreateFromFile(dll));
                             }
-                            catch { }
+                            catch
+                            {
+                            }
                         }
                     }
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         return references;

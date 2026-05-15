@@ -16,21 +16,26 @@ namespace ScratchpadSharp.Core.Services;
 
 public interface IScriptExecutionService
 {
-    Task<ScriptExecutionResult> ExecuteAsync(string code, ScriptConfig config);
+    Task<ScriptExecutionResult> ExecuteAsync(string code, ProjectContext context, CancellationToken ct = default);
 }
 
 public class ScriptExecutionService : IScriptExecutionService
 {
-    public async Task<ScriptExecutionResult> ExecuteAsync(string code, ScriptConfig config)
+    public async Task<ScriptExecutionResult> ExecuteAsync(string code, ProjectContext context, CancellationToken ct = default)
     {
         try
         {
             return await Task.Run(async () =>
             {
                 // Compile the script into an in-memory assembly
-                var compilation = CompileScriptAsync(code, config);
+                var compilation = CompileScriptAsync(code, context);
                 if (compilation.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
                 {
+                    // ... (error handling omitted for brevity, logic remains same but needs careful replacement if I replace the whole method block or just signature)
+                    // Better to just replace the signature and the ExecuteInIsolationAsync call.
+                    // But I need to extract native paths here OR inside ExecuteInIsolationAsync.
+                    // I'll extract them here and pass to ExecuteInIsolationAsync.
+
                     var errors = compilation.Diagnostics
                         .Where(d => d.Severity == DiagnosticSeverity.Error)
                         .ToList();
@@ -65,9 +70,9 @@ public class ScriptExecutionService : IScriptExecutionService
                         Output = errorText
                     };
                 }
-
+                
                 // Execute in isolated ALC
-                return await ExecuteInIsolationAsync(compilation.Assembly, compilation.EntryPoint, config);
+                return await ExecuteInIsolationAsync(compilation.Assembly, compilation.EntryPoint, context.Config, context.AbsoluteNativeAssets);
             });
         }
         catch (Exception ex)
@@ -85,11 +90,11 @@ public class ScriptExecutionService : IScriptExecutionService
 
 
     private static (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
-        string code, ScriptConfig config)
+        string code, ProjectContext context)
     {
         var (cleanCode, userUsings, removedLineCount) = ScriptPreprocessor.ExtractUsingsAndComments(code);
 
-        var allUsings = config.DefaultUsings.Concat(userUsings).Distinct();
+        var allUsings = context.Config.Usings.Concat(userUsings).Distinct();
         var usingsBlock = string.Join(Environment.NewLine, allUsings.Select(u => $"using {u};"));
 
         var lineDirective = $"#line {removedLineCount + 1} \"Script.cs\"";
@@ -113,7 +118,7 @@ public class __ScriptRunner
         var syntaxTree = CSharpSyntaxTree.ParseText(wrappedCode);
 
         // Get reference assemblies from config and NuGet packages
-        var references = MetadataReferenceProvider.GetReferencesFromConfig(config).ToList();
+        var references = MetadataReferenceProvider.GetReferencesWithPackages(context.AbsoluteCompileReferences).ToList();
 
         var compilation = CSharpCompilation.Create(
             $"__ScriptAssembly_{Guid.NewGuid():N}",
@@ -137,7 +142,7 @@ public class __ScriptRunner
     }
 
     private async Task<ScriptExecutionResult> ExecuteInIsolationAsync(
-        MemoryStream assemblyStream, string entryPoint, ScriptConfig config)
+        MemoryStream assemblyStream, string entryPoint, ScriptConfig config, List<string>? nativePaths = null)
     {
         ScriptAssemblyLoadContext? alc = null;
         WeakReference? alcWeakRef = null;
@@ -150,6 +155,12 @@ public class __ScriptRunner
 
             // Create isolated ALC with additional probing paths if needed
             var additionalPaths = new List<string>();
+
+            // Add Manifest native paths
+            if (nativePaths != null)
+            {
+                additionalPaths.AddRange(nativePaths);
+            }
 
             // Add NuGet package paths if available
             var nugetPackagesPath = Path.Combine(

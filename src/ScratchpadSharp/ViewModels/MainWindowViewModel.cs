@@ -10,6 +10,9 @@ using ReactiveUI;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.Storage;
 using ScratchpadSharp.Shared.Models;
+using ScratchpadSharp.Core.PackageManagement;
+using Splat;
+
 
 namespace ScratchpadSharp.ViewModels;
 
@@ -20,13 +23,15 @@ public class MainWindowViewModel : ReactiveObject
     private string statusText = "Ready";
     private bool isExecuting;
     private string codeText = string.Empty;
-    private ScriptPackage currentPackage;
-    private string? currentFilePath;
+    private ProjectContext projectContext;
     private Window? mainWindow;
 
+
     private readonly IScriptExecutionService scriptService;
-    private readonly IPackageService packageService;
-    private readonly CodeFormatterService formatterService;
+    private readonly Services.HtmlDumpService? htmlDumpService; // Fixed: added field
+
+    private string htmlOutput = string.Empty;
+    private bool showHtmlOutput = true;
 
     public Window? MainWindow
     {
@@ -58,7 +63,20 @@ public class MainWindowViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref isExecuting, value);
     }
 
-    public ScriptPackage CurrentPackage => currentPackage;
+
+    public bool ShowHtmlOutput
+    {
+        get => showHtmlOutput;
+        set => this.RaiseAndSetIfChanged(ref showHtmlOutput, value);
+    }
+
+    public string HtmlOutput
+    {
+        get => htmlOutput;
+        set => this.RaiseAndSetIfChanged(ref htmlOutput, value);
+    }
+
+    public ProjectContext ProjectContext => projectContext;
 
     public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
     public ReactiveCommand<Unit, Unit> NewCommand { get; }
@@ -68,72 +86,52 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
-
-    private string htmlOutput = string.Empty;
-    private bool showHtmlOutput = true;
-    private readonly Services.HtmlDumpService? htmlDumpService;
-
-    public string HtmlOutput
-    {
-        get => htmlOutput;
-        set => this.RaiseAndSetIfChanged(ref htmlOutput, value);
-    }
-
-    public bool ShowHtmlOutput
-    {
-        get => showHtmlOutput;
-        set => this.RaiseAndSetIfChanged(ref showHtmlOutput, value);
-    }
-
+    public ReactiveCommand<Unit, Unit> ManageReferencesCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleOutputViewCommand { get; }
 
-    public MainWindowViewModel() : this(new ScriptExecutionService(), new PackageService(), new CodeFormatterService(), null)
+    public MainWindowViewModel() : this(new ScriptExecutionService(),
+        null)
     {
     }
 
-    public MainWindowViewModel(IScriptExecutionService scriptService, IPackageService packageService, CodeFormatterService formatterService, Services.HtmlDumpService? htmlDumpService = null)
+
+    public MainWindowViewModel(IScriptExecutionService scriptService, Services.HtmlDumpService? htmlDumpService = null)
     {
         this.scriptService = scriptService;
-        this.packageService = packageService;
-        this.formatterService = formatterService;
         this.htmlDumpService = htmlDumpService;
 
         if (this.htmlDumpService != null)
         {
             this.htmlDumpService.SetUpdateCallback(html =>
             {
-                // Ensure UI update happens on UI thread if needed, though ReactiveUI properties usually handle it.
-                // For safety with async updates:
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => HtmlOutput = html);
             });
         }
 
         codeText = string.Empty;
-        currentPackage = new ScriptPackage();
+        ProjectService.Instance.NewProjectAsync(TabId).ContinueWith(t =>
+            projectContext = t.Result);
 
-        ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync, this.WhenAnyValue(x => x.IsExecuting, executing => !executing));
+        ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync,
+            this.WhenAnyValue(x => x.IsExecuting, executing => !executing));
         NewCommand = ReactiveCommand.Create(New);
         OpenCommand = ReactiveCommand.CreateFromTask(OpenAsync);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
         SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync);
         CancelCommand = ReactiveCommand.Create(Cancel);
         FormatCommand = ReactiveCommand.CreateFromTask(FormatCodeAsync);
+        ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager);
         ToggleOutputViewCommand = ReactiveCommand.Create(() => { ShowHtmlOutput = !ShowHtmlOutput; });
-        ExitCommand = ReactiveCommand.Create(() =>
-        {
-            System.Diagnostics.Process.GetCurrentProcess().Kill();
-        });
+        ExitCommand = ReactiveCommand.Create(() => { System.Diagnostics.Process.GetCurrentProcess().Kill(); });
     }
 
     private void New()
     {
+        ProjectService.Instance.NewProjectAsync(TabId).ContinueWith(t => projectContext = t.Result);
         CodeText = string.Empty;
         Output = string.Empty;
-        HtmlOutput = string.Empty;
+        StatusText = "New file created";
         htmlDumpService?.Clear();
-        currentFilePath = null;
-        currentPackage = new ScriptPackage();
-        StatusText = "New script created";
     }
 
     private async Task OpenAsync()
@@ -149,10 +147,20 @@ public class MainWindowViewModel : ReactiveObject
                 return;
             }
 
-            currentPackage = await packageService.LoadAsync(filePath);
-            CodeText = currentPackage.Code;
-            Output = currentPackage.Output;
-            currentFilePath = filePath;
+            if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                // Plain .cs file: create a fresh project and load code only
+                projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
+                projectContext.SourcePath = filePath;
+                CodeText = await File.ReadAllTextAsync(filePath);
+                Output = string.Empty;
+            }
+            else
+            {
+                projectContext = await ProjectService.Instance.LoadProjectAsync(TabId, filePath);
+                CodeText = projectContext.Code;
+                Output = projectContext.Output;
+            }
 
             StatusText = $"Opened: {Path.GetFileName(filePath)}";
         }
@@ -165,27 +173,32 @@ public class MainWindowViewModel : ReactiveObject
 
     private async Task SaveAsync()
     {
+        if (string.IsNullOrEmpty(projectContext.SourcePath))
+        {
+            await SaveAsAsync();
+            return;
+        }
+
         try
         {
-            if (currentFilePath == null)
+            StatusText = "Saving...";
+            projectContext.Code = CodeText;
+
+            if (projectContext.SourcePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             {
-                await SaveAsAsync();
-                return;
+                // Plain .cs file: write code only
+                await File.WriteAllTextAsync(projectContext.SourcePath, CodeText);
+            }
+            else
+            {
+                await ProjectService.Instance.SaveProjectAsync(projectContext);
             }
 
-            StatusText = "Saving...";
-
-            currentPackage.Code = CodeText;
-            currentPackage.Output = Output;
-            currentPackage.Manifest.Modified = DateTime.UtcNow;
-
-            await packageService.SaveAsync(currentPackage, currentFilePath);
-            StatusText = $"Saved: {Path.GetFileName(currentFilePath)}";
+            StatusText = $"Saved: {Path.GetFileName(projectContext.SourcePath)}";
         }
         catch (Exception ex)
         {
-            Output = $"Error saving file: {ex.Message}";
-            StatusText = "Error saving file";
+            StatusText = $"Save failed: {ex.Message}";
         }
     }
 
@@ -193,47 +206,30 @@ public class MainWindowViewModel : ReactiveObject
     {
         try
         {
-            StatusText = "Saving as...";
-
             var filePath = await ShowSaveFileDialogAsync();
-            if (filePath == null)
-            {
-                StatusText = "Save as cancelled";
-                return;
-            }
-
-            currentPackage.Code = CodeText;
-            currentPackage.Output = Output;
-            currentPackage.Manifest.Modified = DateTime.UtcNow;
-
-            if (currentPackage.Manifest.Created == default)
-                currentPackage.Manifest.Created = DateTime.UtcNow;
-
-            await packageService.SaveAsync(currentPackage, filePath);
-            currentFilePath = filePath;
-            StatusText = $"Saved: {Path.GetFileName(filePath)}";
+            if (string.IsNullOrEmpty(filePath)) return;
+            projectContext.SourcePath = filePath;
+            await SaveAsync();
         }
         catch (Exception ex)
         {
-            Output = $"Error saving file: {ex.Message}";
-            StatusText = "Error saving file";
+            StatusText = $"Save As failed: {ex.Message}";
         }
     }
 
     private void Cancel()
     {
+        StatusText = "Cancellation requested";
         IsExecuting = false;
-        StatusText = "Execution cancelled";
+        // Ideally we would trigger a CancellationTokenSource cancel here
     }
 
     private async Task FormatCodeAsync()
     {
         try
         {
-            StatusText = "Formatting code...";
-            var formatted = await formatterService.FormatCodeAsync(TabId, CodeText);
-            CodeText = formatted;
-            StatusText = "Code formatted successfully";
+            CodeText = await CodeFormatterService.FormatCodeAsync(TabId, CodeText);
+            StatusText = "Code formatted";
         }
         catch (Exception ex)
         {
@@ -253,14 +249,12 @@ public class MainWindowViewModel : ReactiveObject
             htmlDumpService?.Clear();
 
             var code = CodeText;
-            var config = currentPackage.Config;
-
-            var result = await scriptService.ExecuteAsync(code, config);
+            var result = await scriptService.ExecuteAsync(code, projectContext);
 
             if (result.Success)
             {
                 Output = result.Output;
-                currentPackage.Output = result.Output;
+                projectContext.Output = result.Output;
                 StatusText = "Execution completed successfully";
             }
             else
@@ -282,8 +276,7 @@ public class MainWindowViewModel : ReactiveObject
 
     private async Task<string?> ShowOpenFileDialogAsync()
     {
-        if (MainWindow?.StorageProvider == null)
-            return null;
+        if (MainWindow?.StorageProvider == null) return null;
 
         var files = await MainWindow.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
@@ -291,46 +284,41 @@ public class MainWindowViewModel : ReactiveObject
             AllowMultiple = false,
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("Script Packages")
-                {
-                    Patterns = new[] { "*.lqpkg" }
-                },
-                new FilePickerFileType("C# Scripts")
-                {
-                    Patterns = new[] { "*.cs", "*.csx" }
-                },
-                new FilePickerFileType("All Files")
-                {
-                    Patterns = new[] { "*" }
-                }
+                new FilePickerFileType("Scratchpad Script") { Patterns = new[] { "*.cs", "*.lqpkg" } }
             }
         });
 
-        return files.Count > 0 ? files[0].Path.LocalPath : null;
+        return files.FirstOrDefault()?.Path.LocalPath;
     }
 
     private async Task<string?> ShowSaveFileDialogAsync()
     {
-        if (MainWindow?.StorageProvider == null)
-            return null;
+        if (MainWindow?.StorageProvider == null) return null;
 
         var file = await MainWindow.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Save Script",
-            DefaultExtension = "lqpkg",
+            DefaultExtension = "cs",
             FileTypeChoices = new[]
             {
-                new FilePickerFileType("Script Packages")
-                {
-                    Patterns = new[] { "*.lqpkg" }
-                },
-                new FilePickerFileType("C# Scripts")
-                {
-                    Patterns = new[] { "*.cs" }
-                }
+                new FilePickerFileType("C# Script") { Patterns = new[] { "*.cs" } },
+                new FilePickerFileType("Script Package") { Patterns = new[] { "*.lqpkg" } }
             }
         });
 
         return file?.Path.LocalPath;
+    }
+
+    private void OpenReferenceManager()
+    {
+        if (MainWindow == null) return;
+
+        var vm = new ReferenceManagementViewModel(TabId, projectContext);
+
+        var window = new Views.ReferenceManagementWindow
+        {
+            DataContext = vm
+        };
+        window.ShowDialog(MainWindow);
     }
 }
