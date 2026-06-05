@@ -57,17 +57,16 @@ public class CodeCompletionHandler(
 
         if (shouldTrigger)
         {
-            _ = ShowCompletionWindowAsync();
+            _ = ShowCompletionWindowAsync(manualInvoke: false);
         }
     }
 
     public bool HandleKeyDown(KeyEventArgs e)
     {
-        // Ctrl+Space: 手动触发补全
         if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             e.Handled = true;
-            _ = ShowCompletionWindowAsync();
+            _ = ShowCompletionWindowAsync(manualInvoke: true);
             return true;
         }
 
@@ -112,22 +111,34 @@ public class CodeCompletionHandler(
         // 泛型括号
         if (text == "<") return true;
 
-        // 字母、数字、下划线触发(但要确保不是在注释或字符串中)
         if (text.Length == 1)
         {
             var ch = text[0];
+            if (char.IsWhiteSpace(ch))
+                return IsInUsingDirectiveContext();
+
             if (char.IsLetterOrDigit(ch) || ch == '_')
             {
-                // 简单检查:如果最近没有文本变化,可能是用户刚开始输入
                 var timeSinceLastChange = (DateTime.UtcNow - lastTextChange).TotalMilliseconds;
-                return timeSinceLastChange < 2000; // 2秒内的连续输入
+                return timeSinceLastChange < 2000;
             }
         }
 
         return false;
     }
 
-    private async Task ShowCompletionWindowAsync()
+    private bool IsInUsingDirectiveContext()
+    {
+        if (editor?.Document == null)
+            return false;
+
+        var caretOffset = editor.CaretOffset;
+        var line = editor.Document.GetLineByOffset(caretOffset);
+        var lineText = editor.Document.GetText(line.Offset, caretOffset - line.Offset);
+        return lineText.TrimStart().StartsWith("using ", StringComparison.Ordinal);
+    }
+
+    private async Task ShowCompletionWindowAsync(bool manualInvoke)
     {
         if (editor?.TextArea == null) return;
 
@@ -136,13 +147,15 @@ public class CodeCompletionHandler(
         completionCts = new CancellationTokenSource();
         var token = completionCts.Token;
 
-        // Debounce
         lastCompletionRequest = DateTime.UtcNow;
         var requestTime = lastCompletionRequest;
-        await Task.Delay(CompletionDebounceMs, token);
 
-        if (requestTime != lastCompletionRequest || token.IsCancellationRequested)
-            return;
+        if (!manualInvoke)
+        {
+            await Task.Delay(CompletionDebounceMs, token);
+            if (requestTime != lastCompletionRequest || token.IsCancellationRequested)
+                return;
+        }
 
         try
         {
@@ -155,7 +168,8 @@ public class CodeCompletionHandler(
             var usings = viewModel.ProjectContext.Config.Usings;
 
             var result = await Task.Run(
-                () => completionService.GetCompletionsAsync(tabId, code, offset, viewModel.ProjectContext, token),
+                () => completionService.GetCompletionsAsync(
+                    tabId, code, offset, viewModel.ProjectContext, manualInvoke, token),
                 token);
 
             if (token.IsCancellationRequested || result.Items.IsEmpty)

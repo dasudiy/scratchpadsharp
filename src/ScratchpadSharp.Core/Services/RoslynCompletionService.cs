@@ -33,6 +33,7 @@ public interface IRoslynCompletionService
         string code,
         int position,
         ProjectContext context,
+        bool forceInvoke = false,
         CancellationToken cancellationToken = default);
 
     Task<CompletionChangeInfo> GetCompletionChangeAsync(
@@ -104,6 +105,7 @@ public class RoslynCompletionService : IRoslynCompletionService
         string code,
         int position,
         ProjectContext context,
+        bool forceInvoke = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -150,13 +152,16 @@ public class RoslynCompletionService : IRoslynCompletionService
                 }
             }
 
-            // Get completions at adjusted position
+            var trigger = forceInvoke
+                ? CompletionTrigger.Invoke
+                : triggerChar != null
+                    ? CompletionTrigger.CreateInsertionTrigger(triggerChar[0])
+                    : CompletionTrigger.Invoke;
+
             var completions = await completionService.GetCompletionsAsync(
                 document,
                 adjustedPosition,
-                trigger: triggerChar != null
-                    ? CompletionTrigger.CreateInsertionTrigger(triggerChar[0])
-                    : CompletionTrigger.Invoke,
+                trigger,
                 cancellationToken: cancellationToken);
 
             if (completions == null || completions.ItemsList.Count == 0)
@@ -165,11 +170,12 @@ public class RoslynCompletionService : IRoslynCompletionService
                 return new CompletionResult { Items = [] };
             }
 
-            var isMemberAccess = triggerChar == "."
-                || IsMemberAccessContext(documentText, adjustedPosition);
+            var isMemberAccess = !forceInvoke && (triggerChar == "."
+                || IsMemberAccessContext(documentText, adjustedPosition));
+            var isUsingDirective = IsUsingDirectiveContext(documentText, adjustedPosition);
 
             var meaningfulItems = completions.ItemsList
-                .Where(i => !i.Tags.Contains(WellKnownTags.Keyword))
+                .Where(i => isUsingDirective || !i.Tags.Contains(WellKnownTags.Keyword))
                 .Where(i => !isMemberAccess || !i.Tags.Contains(WellKnownTags.Snippet))
                 .ToImmutableArray();
 
@@ -185,11 +191,8 @@ public class RoslynCompletionService : IRoslynCompletionService
                 scriptDocument,
                 cancellationToken);
 
-            // 应用优先级排序
-            var sortedItems = ApplyPrioritySort(enhancedItems);
-
-            // 限制返回数量
-            var limitedItems = sortedItems.Take(MaxCompletionItems).ToImmutableArray();
+            var sortedItems = ApplyPrioritySort(enhancedItems).ToList();
+            var limitedItems = ApplyResultLimit(sortedItems, MaxCompletionItems).ToImmutableArray();
 
             System.Diagnostics.Debug.WriteLine($"[Completion] Returning {limitedItems.Length} enhanced items");
 
@@ -236,23 +239,28 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             foreach (var textChange in change.TextChanges)
             {
-                if (textChange.Span.Start >= scriptDocument.UserCodeStartInDocument)
+                if (textChange.Span.Start < scriptDocument.ConfigUsingsSectionLength)
                 {
-                    var editorStart = ScriptDocumentBuilder.ToEditorPosition(scriptDocument, textChange.Span.Start);
-                    adjustedChanges.Add(new TextChange(
-                        new TextSpan(editorStart, textChange.Span.Length),
-                        textChange.NewText ?? string.Empty));
+                    TryExtractUsingsFromText(textChange.NewText, existingUsingNamespaces, newUsings);
+                    continue;
                 }
-                else if (!string.IsNullOrEmpty(textChange.NewText))
-                {
-                    foreach (var line in textChange.NewText.Split('\n').Select(l => l.Trim('\r', ' ')))
-                    {
-                        if (!line.StartsWith("using ") || !line.EndsWith(";")) continue;
-                        var ns = line[6..^1].Trim();
-                        if (!string.IsNullOrEmpty(ns) && existingUsingNamespaces.Add(ns))
-                            newUsings.Add(ns);
-                    }
-                }
+
+                var editorStart = ScriptDocumentBuilder.ToEditorPosition(scriptDocument, textChange.Span.Start);
+                adjustedChanges.Add(new TextChange(
+                    new TextSpan(editorStart, textChange.Span.Length),
+                    textChange.NewText ?? string.Empty));
+            }
+
+            if (newUsings.Count == 0)
+            {
+                TryAddImportNamespaceFromItem(item, existingUsingNamespaces, newUsings);
+            }
+
+            if (newUsings.Count == 0)
+            {
+                var ns = await TryFindNamespaceForTypeAsync(document, item.DisplayText, cancellationToken);
+                if (!string.IsNullOrEmpty(ns) && existingUsingNamespaces.Add(ns))
+                    newUsings.Add(ns);
             }
 
             return new CompletionChangeInfo(
@@ -304,9 +312,7 @@ public class RoslynCompletionService : IRoslynCompletionService
         foreach (var item in items)
         {
             var span = item.Span;
-            var editorStart = span.Start >= scriptDocument.UserCodeStartInDocument
-                ? ScriptDocumentBuilder.ToEditorPosition(scriptDocument, span.Start)
-                : 0;
+            var editorStart = ScriptDocumentBuilder.ToEditorPosition(scriptDocument, span.Start);
             var adjustedSpan = new TextSpan(Math.Max(0, editorStart), span.Length);
 
             var enhancedItem = new EnhancedCompletionItem
@@ -396,6 +402,10 @@ public class RoslynCompletionService : IRoslynCompletionService
         if (tags.Contains(WellKnownTags.Field))
             priority += 1800;
 
+        // 命名空间（便于 using 和限定名补全）
+        if (tags.Contains(WellKnownTags.Namespace))
+            priority += 1050;
+
         // 类型
         if (tags.Contains(WellKnownTags.Class))
             priority += 1000;
@@ -444,6 +454,96 @@ public class RoslynCompletionService : IRoslynCompletionService
         return commonTypes.Contains(displayText);
     }
 
+    private static bool IsUsingDirectiveContext(SourceText text, int position)
+    {
+        var lineStart = position;
+        while (lineStart > 0 && text[lineStart - 1] != '\n' && text[lineStart - 1] != '\r')
+            lineStart--;
+
+        var lineSlice = text.ToString(TextSpan.FromBounds(lineStart, position));
+        return lineSlice.TrimStart().StartsWith("using ", StringComparison.Ordinal);
+    }
+
+    private static void TryExtractUsingsFromText(
+        string? text,
+        HashSet<string> existingUsingNamespaces,
+        List<string> newUsings)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        foreach (var line in text.Split('\n').Select(l => l.Trim('\r', ' ')))
+        {
+            if (!TryParseUsingNamespace(line, out var ns))
+                continue;
+
+            if (!string.IsNullOrEmpty(ns) && existingUsingNamespaces.Add(ns))
+                newUsings.Add(ns);
+        }
+    }
+
+    private static bool TryParseUsingNamespace(string line, out string ns)
+    {
+        ns = string.Empty;
+        if (!line.StartsWith("using ", StringComparison.Ordinal) || !line.EndsWith(';'))
+            return false;
+
+        var body = line[6..^1].Trim();
+        if (body.StartsWith("static ", StringComparison.Ordinal))
+            body = body[7..].Trim();
+
+        if (string.IsNullOrEmpty(body))
+            return false;
+
+        ns = body;
+        return true;
+    }
+
+    private static async Task<string?> TryFindNamespaceForTypeAsync(
+        Document document,
+        string typeName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(typeName) || typeName.Contains('.'))
+            return null;
+
+        var compilation = await document.Project.GetCompilationAsync(cancellationToken);
+        if (compilation == null)
+            return null;
+
+        // GetTypesByMetadataName is an indexed lookup — much faster than recursive tree walk
+        var best = compilation.GetTypesByMetadataName(typeName)
+            .Where(t => t.DeclaredAccessibility == Accessibility.Public)
+            .OrderByDescending(t =>
+                t.ContainingNamespace?.ToDisplayString()
+                    ?.StartsWith("System", StringComparison.Ordinal) == true ? 1 : 0)
+            .FirstOrDefault();
+
+        var namespaceName = best?.ContainingNamespace?.ToDisplayString();
+        return string.IsNullOrEmpty(namespaceName) || namespaceName == "<global namespace>"
+            ? null
+            : namespaceName;
+    }
+
+    private static void TryAddImportNamespaceFromItem(
+        CompletionItem item,
+        HashSet<string> existingUsingNamespaces,
+        List<string> newUsings)
+    {
+        if (item.Tags.Contains(WellKnownTags.Namespace))
+            return;
+
+        // Roslyn's import-completion items (unimported types) carry the containing
+        // namespace verbatim in InlineDescription, e.g. "System.Text.RegularExpressions"
+        // for Regex. Use it as-is rather than stripping a segment.
+        var ns = item.InlineDescription;
+        if (string.IsNullOrEmpty(ns) || ns == "<global namespace>")
+            return;
+
+        if (existingUsingNamespaces.Add(ns))
+            newUsings.Add(ns);
+    }
+
     private static bool IsMemberAccessContext(SourceText text, int position)
     {
         var start = position;
@@ -454,6 +554,20 @@ public class RoslynCompletionService : IRoslynCompletionService
     }
 
     private static bool IsIdentifierPart(char ch) => char.IsLetterOrDigit(ch) || ch == '_';
+
+    private static IEnumerable<EnhancedCompletionItem> ApplyResultLimit(
+        List<EnhancedCompletionItem> sortedItems,
+        int maxItems)
+    {
+        var namespaces = sortedItems
+            .Where(i => i.Tags.Contains(WellKnownTags.Namespace))
+            .ToList();
+        var others = sortedItems
+            .Where(i => !i.Tags.Contains(WellKnownTags.Namespace))
+            .Take(Math.Max(0, maxItems - namespaces.Count));
+
+        return namespaces.Concat(others).Take(maxItems);
+    }
 
     private static IEnumerable<EnhancedCompletionItem> ApplyPrioritySort(
         List<EnhancedCompletionItem> items)

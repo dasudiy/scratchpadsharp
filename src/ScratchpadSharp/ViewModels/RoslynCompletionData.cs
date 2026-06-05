@@ -205,7 +205,6 @@ public class RoslynCompletionData : ICompletionData
                 usings);
 
             var document = textArea.Document;
-            int usingShift = 0;
 
             using (document.RunUpdate())
             {
@@ -245,18 +244,18 @@ public class RoslynCompletionData : ICompletionData
                     document.Replace(startOffset, completionSegment.EndOffset - startOffset, Text);
                 }
 
-                // Step 2: Prepend new using directives AFTER code changes so offsets don't conflict
                 if (!change.NewUsings.IsEmpty)
                 {
-                    var usingText = string.Join("\n", change.NewUsings.Select(ns => $"using {ns};")) + "\n";
-                    document.Insert(0, usingText);
-                    usingShift = usingText.Length;
+                    foreach (var ns in change.NewUsings)
+                    {
+                        if (!usings.Contains(ns))
+                            usings.Add(ns);
+                    }
                 }
             }
 
-            // Adjust caret position to account for inserted usings
             if (change.NewPosition.HasValue)
-                textArea.Caret.Offset = change.NewPosition.Value + usingShift;
+                textArea.Caret.Offset = change.NewPosition.Value;
         }
         catch (Exception ex)
         {

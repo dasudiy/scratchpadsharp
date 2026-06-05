@@ -51,14 +51,16 @@ Completion is initiated from the `CodeEditor`.
 
 ### Step 3: Filtering & Enhancement
 
-1. **Keyword filtering** — drop items tagged `WellKnownTags.Keyword`.
-2. **Enhancement (`EnhanceCompletionItems`)**:
+1. **Keyword filtering** — drop items tagged `WellKnownTags.Keyword`. In member-access context (after `.`), also drop `WellKnownTags.Snippet`.
+2. **Namespace visibility** — namespace items get a priority boost and are preserved when capping results at 1000 items (otherwise BCL types crowd them out).
+3. **Using-directive context** — leading `using ...` lines in the editor (including incomplete ones without `;`) are placed in the document usings section, not inside `__Execute()`, so namespace completion works while typing `using System.Net`.
+4. **Enhancement (`EnhanceCompletionItems`)**:
    - Map to `EnhancedCompletionItem`
    - **Documentation** — loaded lazily on selection via `GetCompletionDescriptionAsync` (not during the initial list build)
    - **Kind** — from Roslyn tags
    - **CompletionSpan** — adjust `item.Span` back to editor coordinates (subtract hidden-usings offset)
    - **Priority** — `MatchPriority`, tags (locals > members > types), etc.
-3. **Sorting (`ApplyPrioritySort`)** — `IsRecommended` → `Priority` → `SortText` → `DisplayText`.
+5. **Sorting (`ApplyPrioritySort`)** — `IsRecommended` → `Priority` → `SortText` → `DisplayText`.
 
 ### Step 4: Result Return
 

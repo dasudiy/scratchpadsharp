@@ -8,7 +8,7 @@ public class ScriptPreprocessor
 {
     private static readonly string[] separator = ["\r\n", "\r", "\n"];
 
-    public static (string CleanCode, List<string> Usings, int RemovedLineCount) ExtractUsingsAndComments(string code)
+    public static (string CleanCode, List<string> Usings, int RemovedLineCount, int EditorCodeStartOffset) ExtractUsingsAndComments(string code)
     {
         var lines = code.Split(separator, StringSplitOptions.None);
         var usings = new List<string>();
@@ -54,10 +54,13 @@ public class ScriptPreprocessor
                 continue;
             }
 
-            if (!codeStarted && trimmed.StartsWith("using ") && trimmed.EndsWith(";"))
+            if (!codeStarted && trimmed.StartsWith("using ", StringComparison.Ordinal))
             {
-                var ns = trimmed.Replace("using ", "").Replace(";", "").Trim();
-                usings.Add(ns);
+                if (trimmed.EndsWith(";"))
+                {
+                    var ns = trimmed[6..^1].Trim();
+                    usings.Add(ns);
+                }
                 removedLineCount++;
                 continue;
             }
@@ -67,6 +70,15 @@ public class ScriptPreprocessor
         }
 
         var cleanCode = string.Join(Environment.NewLine, cleanLines);
-        return (cleanCode, usings, removedLineCount);
+        var editorCodeStartOffset = !codeStarted || string.IsNullOrEmpty(cleanCode)
+            ? code.Length
+            : code.IndexOf(cleanCode, StringComparison.Ordinal);
+
+        if (editorCodeStartOffset < 0)
+        {
+            editorCodeStartOffset = 0;
+        }
+
+        return (cleanCode, usings, removedLineCount, editorCodeStartOffset);
     }
 }

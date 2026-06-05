@@ -123,30 +123,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnWindowOpened(object? sender, EventArgs e)
+    private void OnWindowOpened(object? sender, EventArgs e)
     {
-        // Wait for workspace initialization and create project
-        await Task.Run(async () =>
-        {
-            while (!RoslynWorkspaceService.Instance.IsInitialized)
-            {
-                await Task.Delay(100);
-            }
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                try
-                {
-                    RoslynWorkspaceService.Instance.CreateProject(TabId);
-                    Debug.WriteLine($"[MainWindow] Created Roslyn project for tab '{TabId}'");
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[MainWindow] Error creating project: {ex.Message}");
-                }
-            });
-        });
-
         CodeEditor?.Focus();
     }
 
