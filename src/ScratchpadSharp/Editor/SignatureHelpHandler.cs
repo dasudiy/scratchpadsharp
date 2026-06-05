@@ -118,10 +118,11 @@ public class SignatureHelpHandler
             if (token.IsCancellationRequested) return;
 
             var viewModel = _viewModelProvider();
-            var projectContext = viewModel?.ProjectContext;
+            if (viewModel is not { IsProjectReady: true })
+                return;
 
             var (signatures, argIndex, activeParam) = await Task.Run(
-                () => _signatureProvider.GetSignaturesAsync(_tabId, code, offset, projectContext, token),
+                () => _signatureProvider.GetSignaturesAsync(_tabId, code, offset, viewModel.ProjectContext, token),
                 token);
 
             if (token.IsCancellationRequested) return;

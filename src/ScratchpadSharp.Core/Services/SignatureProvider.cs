@@ -55,15 +55,19 @@ public class SignatureProvider : ISignatureProvider
                 return (new List<MethodSignature>(), -1, -1);
             }
 
-            if (context.AbsoluteCompileReferences.Count > 0)
+            if (context == null)
             {
-                await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+                System.Diagnostics.Debug.WriteLine("[SignatureProvider] ProjectContext is null");
+                return (new List<MethodSignature>(), -1, -1);
             }
+
+            await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
 
             await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, context.Config.Usings);
 
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
-            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(position, context.Config.Usings);
+            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(
+                position, code, context.Config.Usings);
 
             System.Diagnostics.Debug.WriteLine(
                 $"[SignatureProvider] Code length: {code.Length}, Position: {position}, Adjusted: {adjustedPosition}");

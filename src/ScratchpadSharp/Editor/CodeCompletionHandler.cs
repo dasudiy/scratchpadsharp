@@ -51,7 +51,8 @@ public class CodeCompletionHandler(
     {
         if (e.Text == null) return;
 
-        // 触发条件更智能
+        lastTextChange = DateTime.UtcNow;
+
         var shouldTrigger = ShouldTriggerCompletion(e.Text);
 
         if (shouldTrigger)
@@ -145,15 +146,16 @@ public class CodeCompletionHandler(
 
         try
         {
+            var viewModel = viewModelProvider();
+            if (viewModel is not { IsProjectReady: true })
+                return;
+
             var code = editor.Document.Text;
             var offset = editor.CaretOffset;
+            var usings = viewModel.ProjectContext.Config.Usings;
 
-            var viewModel = viewModelProvider();
-            var usings = viewModel?.ProjectContext.Config.Usings;
-
-            // Fetch completions
             var result = await Task.Run(
-                () => completionService.GetCompletionsAsync(tabId, code, offset, viewModel?.ProjectContext, token),
+                () => completionService.GetCompletionsAsync(tabId, code, offset, viewModel.ProjectContext, token),
                 token);
 
             if (token.IsCancellationRequested || result.Items.IsEmpty)

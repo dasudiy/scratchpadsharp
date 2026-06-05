@@ -23,7 +23,8 @@ public class MainWindowViewModel : ReactiveObject
     private string statusText = "Ready";
     private bool isExecuting;
     private string codeText = string.Empty;
-    private ProjectContext projectContext;
+    private ProjectContext projectContext = null!;
+    private bool isProjectReady;
     private Window? mainWindow;
 
 
@@ -78,6 +79,8 @@ public class MainWindowViewModel : ReactiveObject
 
     public ProjectContext ProjectContext => projectContext;
 
+    public bool IsProjectReady => isProjectReady;
+
     public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
     public ReactiveCommand<Unit, Unit> NewCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenCommand { get; }
@@ -109,12 +112,11 @@ public class MainWindowViewModel : ReactiveObject
         }
 
         codeText = string.Empty;
-        ProjectService.Instance.NewProjectAsync(TabId).ContinueWith(t =>
-            projectContext = t.Result);
+        _ = InitializeProjectAsync();
 
         ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync,
             this.WhenAnyValue(x => x.IsExecuting, executing => !executing));
-        NewCommand = ReactiveCommand.Create(New);
+        NewCommand = ReactiveCommand.CreateFromTask(NewAsync);
         OpenCommand = ReactiveCommand.CreateFromTask(OpenAsync);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
         SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync);
@@ -125,13 +127,27 @@ public class MainWindowViewModel : ReactiveObject
         ExitCommand = ReactiveCommand.Create(() => { System.Diagnostics.Process.GetCurrentProcess().Kill(); });
     }
 
-    private void New()
+    private async Task InitializeProjectAsync()
     {
-        ProjectService.Instance.NewProjectAsync(TabId).ContinueWith(t => projectContext = t.Result);
-        CodeText = string.Empty;
-        Output = string.Empty;
-        StatusText = "New file created";
-        htmlDumpService?.Clear();
+        projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
+        isProjectReady = true;
+    }
+
+    private async Task NewAsync()
+    {
+        isProjectReady = false;
+        try
+        {
+            projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
+            CodeText = string.Empty;
+            Output = string.Empty;
+            StatusText = "New file created";
+            htmlDumpService?.Clear();
+        }
+        finally
+        {
+            isProjectReady = true;
+        }
     }
 
     private async Task OpenAsync()
@@ -147,22 +163,30 @@ public class MainWindowViewModel : ReactiveObject
                 return;
             }
 
-            if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            isProjectReady = false;
+            try
             {
-                // Plain .cs file: create a fresh project and load code only
-                projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
-                projectContext.SourcePath = filePath;
-                CodeText = await File.ReadAllTextAsync(filePath);
-                Output = string.Empty;
-            }
-            else
-            {
-                projectContext = await ProjectService.Instance.LoadProjectAsync(TabId, filePath);
-                CodeText = projectContext.Code;
-                Output = projectContext.Output;
-            }
+                if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Plain .cs file: create a fresh project and load code only
+                    projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
+                    projectContext.SourcePath = filePath;
+                    CodeText = await File.ReadAllTextAsync(filePath);
+                    Output = string.Empty;
+                }
+                else
+                {
+                    projectContext = await ProjectService.Instance.LoadProjectAsync(TabId, filePath);
+                    CodeText = projectContext.Code;
+                    Output = projectContext.Output;
+                }
 
-            StatusText = $"Opened: {Path.GetFileName(filePath)}";
+                StatusText = $"Opened: {Path.GetFileName(filePath)}";
+            }
+            finally
+            {
+                isProjectReady = true;
+            }
         }
         catch (Exception ex)
         {

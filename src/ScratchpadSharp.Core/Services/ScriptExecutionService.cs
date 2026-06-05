@@ -92,30 +92,8 @@ public class ScriptExecutionService : IScriptExecutionService
     private static (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
         string code, ProjectContext context)
     {
-        var (cleanCode, userUsings, removedLineCount) = ScriptPreprocessor.ExtractUsingsAndComments(code);
-
-        var allUsings = context.Config.Usings.Concat(userUsings).Distinct();
-        var usingsBlock = string.Join(Environment.NewLine, allUsings.Select(u => $"using {u};"));
-
-        var lineDirective = $"#line {removedLineCount + 1} \"Script.cs\"";
-        var wrappedCode = usingsBlock + @"
-
-public class __ScriptRunner
-{
-    public static string __ConnectionString { get; set; } = string.Empty;
-
-    public static async Task<object?> __Execute()
-    {
-    " + lineDirective + @"
-        " + cleanCode + @"
-#line hidden
-        return null;
-    }
-}
-
-";
-
-        var syntaxTree = CSharpSyntaxTree.ParseText(wrappedCode);
+        var scriptDocument = ScriptDocumentBuilder.Build(code, context.Config.Usings);
+        var syntaxTree = CSharpSyntaxTree.ParseText(scriptDocument.FullText);
 
         // Get reference assemblies from config and NuGet packages
         var references = MetadataReferenceProvider.GetReferencesWithPackages(context.AbsoluteCompileReferences).ToList();

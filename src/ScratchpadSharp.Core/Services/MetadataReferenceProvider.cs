@@ -15,8 +15,18 @@ public static class MetadataReferenceProvider
 
     private static MetadataReference CreateReferenceWithXmlDocs(string assemblyPath)
     {
-        var docProvider = BclXmlResolver.GetMetadataDocProvider(assemblyPath);
+        var docProvider = ResolveXmlDocumentation(assemblyPath);
         return MetadataReference.CreateFromFile(assemblyPath, documentation: docProvider);
+    }
+
+    private static XmlDocumentationProvider? ResolveXmlDocumentation(string assemblyPath)
+    {
+        var docProvider = BclXmlResolver.GetMetadataDocProvider(assemblyPath);
+        if (docProvider != null)
+            return docProvider;
+
+        var siblingXml = Path.ChangeExtension(assemblyPath, ".xml");
+        return File.Exists(siblingXml) ? XmlDocumentationProvider.CreateFromFile(siblingXml) : null;
     }
 
     public static IEnumerable<MetadataReference> GetDefaultReferences()
@@ -119,7 +129,7 @@ public static class MetadataReferenceProvider
         if (nugetPackages == null || nugetPackages.Count == 0)
             return references;
 
-        references.AddRange(nugetPackages.Select(pkg => MetadataReference.CreateFromFile(pkg)));
+        references.AddRange(nugetPackages.Select(CreateReferenceWithXmlDocs));
         return references;
     }
 

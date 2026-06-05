@@ -203,10 +203,8 @@ public class RoslynWorkspaceService
 
             var document = GetDocument(tabId);
 
-            var usingStatements = string.Join(Environment.NewLine, usings.Select(u => $"using {u};"));
-            var fullCode = usingStatements + (usingStatements.Length > 0 ? "\n\n" : "") + code;
-
-            var sourceText = SourceText.From(fullCode);
+            var scriptDocument = ScriptDocumentBuilder.Build(code, usings);
+            var sourceText = SourceText.From(scriptDocument.FullText);
             var newDocument = document.WithText(sourceText);
             var newSolution = newDocument.Project.Solution;
 
@@ -356,23 +354,19 @@ public class RoslynWorkspaceService
         if (p1 == null || p2 == null) return false;
         if (p1.Count != p2.Count) return false;
 
-        return p1.All(p2.Contains);
+        var set = new HashSet<string>(p2, StringComparer.OrdinalIgnoreCase);
+        return p1.All(set.Contains);
     }
 
-    public int CalculateAdjustedPosition(int position, List<string> usings)
+    public int CalculateAdjustedPosition(int editorPosition, string editorCode, List<string> configUsings)
     {
-        return position + GetUsingsOffset(usings);
+        var doc = ScriptDocumentBuilder.Build(editorCode, configUsings);
+        return ScriptDocumentBuilder.ToDocumentPosition(doc, editorPosition);
     }
 
-    public int GetUsingsOffset(List<string>? usings)
+    public ScriptDocumentBuilder.ScriptDocument BuildScriptDocument(string editorCode, List<string> configUsings)
     {
-        if (usings == null || usings.Count == 0)
-            return 0;
-
-        var usingStatements = string.Join(Environment.NewLine, usings.Select(u => $"using {u};"));
-        // +2 for the blank lines that UpdateDocumentAsync adds:
-        // var fullCode = usingStatements + (usingStatements.Length > 0 ? "\n\n" : "") + code;
-        return usingStatements.Length + (usingStatements.Length > 0 ? 2 : 0);
+        return ScriptDocumentBuilder.Build(editorCode, configUsings);
     }
 
     public bool IsInitialized => isInitialized;

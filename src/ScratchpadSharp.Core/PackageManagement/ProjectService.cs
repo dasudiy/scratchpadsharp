@@ -50,6 +50,7 @@ public class ProjectService
         HydratePaths(context);
 
         // 5. 激活环境 (Roslyn)
+        RoslynWorkspaceService.Instance.RemoveProject(tabId);
         RoslynWorkspaceService.Instance.CreateProject(tabId);
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
         // TODO: 如果需要，在这里注入 Compiler Options (AllowUnsafe, Nullable 等)
@@ -92,6 +93,7 @@ public class ProjectService
         HydratePaths(context);
 
         // 5. 激活环境 (Roslyn)
+        RoslynWorkspaceService.Instance.RemoveProject(tabId);
         RoslynWorkspaceService.Instance.CreateProject(tabId);
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
         // TODO: 如果需要，在这里注入 Compiler Options (AllowUnsafe, Nullable 等)

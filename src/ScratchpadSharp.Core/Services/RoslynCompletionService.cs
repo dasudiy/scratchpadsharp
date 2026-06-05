@@ -108,25 +108,26 @@ public class RoslynCompletionService : IRoslynCompletionService
     {
         try
         {
-            var startTime = DateTime.Now;
             if (!RoslynWorkspaceService.Instance.IsInitialized)
             {
                 System.Diagnostics.Debug.WriteLine("[Completion] Workspace not initialized yet");
                 return new CompletionResult { Items = [] };
             }
 
-            // Update references if packages are provided
-            if (context.AbsoluteCompileReferences.Count > 0)
+            if (context == null)
             {
-                await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+                System.Diagnostics.Debug.WriteLine("[Completion] ProjectContext is null");
+                return new CompletionResult { Items = [] };
             }
 
+            await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
 
-            // Get the current document
+            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, context.Config.Usings);
+
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
 
-            // Calculate adjusted position
-            var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(position, context.Config.Usings);
+            var scriptDocument = RoslynWorkspaceService.Instance.BuildScriptDocument(code, context.Config.Usings);
+            var adjustedPosition = ScriptDocumentBuilder.ToDocumentPosition(scriptDocument, position);
 
             // Get completion service
             var completionService = CompletionService.GetService(document);
@@ -138,10 +139,11 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             // 确定触发字符
             string? triggerChar = null;
+            SourceText documentText = SourceText.From("");
             if (adjustedPosition > 0)
             {
-                var text = await document.GetTextAsync(cancellationToken);
-                var ch = text[adjustedPosition - 1];
+                documentText = await document.GetTextAsync(cancellationToken);
+                var ch = documentText[adjustedPosition - 1];
                 if (char.IsWhiteSpace(ch) || ch == '.' || ch == '(' || ch == '[' || ch == '<')
                 {
                     triggerChar = ch.ToString();
@@ -163,9 +165,12 @@ public class RoslynCompletionService : IRoslynCompletionService
                 return new CompletionResult { Items = [] };
             }
 
-            // Filter out keywords early if requested
+            var isMemberAccess = triggerChar == "."
+                || IsMemberAccessContext(documentText, adjustedPosition);
+
             var meaningfulItems = completions.ItemsList
                 .Where(i => !i.Tags.Contains(WellKnownTags.Keyword))
+                .Where(i => !isMemberAccess || !i.Tags.Contains(WellKnownTags.Snippet))
                 .ToImmutableArray();
 
             if (meaningfulItems.Length == 0)
@@ -175,15 +180,9 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             System.Diagnostics.Debug.WriteLine($"[Completion] Found {meaningfulItems.Length} meaningful items");
 
-            // Calculate usings offset for span adjustment
-            var usingsOffset = RoslynWorkspaceService.Instance.GetUsingsOffset(context.Config.Usings);
-
-            // 增强和过滤补全项
             var enhancedItems = EnhanceCompletionItems(
                 meaningfulItems,
-                completionService,
-                document,
-                usingsOffset,
+                scriptDocument,
                 cancellationToken);
 
             // 应用优先级排序
@@ -229,8 +228,7 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             var change = await completionService.GetChangeAsync(document, item, cancellationToken: cancellationToken);
 
-            // Adjust spans for hidden usings
-            var offset = RoslynWorkspaceService.Instance.GetUsingsOffset(usings);
+            var scriptDocument = RoslynWorkspaceService.Instance.BuildScriptDocument(code, usings);
 
             var adjustedChanges = new List<TextChange>();
             var newUsings = new List<string>();
@@ -238,15 +236,15 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             foreach (var textChange in change.TextChanges)
             {
-                if (textChange.Span.Start >= offset)
+                if (textChange.Span.Start >= scriptDocument.UserCodeStartInDocument)
                 {
-                    // Normal change in user-visible code area
-                    var newSpan = new TextSpan(textChange.Span.Start - offset, textChange.Span.Length);
-                    adjustedChanges.Add(new TextChange(newSpan, textChange.NewText ?? string.Empty));
+                    var editorStart = ScriptDocumentBuilder.ToEditorPosition(scriptDocument, textChange.Span.Start);
+                    adjustedChanges.Add(new TextChange(
+                        new TextSpan(editorStart, textChange.Span.Length),
+                        textChange.NewText ?? string.Empty));
                 }
                 else if (!string.IsNullOrEmpty(textChange.NewText))
                 {
-                    // Change is in the hidden usings section — extract new namespace names
                     foreach (var line in textChange.NewText.Split('\n').Select(l => l.Trim('\r', ' ')))
                     {
                         if (!line.StartsWith("using ") || !line.EndsWith(";")) continue;
@@ -259,7 +257,9 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             return new CompletionChangeInfo(
                 adjustedChanges.ToImmutableArray(),
-                change.NewPosition.HasValue ? change.NewPosition.Value - offset : null,
+                change.NewPosition.HasValue
+                    ? ScriptDocumentBuilder.ToEditorPosition(scriptDocument, change.NewPosition.Value)
+                    : null,
                 change.IncludesCommitCharacter,
                 newUsings.ToImmutableArray());
         }
@@ -294,20 +294,20 @@ public class RoslynCompletionService : IRoslynCompletionService
         }
     }
 
-    private List<EnhancedCompletionItem> EnhanceCompletionItems(
+    private static List<EnhancedCompletionItem> EnhanceCompletionItems(
         ImmutableArray<CompletionItem> items,
-        CompletionService completionService,
-        Document document,
-        int usingsOffset,
+        ScriptDocumentBuilder.ScriptDocument scriptDocument,
         CancellationToken cancellationToken)
     {
         var enhanced = new List<EnhancedCompletionItem>();
 
         foreach (var item in items)
         {
-            // Adjust span for hidden usings
             var span = item.Span;
-            var adjustedSpan = new TextSpan(Math.Max(0, span.Start - usingsOffset), span.Length);
+            var editorStart = span.Start >= scriptDocument.UserCodeStartInDocument
+                ? ScriptDocumentBuilder.ToEditorPosition(scriptDocument, span.Start)
+                : 0;
+            var adjustedSpan = new TextSpan(Math.Max(0, editorStart), span.Length);
 
             var enhancedItem = new EnhancedCompletionItem
             {
@@ -443,6 +443,17 @@ public class RoslynCompletionService : IRoslynCompletionService
         };
         return commonTypes.Contains(displayText);
     }
+
+    private static bool IsMemberAccessContext(SourceText text, int position)
+    {
+        var start = position;
+        while (start > 0 && IsIdentifierPart(text[start - 1]))
+            start--;
+
+        return start > 0 && text[start - 1] == '.';
+    }
+
+    private static bool IsIdentifierPart(char ch) => char.IsLetterOrDigit(ch) || ch == '_';
 
     private static IEnumerable<EnhancedCompletionItem> ApplyPrioritySort(
         List<EnhancedCompletionItem> items)
