@@ -14,6 +14,7 @@ public class MethodSignature
     public string Documentation { get; set; } = string.Empty;
     public string FullSignature { get; set; } = string.Empty;
     public bool IsExtensionMethod { get; set; }
+    public bool IsConstructor { get; set; }
     public string Summary { get; set; } = string.Empty;
     public Dictionary<string, string> ParameterDocs { get; set; } = new();
 }
@@ -154,6 +155,12 @@ public class SignatureProvider : ISignatureProvider
                 if (IsPositionInContext(context, position))
                     return context;
             }
+            else if (node is ImplicitObjectCreationExpressionSyntax implicitCreation)
+            {
+                var context = CreateInvocationContext(implicitCreation, implicitCreation.ArgumentList, position);
+                if (IsPositionInContext(context, position))
+                    return context;
+            }
             else if (node is BaseObjectCreationExpressionSyntax baseCreation && baseCreation.ArgumentList != null)
             {
                 var context = CreateInvocationContext(baseCreation, baseCreation.ArgumentList, position);
@@ -174,6 +181,7 @@ public class SignatureProvider : ISignatureProvider
         var candidates = root.DescendantNodes()
             .Where(n => n is InvocationExpressionSyntax ||
                         n is ObjectCreationExpressionSyntax ||
+                        n is ImplicitObjectCreationExpressionSyntax ||
                         n is BaseObjectCreationExpressionSyntax)
             .Select(n =>
             {
@@ -181,6 +189,7 @@ public class SignatureProvider : ISignatureProvider
                 {
                     InvocationExpressionSyntax inv => inv.ArgumentList,
                     ObjectCreationExpressionSyntax obj => obj.ArgumentList,
+                    ImplicitObjectCreationExpressionSyntax implicitObj => implicitObj.ArgumentList,
                     BaseObjectCreationExpressionSyntax baseObj => baseObj.ArgumentList,
                     _ => null
                 };
@@ -318,14 +327,9 @@ public class SignatureProvider : ISignatureProvider
                 }
             }
         }
-        else if (node is ObjectCreationExpressionSyntax objectCreation)
+        else if (node is ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax)
         {
-            var typeInfo = semanticModel.GetTypeInfo(objectCreation.Type);
-            if (typeInfo.Type is INamedTypeSymbol namedType)
-            {
-                // 获取所有构造函数
-                symbols.AddRange(namedType.Constructors.Where(c => c.DeclaredAccessibility == Accessibility.Public));
-            }
+            AddConstructorSymbols(symbols, semanticModel, node);
         }
         else if (node is BaseObjectCreationExpressionSyntax baseCreation)
         {
@@ -340,6 +344,30 @@ public class SignatureProvider : ISignatureProvider
         }
 
         return symbols.Distinct(SymbolEqualityComparer.Default).ToList();
+    }
+
+    private static void AddConstructorSymbols(List<ISymbol> symbols, SemanticModel semanticModel, SyntaxNode node)
+    {
+        var symbolInfo = semanticModel.GetSymbolInfo(node);
+
+        INamedTypeSymbol? namedType = null;
+        if (symbolInfo.Symbol is IMethodSymbol resolvedCtor)
+        {
+            namedType = resolvedCtor.ContainingType;
+        }
+
+        if (namedType == null && node is ObjectCreationExpressionSyntax objectCreation)
+        {
+            var typeInfo = semanticModel.GetTypeInfo(objectCreation.Type);
+            namedType = typeInfo.Type as INamedTypeSymbol ?? typeInfo.ConvertedType as INamedTypeSymbol;
+        }
+
+        if (namedType != null)
+        {
+            symbols.AddRange(namedType.Constructors.Where(c => c.DeclaredAccessibility == Accessibility.Public));
+        }
+
+        symbols.AddRange(symbolInfo.CandidateSymbols.OfType<IMethodSymbol>());
     }
 
     private static List<MethodSignature> ExtractSignatures(List<ISymbol> symbols)
@@ -360,11 +388,15 @@ public class SignatureProvider : ISignatureProvider
 
     private static MethodSignature BuildMethodSignature(IMethodSymbol method)
     {
+        var isConstructor = method.MethodKind == MethodKind.Constructor;
         var signature = new MethodSignature
         {
-            Name = method.MethodKind == MethodKind.Constructor ? method.ContainingType.Name : method.Name,
-            ReturnType = method.ReturnsVoid ? "void" : method.ReturnType.ToDisplayString(),
-            IsExtensionMethod = method.IsExtensionMethod
+            Name = isConstructor ? method.ContainingType.Name : method.Name,
+            ReturnType = isConstructor
+                ? method.ContainingType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+                : method.ReturnsVoid ? "void" : method.ReturnType.ToDisplayString(),
+            IsExtensionMethod = method.IsExtensionMethod,
+            IsConstructor = isConstructor
         };
 
         // 解析XML文档
@@ -497,13 +529,11 @@ public class SignatureProvider : ISignatureProvider
             return string.Join(" ", parts);
         }));
 
-        if (signature.Name == signature.ReturnType) // Constructor
+        if (signature.IsConstructor)
         {
             return $"{signature.Name}({parameters})";
         }
-        else
-        {
-            return $"{signature.ReturnType} {signature.Name}({parameters})";
-        }
+
+        return $"{signature.ReturnType} {signature.Name}({parameters})";
     }
 }
