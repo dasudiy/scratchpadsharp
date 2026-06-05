@@ -116,7 +116,7 @@
                          <Button Content="Project URL" 
                                  Command="{Binding $parent[Window].DataContext.OpenUrlCommand}"
                                  CommandParameter="{Binding SelectedPackage.ProjectUrl}"
-                                 IsVisible="{Binding SelectedPackage.ProjectUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 IsVisible="{Binding SelectedPackage.ProjectUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
                                  Background="Transparent" BorderThickness="0" Foreground="Blue" HorizontalAlignment="Left" Padding="0"/>
 
                          <Expander Header="Dependencies" Margin="0,8,0,0">

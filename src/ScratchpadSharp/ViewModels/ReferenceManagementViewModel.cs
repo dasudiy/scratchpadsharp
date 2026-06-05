@@ -117,7 +117,7 @@ public class ReferenceManagementViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> InstallPackageCommand { get; }
     public ReactiveCommand<AssemblyReferenceItem, Unit> RemoveAssemblyReferenceCommand { get; }
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
-    public ReactiveCommand<string, Unit> OpenUrlCommand { get; }
+    public ReactiveCommand<Uri?, Unit> OpenUrlCommand { get; }
 
     public ReferenceManagementViewModel(string tabId, ProjectContext projectContext)
     {
@@ -130,21 +130,20 @@ public class ReferenceManagementViewModel : ReactiveObject
         LocalSearchCommand = ReactiveCommand.Create(FilterLocalPackages);
         OnlineSearchCommand = ReactiveCommand.CreateFromTask(SearchOnlineAsync);
 
-        OpenUrlCommand = ReactiveCommand.Create<string>(url =>
+        OpenUrlCommand = ReactiveCommand.Create<Uri?>(url =>
         {
-            if (!string.IsNullOrEmpty(url))
+            if (url == null) return;
+
+            try
             {
-                try
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = url,
-                        UseShellExecute = true
-                    });
-                }
-                catch
-                {
-                }
+                    FileName = url.ToString(),
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
             }
         });
 
