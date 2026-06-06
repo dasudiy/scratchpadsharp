@@ -71,7 +71,11 @@ dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 
 ## Documentation
 
-See [SPECIFICATION.md](SPECIFICATION.md) for detailed technical design.
+- [SPECIFICATION.md](SPECIFICATION.md) — Technical design and architecture
+- [docs/reference-management.md](docs/reference-management.md) — NuGet and assembly reference pipeline
+- [docs/dump-workflow.md](docs/dump-workflow.md) — `.Dump()` HTML output flow
+- [docs/intellisense-workflow.md](docs/intellisense-workflow.md) — Code completion pipeline
+- [docs/method-signature-help-workflow.md](docs/method-signature-help-workflow.md) — Signature help pipeline
 
 ## Acknowledgements
 
