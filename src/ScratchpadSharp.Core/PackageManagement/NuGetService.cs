@@ -108,6 +108,62 @@ public class NuGetService
         return results.OrderByDescending(r => r.DownloadCount);
     }
 
+    public string GetCachedPackagePath(PackageIdentity package) =>
+        Path.Combine(
+            globalPackagesFolder,
+            package.Id.ToLowerInvariant(),
+            package.Version.ToNormalizedString().ToLowerInvariant());
+
+    public bool IsPackageCached(PackageIdentity package) =>
+        Directory.Exists(GetCachedPackagePath(package));
+
+    public Task<IEnumerable<string>> GetCachedVersionsAsync(string packageId,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() =>
+        {
+            var packageDir = Path.Combine(globalPackagesFolder, packageId.ToLowerInvariant());
+            if (!Directory.Exists(packageDir))
+                return Enumerable.Empty<string>();
+
+            return Directory.GetDirectories(packageDir)
+                .Select(Path.GetFileName)
+                .Where(v => !string.IsNullOrEmpty(v) && NuGetVersion.TryParse(v, out _))
+                .Select(v => NuGetVersion.Parse(v!).ToNormalizedString())
+                .Distinct()
+                .OrderByDescending(v => NuGetVersion.Parse(v))
+                .ToList()
+                .AsEnumerable();
+        }, cancellationToken);
+    }
+
+    public async Task<IPackageSearchMetadata?> GetPackageMetadataAsync(PackageIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        var cachedPath = GetCachedPackagePath(identity);
+        if (Directory.Exists(cachedPath))
+            return await Task.FromResult(CreateMetadataFromFolder(identity, cachedPath));
+
+        using var cache = new SourceCacheContext();
+        foreach (var source in packageSources)
+        {
+            try
+            {
+                var repository = Repository.Factory.GetCoreV3(source);
+                var resource = await repository.GetResourceAsync<PackageMetadataResource>(cancellationToken);
+                var metadata = await resource.GetMetadataAsync(identity, cache, NullLogger.Instance, cancellationToken);
+                if (metadata != null)
+                    return metadata;
+            }
+            catch
+            {
+                // Try next source
+            }
+        }
+
+        return null;
+    }
+
     public async Task<IEnumerable<IPackageSearchMetadata>> GetLocalPackagesAsync(
         CancellationToken cancellationToken = default)
     {
@@ -119,18 +175,19 @@ public class NuGetService
             var packages = LocalFolderUtility.GetPackagesV3(globalPackagesFolder, NullLogger.Instance);
 
             return packages
-                .GroupBy(p => p.Identity.Id)
+                .GroupBy(p => p.Nuspec.GetId(), StringComparer.OrdinalIgnoreCase)
                 .Select(group =>
                 {
                     var latest = group.OrderByDescending(p => p.Identity.Version).First();
+                    var properId = latest.Nuspec.GetId();
+                    var identity = new PackageIdentity(properId, latest.Identity.Version);
 
-                    var latestPath = latest.Path ?? Path.Combine(globalPackagesFolder,
-                        latest.Identity.Id.ToLowerInvariant(), latest.Identity.Version.ToString());
+                    var latestPath = latest.Path ?? GetCachedPackagePath(identity);
 
                     Uri? ParseUri(string? url) =>
                         !string.IsNullOrEmpty(url) && Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
 
-                    return (IPackageSearchMetadata)new LocalPackageMetadata(latest.Identity)
+                    return (IPackageSearchMetadata)new LocalPackageMetadata(identity)
                     {
                         Description = latest.Nuspec.GetDescription(),
                         Authors = latest.Nuspec.GetAuthors(),
@@ -142,14 +199,46 @@ public class NuGetService
                         LicenseUrl = ParseUri(latest.Nuspec.GetLicenseUrl()),
                         ProjectUrl = ParseUri(latest.Nuspec.GetProjectUrl()),
                         RequireLicenseAcceptance = latest.Nuspec.GetRequireLicenseAcceptance(),
+                        DependencySets = latest.Nuspec.GetDependencyGroups().ToList(),
                         Published = Directory.Exists(latestPath)
                             ? new DirectoryInfo(latestPath).CreationTimeUtc
                             : DateTimeOffset.UtcNow
                     };
                 })
-                .OrderBy(m => m.Identity.Id)
+                .OrderBy(m => m.Identity.Id, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }, cancellationToken);
+    }
+
+    private static LocalPackageMetadata CreateMetadataFromFolder(PackageIdentity identity, string packagePath)
+    {
+        var nuspecPath = Directory.GetFiles(packagePath, "*.nuspec").FirstOrDefault()
+                         ?? throw new FileNotFoundException("No .nuspec in package folder", packagePath);
+
+        using var stream = File.OpenRead(nuspecPath);
+        var nuspec = new NuspecReader(stream);
+        var properId = nuspec.GetId();
+
+        Uri? ParseUri(string? url) =>
+            !string.IsNullOrEmpty(url) && Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
+
+        return new LocalPackageMetadata(new PackageIdentity(properId, identity.Version))
+        {
+            Description = nuspec.GetDescription(),
+            Authors = nuspec.GetAuthors(),
+            Title = nuspec.GetTitle(),
+            Summary = nuspec.GetSummary(),
+            Owners = nuspec.GetOwners(),
+            Tags = nuspec.GetTags(),
+            IconUrl = ParseUri(nuspec.GetIconUrl()),
+            LicenseUrl = ParseUri(nuspec.GetLicenseUrl()),
+            ProjectUrl = ParseUri(nuspec.GetProjectUrl()),
+            RequireLicenseAcceptance = nuspec.GetRequireLicenseAcceptance(),
+            DependencySets = nuspec.GetDependencyGroups().ToList(),
+            Published = Directory.Exists(packagePath)
+                ? new DirectoryInfo(packagePath).CreationTimeUtc
+                : DateTimeOffset.UtcNow
+        };
     }
 
     public async Task<IEnumerable<string>> GetPackageVersionsAsync(string packageId,
@@ -188,20 +277,24 @@ public class NuGetService
     /// 此步骤不需要 targetFramework，因为它下载的是包含所有框架的完整包。
     /// </summary>
     public async Task<string> EnsurePackageDownloadedAsync(
-        PackageIdentity package, 
-        CancellationToken ct)
+        PackageIdentity package,
+        CancellationToken ct,
+        IProgress<PackageInstallProgress>? progress = null)
     {
-        // NuGet global cache stores packages as {root}/{id.lower}/{version.lower}
-        string GetExpectedPath() => Path.Combine(
-            globalPackagesFolder,
-            package.Id.ToLowerInvariant(),
-            package.Version.ToNormalizedString().ToLowerInvariant());
+        var expectedPath = GetCachedPackagePath(package);
 
-        // 1. 快速路径：目录已存在则直接返回
-        var expectedPath = GetExpectedPath();
-        if (Directory.Exists(expectedPath)) return expectedPath;
+        // 1. 快速路径：目录已存在则直接返回，不触发下载
+        if (Directory.Exists(expectedPath))
+        {
+            progress?.Report(new PackageInstallProgress(
+                $"Using cached {package.Id} {package.Version}", 100, package.Id));
+            return expectedPath;
+        }
 
         // 2. 慢速路径：从网络下载
+        progress?.Report(new PackageInstallProgress(
+            $"Downloading {package.Id} {package.Version}...", 0, package.Id));
+
         using var cacheContext = new SourceCacheContext();
         var repositories = packageSources.Select(t => Repository.Factory.GetCoreV3(t));
         var failures = new List<string>();
@@ -224,8 +317,13 @@ public class NuGetService
                 if (downloadResult.Status == DownloadResourceResultStatus.Available ||
                     downloadResult.Status == DownloadResourceResultStatus.AvailableWithoutStream)
                 {
-                    expectedPath = GetExpectedPath();
-                    if (Directory.Exists(expectedPath)) return expectedPath;
+                    expectedPath = GetCachedPackagePath(package);
+                    if (Directory.Exists(expectedPath))
+                    {
+                        progress?.Report(new PackageInstallProgress(
+                            $"Downloaded {package.Id} {package.Version}", 100, package.Id));
+                        return expectedPath;
+                    }
                 }
                 else
                 {

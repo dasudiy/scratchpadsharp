@@ -98,29 +98,29 @@
             <Grid Grid.Column="4" Margin="4">
                  <ScrollViewer IsVisible="{Binding SelectedPackage, Converter={x:Static ObjectConverters.IsNotNull}}">
                      <StackPanel>
-                         <TextBlock Text="{Binding SelectedPackage.Identity.Id}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"/>
-                         <TextBlock Text="{Binding SelectedPackage.Identity.Version}" FontSize="12" Foreground="Gray" Margin="0,0,0,8"/>
+                         <TextBlock Text="{Binding SelectedPackageDetails.Identity.Id}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"/>
+                         <TextBlock Text="{Binding SelectedVersionItem.Version}" FontSize="12" Foreground="Gray" Margin="0,0,0,8"/>
                          
-                         <TextBlock Text="{Binding SelectedPackage.Description}" TextWrapping="Wrap" Margin="0,8"/>
+                         <TextBlock Text="{Binding SelectedPackageDetails.Description}" TextWrapping="Wrap" Margin="0,8"/>
                          
                          <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4">
                               <TextBlock Text="Authors:" FontWeight="Bold"/>
-                              <TextBlock Text="{Binding SelectedPackage.Authors}" TextWrapping="Wrap"/>
+                              <TextBlock Text="{Binding SelectedPackageDetails.Authors}" TextWrapping="Wrap"/>
                          </StackPanel>
 
-                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4" IsVisible="{Binding SelectedPackage.Published, Converter={x:Static ObjectConverters.IsNotNull}}">
+                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4" IsVisible="{Binding SelectedPackageDetails.Published, Converter={x:Static ObjectConverters.IsNotNull}}">
                               <TextBlock Text="Published:" FontWeight="Bold"/>
-                              <TextBlock Text="{Binding SelectedPackage.Published}"/>
+                              <TextBlock Text="{Binding SelectedPackageDetails.Published}"/>
                          </StackPanel>
 
                          <Button Content="Project URL" 
                                  Command="{Binding $parent[Window].DataContext.OpenUrlCommand}"
-                                 CommandParameter="{Binding SelectedPackage.ProjectUrl}"
-                                 IsVisible="{Binding SelectedPackage.ProjectUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                 CommandParameter="{Binding SelectedPackageDetails.ProjectUrl}"
+                                 IsVisible="{Binding SelectedPackageDetails.ProjectUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
                                  Background="Transparent" BorderThickness="0" Foreground="Blue" HorizontalAlignment="Left" Padding="0"/>
 
                          <Expander Header="Dependencies" Margin="0,8,0,0">
-                              <ItemsControl ItemsSource="{Binding SelectedPackage.DependencySets}">
+                              <ItemsControl ItemsSource="{Binding SelectedPackageDetails.DependencySets}">
                                   <ItemsControl.ItemTemplate>
                                       <DataTemplate>
                                           <StackPanel Margin="0,4">
@@ -147,13 +147,26 @@
 
                          <Separator Margin="0,16"/>
                          
-                         <TextBlock Text="Wait to Install:" FontWeight="Bold" Margin="0,8,0,0"/>
-                         <ComboBox ItemsSource="{Binding AvailableVersions}" SelectedItem="{Binding SelectedVersion}" HorizontalAlignment="Stretch"/>
+                         <TextBlock Text="Version to Install:" FontWeight="Bold" Margin="0,8,0,0"/>
+                         <CheckBox Content="Include pre-release versions" IsChecked="{Binding IncludePreReleaseVersions}" Margin="0,4,0,4"/>
+                         <ComboBox ItemsSource="{Binding AvailableVersions}"
+                                   SelectedItem="{Binding SelectedVersionItem}"
+                                   HorizontalAlignment="Stretch">
+                             <ComboBox.ItemTemplate>
+                                 <DataTemplate>
+                                     <TextBlock Text="{Binding DisplayText}"/>
+                                 </DataTemplate>
+                             </ComboBox.ItemTemplate>
+                         </ComboBox>
 
+                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding InstallProgress}"
+                                      IsVisible="{Binding IsInstalling}" Margin="0,12,0,0" Height="8"/>
+                         
                          <Button Content="Install Package" 
                                  Command="{Binding InstallPackageCommand}" 
                                  HorizontalAlignment="Stretch" 
-                                 Margin="0,16,0,0"/>
+                                 Margin="0,16,0,0"
+                                 IsEnabled="{Binding !IsInstalling}"/>
                          
                          <TextBlock Text="{Binding StatusText}" Foreground="Green" Margin="0,8" TextWrapping="Wrap"/>
                      </StackPanel>
