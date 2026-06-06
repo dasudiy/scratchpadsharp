@@ -33,6 +33,7 @@ public class MainWindowViewModel : ReactiveObject
 
     private string htmlOutput = string.Empty;
     private bool showHtmlOutput = true;
+    private bool isOutputPanelExpanded = true;
 
     public Window? MainWindow
     {
@@ -49,7 +50,11 @@ public class MainWindowViewModel : ReactiveObject
     public string Output
     {
         get => output;
-        set => this.RaiseAndSetIfChanged(ref output, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref output, value);
+            this.RaisePropertyChanged(nameof(OutputDisplayText));
+        }
     }
 
     public string StatusText
@@ -68,8 +73,31 @@ public class MainWindowViewModel : ReactiveObject
     public bool ShowHtmlOutput
     {
         get => showHtmlOutput;
-        set => this.RaiseAndSetIfChanged(ref showHtmlOutput, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref showHtmlOutput, value);
+            this.RaisePropertyChanged(nameof(OutputViewToggleLabel));
+        }
     }
+
+    public bool IsOutputPanelExpanded
+    {
+        get => isOutputPanelExpanded;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref isOutputPanelExpanded, value);
+            this.RaisePropertyChanged(nameof(OutputPanelToggleGlyph));
+        }
+    }
+
+    public string OutputViewToggleLabel => ShowHtmlOutput ? "Text" : "HTML";
+
+    public string OutputDisplayText =>
+        string.IsNullOrWhiteSpace(Output)
+            ? "(No output yet — run the script with Console.WriteLine() or .Dump())"
+            : Output;
+
+    public string OutputPanelToggleGlyph => IsOutputPanelExpanded ? "−" : "+";
 
     public string HtmlOutput
     {
@@ -91,6 +119,7 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
     public ReactiveCommand<Unit, Unit> ManageReferencesCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleOutputViewCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleOutputPanelCommand { get; }
 
     public MainWindowViewModel() : this(new ScriptExecutionService(),
         null)
@@ -124,6 +153,7 @@ public class MainWindowViewModel : ReactiveObject
         FormatCommand = ReactiveCommand.CreateFromTask(FormatCodeAsync);
         ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager);
         ToggleOutputViewCommand = ReactiveCommand.Create(() => { ShowHtmlOutput = !ShowHtmlOutput; });
+        ToggleOutputPanelCommand = ReactiveCommand.Create(() => { IsOutputPanelExpanded = !IsOutputPanelExpanded; });
         ExitCommand = ReactiveCommand.Create(() => { System.Diagnostics.Process.GetCurrentProcess().Kill(); });
     }
 
@@ -277,13 +307,15 @@ public class MainWindowViewModel : ReactiveObject
 
             if (result.Success)
             {
-                Output = result.Output;
-                projectContext.Output = result.Output;
+                Output = CombineOutput(result.Output, htmlDumpService?.TextOutput);
+                projectContext.Output = Output;
                 StatusText = "Execution completed successfully";
             }
             else
             {
-                Output = $"Error:\n{result.ErrorMessage}\n\n{result.Output}";
+                Output = CombineOutput(
+                    $"Error:\n{result.ErrorMessage}\n\n{result.Output}",
+                    htmlDumpService?.TextOutput);
                 StatusText = "Execution failed";
             }
         }
@@ -344,5 +376,15 @@ public class MainWindowViewModel : ReactiveObject
             DataContext = vm
         };
         window.ShowDialog(MainWindow);
+    }
+
+    private static string CombineOutput(string consoleOutput, string? dumpText)
+    {
+        var dumps = dumpText?.TrimEnd();
+        var console = consoleOutput.TrimEnd();
+
+        if (string.IsNullOrEmpty(console)) return dumps ?? string.Empty;
+        if (string.IsNullOrEmpty(dumps)) return console;
+        return console + "\n\n" + dumps;
     }
 }

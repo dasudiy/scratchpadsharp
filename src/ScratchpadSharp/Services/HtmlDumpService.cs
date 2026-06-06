@@ -12,11 +12,15 @@ public class HtmlDumpService
     private readonly string _htmlLoopTemplate;
 
     private readonly StringBuilder _contentBuffer = new StringBuilder();
+    private readonly StringBuilder _textBuffer = new StringBuilder();
+
+    public string TextOutput => _textBuffer.ToString();
 
     public HtmlDumpService()
     {
         // Register this service as the HTML renderer in the core dispatcher
         DumpDispatcher.RegisterHtmlRenderer(RenderHtml);
+        DumpDispatcher.RegisterPlainTextAppender(AppendPlainText);
 
         // Load NetPad styles from embedded resource in Core assembly
         var assembly = typeof(DumpDispatcher).Assembly;
@@ -70,9 +74,15 @@ public class HtmlDumpService
     public void Clear()
     {
         _contentBuffer.Clear();
+        _textBuffer.Clear();
         // Invoke with empty template to clear the view but keep styles/structure ready
         var output = _htmlLoopTemplate.Replace("{{BODY}}", string.Empty);
         _updateCallback?.Invoke(output);
+    }
+
+    private void AppendPlainText(string text)
+    {
+        _textBuffer.Append(text);
     }
 
     private void RenderHtml(object? data, string? label)

@@ -72,13 +72,13 @@
             VerticalAlignment="Stretch" />
 
             <!-- Splitter -->
-            <GridSplitter Grid.Row="1" Height="4" Background="#CCCCCC" />
+            <GridSplitter x:Name="OutputSplitter" Grid.Row="1" Height="4" Background="#CCCCCC"
+                          IsVisible="{Binding IsOutputPanelExpanded}" />
 
-            <!-- Results Panel -->
             <!-- Results Panel -->
             <Border Grid.Row="2" BorderThickness="0,1,0,0">
                 <Grid RowDefinitions="Auto, *">
-                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto">
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto, Auto">
                         <TextBlock Grid.Column="0"
                             Text="Output"
                             FontWeight="Bold"
@@ -86,12 +86,19 @@
                             VerticalAlignment="Center"/>
                         <Button Grid.Column="1"
                             Command="{Binding ToggleOutputViewCommand}"
-                            Content="{Binding ShowHtmlOutput, Converter={StaticResource HighlightBoolConverter}, ConverterParameter='HTML|Text'}" 
+                            Content="{Binding OutputViewToggleLabel}"
+                            IsVisible="{Binding IsOutputPanelExpanded}"
                             Margin="4"
                             Padding="8,2"/>
+                        <Button Grid.Column="2"
+                            Command="{Binding ToggleOutputPanelCommand}"
+                            Content="{Binding OutputPanelToggleGlyph}"
+                            Margin="4"
+                            Padding="8,2"
+                            MinWidth="28"/>
                     </Grid>
                     
-                    <Panel Grid.Row="1">
+                    <Panel Grid.Row="1" IsVisible="{Binding IsOutputPanelExpanded}">
                         <!-- HTML Output from Dumpify -->
                         <ScrollViewer IsVisible="{Binding ShowHtmlOutput}">
                              <the:HtmlPanel Text="{Binding HtmlOutput}" />
@@ -99,7 +106,7 @@
                         
                         <!-- Raw Text Output -->
                         <ScrollViewer IsVisible="{Binding !ShowHtmlOutput}">
-                            <SelectableTextBlock Text="{Binding Output}"
+                            <SelectableTextBlock Text="{Binding OutputDisplayText}"
                                 FontFamily="Cascadia Code, Consolas, monospace"
                                 Padding="8,4"
                                 TextWrapping="Wrap" />

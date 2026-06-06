@@ -9,10 +9,22 @@ namespace ScratchpadSharp.Core.Services;
 public class DumpDispatcher : IDumpSink
 {
     private static Action<object?, string?>? _htmlRenderer;
+    private static Action<string>? _plainTextAppender;
 
     public static void RegisterHtmlRenderer(Action<object?, string?> renderer)
     {
         _htmlRenderer = renderer;
+    }
+
+    public static void RegisterPlainTextAppender(Action<string> appender)
+    {
+        _plainTextAppender = appender;
+    }
+
+    private static void AppendPlainText(string text)
+    {
+        if (!string.IsNullOrEmpty(text))
+            _plainTextAppender?.Invoke(text);
     }
 
     public static void DispatchHtml(string html)
@@ -32,6 +44,10 @@ public class DumpDispatcher : IDumpSink
             var options = label != null ? new DumpOptions { Title = label } : null;
             string html = HtmlPresenter.Serialize(obj, options);
             _htmlRenderer(html, null);
+
+            // Console strings are captured separately; other types get plain-text for the Text view.
+            if (obj is not string)
+                AppendPlainText(PlainTextPresenter.Format(obj, label));
         }
         else
         {
@@ -57,6 +73,7 @@ public class DumpDispatcher : IDumpSink
 
         // Dispatch the HTML string to be rendered by the UI
         DispatchHtml(html);
+        AppendPlainText(PlainTextPresenter.Format(o, options?.Title));
     }
 
     public void SqlWrite<T>(T? o, DumpOptions? options = null)

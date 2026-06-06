@@ -89,10 +89,26 @@ public partial class MainWindow : Window
                     CodeEditor.Document.Text = viewModel.CodeText;
                     _signatureHelpHandler?.Reset();
                 }
+
+                if (args.PropertyName == nameof(MainWindowViewModel.IsOutputPanelExpanded))
+                {
+                    UpdateOutputPanelLayout(viewModel.IsOutputPanelExpanded);
+                }
             };
 
             CodeEditor.Document.Text = viewModel.CodeText;
+            UpdateOutputPanelLayout(viewModel.IsOutputPanelExpanded);
         }
+    }
+
+    private void UpdateOutputPanelLayout(bool expanded)
+    {
+        if (MainGrid == null || MainGrid.RowDefinitions.Count < 3) return;
+
+        MainGrid.RowDefinitions[1].Height = expanded ? GridLength.Auto : new GridLength(0);
+        MainGrid.RowDefinitions[2].Height = expanded
+            ? new GridLength(2, GridUnitType.Star)
+            : GridLength.Auto;
     }
 
     private void OnCodeEditorTextChanged(object? sender, EventArgs e)
