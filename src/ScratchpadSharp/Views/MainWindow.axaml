@@ -50,15 +50,9 @@
         </Menu>
 
         <!-- Status Bar -->
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Height="24"
-            Background="#F0F0F0">
-            <TextBlock Text="Ready" Foreground="#666666" Margin="8,4" IsVisible="{Binding !IsDownloading}"/>
-            <StackPanel Orientation="Horizontal" IsVisible="{Binding IsDownloading}" Margin="8,0">
-                <ProgressBar Minimum="0" Maximum="100" Value="{Binding DownloadProgress}" Width="100" Height="10" Margin="0,7,8,0"/>
-                <TextBlock Text="{Binding DownloadMessage}" Foreground="#0066CC" VerticalAlignment="Center"/>
-            </StackPanel>
-            <TextBlock Margin="8,4,0,4" Text="{Binding StatusText}" Foreground="#666666" />
-        </StackPanel>
+        <Border DockPanel.Dock="Bottom" Height="24" Background="#F0F0F0">
+            <TextBlock Margin="8,4" Text="{Binding StatusText}" Foreground="#666666" VerticalAlignment="Center"/>
+        </Border>
 
         <!-- Main Content -->
         <Grid x:Name="MainGrid" RowDefinitions="*, Auto, 2*" Background="White">
