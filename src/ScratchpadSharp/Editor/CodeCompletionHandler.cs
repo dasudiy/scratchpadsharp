@@ -19,7 +19,7 @@ namespace ScratchpadSharp.Editor;
 public class CodeCompletionHandler(
     TextEditor editor,
     IRoslynCompletionService completionService,
-    Func<MainWindowViewModel?> viewModelProvider,
+    Func<ScriptTabViewModel?> viewModelProvider,
     string tabId)
 {
     private const int CompletionDebounceMs = 150;

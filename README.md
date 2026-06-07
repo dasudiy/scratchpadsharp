@@ -28,6 +28,24 @@ dotnet build
 dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 ```
 
+### GNOME Desktop Icon
+
+Window/taskbar icons load from embedded assets. To appear in the **GNOME app grid**, install the freedesktop entry once:
+
+```bash
+dotnet build -c Release
+chmod +x scripts/install-desktop-entry.sh
+./scripts/install-desktop-entry.sh
+```
+
+This installs `~/.local/share/applications/scratchpad-sharp.desktop` and hicolor icons. Re-log or search "ScratchpadSharp" in Activities.
+
+To point at a specific binary:
+
+```bash
+./scripts/install-desktop-entry.sh /path/to/ScratchpadSharp
+```
+
 ## Development
 
 ### Phase 1: MVP ✓ Complete

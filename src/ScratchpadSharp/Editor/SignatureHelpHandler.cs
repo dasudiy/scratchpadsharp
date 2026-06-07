@@ -17,7 +17,7 @@ public class SignatureHelpHandler
 {
     private readonly TextEditor _editor;
     private readonly ISignatureProvider _signatureProvider;
-    private readonly Func<MainWindowViewModel?> _viewModelProvider;
+    private readonly Func<ScriptTabViewModel?> _viewModelProvider;
     private readonly string _tabId;
 
     private SignatureHelpWindow? _signatureHelpWindow;
@@ -27,7 +27,7 @@ public class SignatureHelpHandler
     public SignatureHelpHandler(
         TextEditor editor,
         ISignatureProvider signatureProvider,
-        Func<MainWindowViewModel?> viewModelProvider,
+        Func<ScriptTabViewModel?> viewModelProvider,
         string tabId)
     {
         _editor = editor;

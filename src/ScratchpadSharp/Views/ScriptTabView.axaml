@@ -1,0 +1,83 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:avaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
+    xmlns:the="clr-namespace:TheArtOfDev.HtmlRenderer.Avalonia;assembly=Avalonia.HtmlRenderer"
+    x:Class="ScratchpadSharp.Views.ScriptTabView"
+    Background="#FFFFFF">
+
+    <Grid x:Name="MainGrid" RowDefinitions="*, Auto, 2*">
+        <!-- Editor -->
+        <avaloniaEdit:TextEditor Grid.Row="0"
+            Name="CodeEditor"
+            Classes="rider-editor"
+            Background="#FFFFFF"
+            FontFamily="JetBrains Mono, Cascadia Code, DejaVu Sans Mono, monospace"
+            FontSize="13"
+            FontWeight="Normal"
+            ShowLineNumbers="True"
+            WordWrap="False"
+            IsReadOnly="False"
+            MinHeight="200"
+            Focusable="True"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch" />
+
+        <!-- Splitter -->
+        <GridSplitter x:Name="OutputSplitter"
+                      Grid.Row="1"
+                      Height="3"
+                      Background="#DCDCDC"
+                      IsVisible="{Binding IsOutputPanelExpanded}" />
+
+        <!-- Output tool window -->
+        <Grid Grid.Row="2" RowDefinitions="Auto, *">
+            <Border Classes="rider-tool-header" Grid.Row="0">
+                <Grid ColumnDefinitions="Auto, *, Auto, Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="Output"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#2B2B2B"
+                               Padding="10,0,0,0"
+                               VerticalAlignment="Center" />
+                    <Panel Grid.Column="1" />
+                    <Button Grid.Column="2"
+                            Classes="rider-tool-btn"
+                            Command="{Binding ToggleOutputViewCommand}"
+                            Content="{Binding OutputViewToggleLabel}"
+                            IsVisible="{Binding IsOutputPanelExpanded}"
+                            Margin="0,0,4,0" />
+                    <Button Grid.Column="3"
+                            Classes="rider-tool-btn"
+                            Command="{Binding ToggleOutputPanelCommand}"
+                            Content="{Binding OutputPanelToggleGlyph}"
+                            Margin="0,0,6,0"
+                            MinWidth="24" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Background="#FFFFFF"
+                    BorderBrush="#DCDCDC"
+                    BorderThickness="0,0,0,0"
+                    IsVisible="{Binding IsOutputPanelExpanded}">
+                <Panel>
+                    <ScrollViewer IsVisible="{Binding ShowHtmlOutput}"
+                                  Background="#FFFFFF">
+                        <the:HtmlPanel Text="{Binding HtmlOutput}" />
+                    </ScrollViewer>
+
+                    <ScrollViewer IsVisible="{Binding !ShowHtmlOutput}"
+                                  Background="#FFFFFF">
+                        <SelectableTextBlock Text="{Binding OutputDisplayText}"
+                            FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
+                            FontSize="12"
+                            Foreground="#2B2B2B"
+                            Padding="10,6"
+                            TextWrapping="Wrap" />
+                    </ScrollViewer>
+                </Panel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
