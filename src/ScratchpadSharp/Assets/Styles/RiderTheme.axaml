@@ -13,48 +13,53 @@
         <SolidColorBrush x:Key="RiderTextBrush" Color="#2B2B2B" />
     </Styles.Resources>
 
-    <!-- Flat tab strip -->
-    <Style Selector="TabControl.rider-tabs">
+    <!-- Toolbar row -->
+    <Style Selector="Border.rider-header">
         <Setter Property="Background" Value="{StaticResource RiderChromeBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource RiderBorderBrush}" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="Padding" Value="0" />
-        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="MinHeight" Value="36" />
     </Style>
 
-    <Style Selector="TabControl.rider-tabs /template/ ItemsPresenter#PART_ItemsPresenter">
-        <Setter Property="Margin" Value="0" />
+    <!-- Compact tab strip -->
+    <Style Selector="Border.rider-tab-strip">
+        <Setter Property="Background" Value="{StaticResource RiderChromeBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource RiderBorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
     </Style>
 
-    <Style Selector="TabControl.rider-tabs /template/ ContentPresenter#PART_SelectedContentHost">
-        <Setter Property="HorizontalAlignment" Value="Stretch" />
-        <Setter Property="VerticalAlignment" Value="Stretch" />
-    </Style>
-
-    <Style Selector="TabControl.rider-tabs TabItem">
+    <Style Selector="Border.rider-tab-item">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0,0,0,2" />
-        <Setter Property="Foreground" Value="{StaticResource RiderTextMutedBrush}" />
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="Padding" Value="14,8" />
-        <Setter Property="Margin" Value="0" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Padding" Value="10,2,10,2" />
+        <Setter Property="Cursor" Value="Hand" />
     </Style>
 
-    <Style Selector="TabControl.rider-tabs TabItem:pointerover">
+    <Style Selector="Border.rider-tab-item:pointerover">
         <Setter Property="Background" Value="#EAEAEA" />
-        <Setter Property="Foreground" Value="{StaticResource RiderTextBrush}" />
     </Style>
 
-    <Style Selector="TabControl.rider-tabs TabItem:selected">
+    <Style Selector="Border.rider-tab-item.selected">
         <Setter Property="Background" Value="#FFFFFF" />
         <Setter Property="BorderBrush" Value="{StaticResource RiderAccentBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource RiderTextBrush}" />
     </Style>
 
-    <Style Selector="TabControl.rider-tabs TabItem:focus">
-        <Setter Property="Background" Value="#FFFFFF" />
+    <Style Selector="Button.rider-new-tab-btn">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="8,2" />
+        <Setter Property="MinWidth" Value="28" />
+        <Setter Property="MinHeight" Value="26" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="Foreground" Value="{StaticResource RiderTextMutedBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="CornerRadius" Value="3" />
+    </Style>
+
+    <Style Selector="Button.rider-new-tab-btn:pointerover">
+        <Setter Property="Background" Value="#E4E4E4" />
+        <Setter Property="Foreground" Value="{StaticResource RiderTextBrush}" />
     </Style>
 
     <!-- Toolbar buttons -->
@@ -141,15 +146,6 @@
     <Style Selector="Button.rider-tool-btn:pointerover">
         <Setter Property="Background" Value="#E4E4E4" />
         <Setter Property="Foreground" Value="{StaticResource RiderTextBrush}" />
-    </Style>
-
-    <!-- Menu bar -->
-    <Style Selector="Menu.rider-menu">
-        <Setter Property="Background" Value="{StaticResource RiderChromeBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource RiderBorderBrush}" />
-        <Setter Property="BorderThickness" Value="0,0,0,1" />
-        <Setter Property="Height" Value="28" />
-        <Setter Property="FontSize" Value="13" />
     </Style>
 
     <!-- Editor (Rider-like) — do not set Foreground; it breaks SyntaxHighlighting -->

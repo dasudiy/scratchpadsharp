@@ -24,6 +24,7 @@ public class ScriptTabViewModel : ReactiveObject
     private bool showHtmlOutput = true;
     private bool isOutputPanelExpanded = true;
     private string cursorPosition = "1:1";
+    private bool isSelected;
 
     private readonly IScriptExecutionService scriptService;
     private readonly HtmlDumpService htmlDumpService;
@@ -56,6 +57,12 @@ public class ScriptTabViewModel : ReactiveObject
     public void BindCloseHandler(Action closeHandler)
     {
         CloseCommand = ReactiveCommand.Create(closeHandler);
+    }
+
+    public bool IsSelected
+    {
+        get => isSelected;
+        set => this.RaiseAndSetIfChanged(ref isSelected, value);
     }
 
     public string TabId { get; }

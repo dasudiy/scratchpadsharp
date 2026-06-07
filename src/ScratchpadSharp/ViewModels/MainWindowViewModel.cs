@@ -55,6 +55,8 @@ public class MainWindowViewModel : ReactiveObject
             if (selectedTab != null)
                 selectedTab.PropertyChanged += OnSelectedTabPropertyChanged;
 
+            UpdateTabSelectionStates();
+
             this.RaisePropertyChanged(nameof(StatusText));
             this.RaisePropertyChanged(nameof(StatusBarPath));
             this.RaisePropertyChanged(nameof(CursorPosition));
@@ -99,6 +101,12 @@ public class MainWindowViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(StatusBarPath));
         if (e.PropertyName == nameof(ScriptTabViewModel.CursorPosition))
             this.RaisePropertyChanged(nameof(CursorPosition));
+    }
+
+    private void UpdateTabSelectionStates()
+    {
+        foreach (var tab in Tabs)
+            tab.IsSelected = tab == selectedTab;
     }
 
     public void AddTab()

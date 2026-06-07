@@ -29,36 +29,9 @@
 
     <DockPanel LastChildFill="True">
 
-        <!-- Menu bar -->
-        <Menu DockPanel.Dock="Top" Classes="rider-menu">
-            <MenuItem Header="File">
-                <MenuItem Header="New Tab" Command="{Binding NewTabCommand}" InputGesture="Ctrl+N" />
-                <MenuItem Header="Close Tab" Command="{Binding CloseTabCommand}" InputGesture="Ctrl+W" />
-                <Separator />
-                <MenuItem Header="Open..." Command="{Binding OpenCommand}" InputGesture="Ctrl+O" />
-                <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
-                <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}" InputGesture="Ctrl+Shift+S" />
-                <Separator />
-                <MenuItem Header="Exit" Command="{Binding ExitCommand}" />
-            </MenuItem>
-            <MenuItem Header="Edit">
-                <MenuItem Header="Format Document" Command="{Binding FormatCommand}" InputGesture="Ctrl+Alt+F" />
-                <Separator />
-                <MenuItem Header="Manage References..." Command="{Binding ManageReferencesCommand}" InputGesture="F4" />
-            </MenuItem>
-            <MenuItem Header="Run">
-                <MenuItem Header="Execute" Command="{Binding ExecuteCommand}" InputGesture="F5" />
-                <MenuItem Header="Cancel" Command="{Binding CancelCommand}" InputGesture="Shift+F5" />
-            </MenuItem>
-        </Menu>
-
         <!-- Toolbar (Rider-style action bar) -->
-        <Border DockPanel.Dock="Top"
-                Background="#F2F2F2"
-                BorderBrush="#DCDCDC"
-                BorderThickness="0,0,0,1"
-                Padding="8,4">
-            <StackPanel Orientation="Horizontal" Spacing="4">
+        <Border DockPanel.Dock="Top" Classes="rider-header">
+            <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,4" VerticalAlignment="Center">
                 <Button Classes="rider-run-btn"
                         Command="{Binding ExecuteCommand}"
                         Content="▶  Run"
@@ -134,30 +107,41 @@
         </Border>
 
         <!-- Tab strip + editor content -->
-        <DockPanel LastChildFill="True" Background="#FFFFFF">
-            <Button DockPanel.Dock="Right"
-                    Classes="rider-icon-btn"
-                    Content="+"
-                    Command="{Binding NewTabCommand}"
-                    Margin="0,0,4,0"
-                    VerticalAlignment="Top"
-                    ToolTip.Tip="New Tab (Ctrl+N)" />
+        <Grid RowDefinitions="Auto,*" Background="#FFFFFF">
+            <Border Grid.Row="0" Classes="rider-tab-strip">
+                <DockPanel LastChildFill="True">
+                    <Button DockPanel.Dock="Right"
+                            Classes="rider-new-tab-btn"
+                            Content="+"
+                            Command="{Binding NewTabCommand}"
+                            ToolTip.Tip="New Tab (Ctrl+N)" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Tabs}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="0" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:ScriptTabViewModel">
+                                    <views:EditorTabHeader DataContext="{Binding}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
 
-            <TabControl Classes="rider-tabs"
-                        ItemsSource="{Binding Tabs}"
-                        SelectedItem="{Binding SelectedTab}">
-                <TabControl.ItemTemplate>
-                    <DataTemplate DataType="vm:ScriptTabViewModel">
-                        <views:EditorTabHeader DataContext="{Binding}" />
-                    </DataTemplate>
-                </TabControl.ItemTemplate>
-                <TabControl.ContentTemplate>
+            <ContentControl Grid.Row="1"
+                              Content="{Binding SelectedTab}">
+                <ContentControl.ContentTemplate>
                     <DataTemplate DataType="vm:ScriptTabViewModel">
                         <views:ScriptTabView DataContext="{Binding}" />
                     </DataTemplate>
-                </TabControl.ContentTemplate>
-            </TabControl>
-        </DockPanel>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
+        </Grid>
 
     </DockPanel>
 </Window>

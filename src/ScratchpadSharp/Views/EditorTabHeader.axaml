@@ -2,19 +2,23 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="ScratchpadSharp.Views.EditorTabHeader"
              x:Name="Root"
-             MinHeight="36">
+             MinHeight="26"
+             HorizontalAlignment="Left">
 
-    <StackPanel Orientation="Horizontal"
-                Spacing="6"
-                PointerEntered="OnPointerEntered"
-                PointerExited="OnPointerExited">
-        <TextBlock Text="{Binding Title}"
-                   VerticalAlignment="Center"
-                   FontSize="13" />
-        <Button Classes="rider-tab-close"
-                Content="✕"
-                Command="{Binding CloseCommand}"
-                IsVisible="{Binding #Root.IsCloseVisible}"
-                ToolTip.Tip="Close Tab" />
-    </StackPanel>
+    <Border Classes="rider-tab-item"
+            Classes.selected="{Binding IsSelected}"
+            PointerPressed="OnPointerPressed"
+            PointerEntered="OnPointerEntered"
+            PointerExited="OnPointerExited">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{Binding Title}"
+                       VerticalAlignment="Center"
+                       FontSize="13" />
+            <Button Classes="rider-tab-close"
+                    Content="✕"
+                    Command="{Binding CloseCommand}"
+                    IsVisible="{Binding #Root.IsCloseVisible}"
+                    ToolTip.Tip="Close Tab" />
+        </StackPanel>
+    </Border>
 </UserControl>
