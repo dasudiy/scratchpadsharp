@@ -131,8 +131,8 @@ public partial class ScriptTabView : UserControl
     {
         if (viewModel == null || CodeEditor?.TextArea == null) return;
 
-        var line = CodeEditor.TextArea.Caret.Line + 1;
-        var column = CodeEditor.TextArea.Caret.Column + 1;
+        var line = CodeEditor.TextArea.Caret.Line;
+        var column = CodeEditor.TextArea.Caret.Column;
         viewModel.CursorPosition = $"{line}:{column}";
     }
 
