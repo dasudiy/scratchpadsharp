@@ -3,6 +3,7 @@ using NuGet.Configuration;
 using NuGet.Frameworks;
 using NuGet.Packaging.Core;
 using NuGet.Versioning;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.Storage;
 using ScratchpadSharp.Shared.Models;
@@ -28,7 +29,10 @@ public class ProjectService
     /// </summary>
     public async Task<ProjectContext> NewProjectAsync(string tabId, CancellationToken ct = default)
     {
-        var packageDto = new ScriptPackage();
+        var packageDto = new ScriptPackage
+        {
+            Config = ConfigurationLoader.CreateDefaultConfig()
+        };
 
         // use temp path
         var path = Path.GetTempFileName();
@@ -50,6 +54,7 @@ public class ProjectService
         HydratePaths(context);
 
         // 5. 激活环境 (Roslyn)
+        await RoslynWorkspaceService.Instance.EnsureInitializedAsync();
         RoslynWorkspaceService.Instance.RemoveProject(tabId);
         RoslynWorkspaceService.Instance.CreateProject(tabId);
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
@@ -93,6 +98,7 @@ public class ProjectService
         HydratePaths(context);
 
         // 5. 激活环境 (Roslyn)
+        await RoslynWorkspaceService.Instance.EnsureInitializedAsync();
         RoslynWorkspaceService.Instance.RemoveProject(tabId);
         RoslynWorkspaceService.Instance.CreateProject(tabId);
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);

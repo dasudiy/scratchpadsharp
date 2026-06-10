@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Shared.Models;
 using ScratchpadSharp.Shared.Exceptions;
 using ScratchpadSharp.Core.PackageManagement;
@@ -240,9 +241,9 @@ public class PackageService
             ScriptConfig config;
             if (File.Exists(configPath))
                 config = JsonSerializer.Deserialize<ScriptConfig>(await File.ReadAllTextAsync(configPath)) ??
-                         new ScriptConfig();
+                         ConfigurationLoader.CreateDefaultConfig();
             else
-                config = new ScriptConfig();
+                config = ConfigurationLoader.CreateDefaultConfig();
 
             var outputPath = Path.Combine(path, OutputFileName);
             var output = File.Exists(outputPath) ? await File.ReadAllTextAsync(outputPath) : string.Empty;
@@ -336,10 +337,10 @@ public class PackageService
     {
         var entry = archive.GetEntry(ConfigFileName);
         if (entry == null)
-            return new ScriptConfig();
+            return ConfigurationLoader.CreateDefaultConfig();
 
         using var stream = entry.Open();
-        return await JsonSerializer.DeserializeAsync<ScriptConfig>(stream) ?? new ScriptConfig();
+        return await JsonSerializer.DeserializeAsync<ScriptConfig>(stream) ?? ConfigurationLoader.CreateDefaultConfig();
     }
 
     private static async Task<string> ReadOutputAsync(ZipArchive archive)

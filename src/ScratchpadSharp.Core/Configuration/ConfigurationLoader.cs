@@ -1,14 +1,29 @@
+using Microsoft.Extensions.Configuration;
+using ScratchpadSharp.Shared.Models;
+
 namespace ScratchpadSharp.Core.Configuration;
 
 /// <summary>
-/// Configuration loader for appsettings.json and package configurations.
-/// Phase 3: Parse NuGet sources and package dependencies.
+/// Loads application-wide defaults from appsettings.json for new script packages.
 /// </summary>
-public class ConfigurationLoader
+public static class ConfigurationLoader
 {
-    // TODO: Phase 3 - Implement configuration loading
-    // - Load appsettings.json
-    // - Parse NuGet sources and packages
-    // - Load connection strings
-    // - Merge with package config.json
+    private static ScriptConfig _defaults = new();
+
+    public static void Initialize(IConfiguration configuration)
+    {
+        var defaults = new ScriptConfig();
+        configuration.GetSection("ScriptDefaults").Bind(defaults);
+
+        if (defaults.TimeoutSeconds == 0)
+        {
+            var executionTimeout = configuration.GetValue<int?>("Execution:DefaultTimeoutSeconds");
+            if (executionTimeout is > 0)
+                defaults.TimeoutSeconds = executionTimeout.Value;
+        }
+
+        _defaults = defaults;
+    }
+
+    public static ScriptConfig CreateDefaultConfig() => _defaults.Clone();
 }

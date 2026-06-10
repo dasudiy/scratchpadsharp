@@ -23,17 +23,28 @@ public class RoslynWorkspaceService
     private AdhocWorkspace? workspace;
     private readonly ConcurrentDictionary<string, RoslynSession> _sessions = new();
     private readonly SemaphoreSlim semaphore = new(1, 1);
+    private readonly object initLock = new();
+    private Task? initializationTask;
     private bool isInitialized;
 
     private RoslynWorkspaceService()
     {
     }
 
-    public async Task InitializeAsync()
+    public Task EnsureInitializedAsync()
+    {
+        lock (initLock)
+        {
+            return initializationTask ??= InitializeCoreAsync();
+        }
+    }
+
+    public Task InitializeAsync() => EnsureInitializedAsync();
+
+    private async Task InitializeCoreAsync()
     {
         if (isInitialized)
             return;
-
 
         System.Diagnostics.Debug.WriteLine("[RoslynWorkspace] Initializing workspace...");
 

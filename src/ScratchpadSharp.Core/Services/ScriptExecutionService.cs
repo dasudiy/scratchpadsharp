@@ -255,11 +255,16 @@ public class ScriptExecutionService : IScriptExecutionService
                 {
                     _ = Task.Run(async () =>
                     {
-                        for (int i = 0; i < 10 && alcWeakRef.IsAlive; i++)
+                        const int monitorDurationMs = 10_000;
+                        const int pollIntervalMs = 500;
+                        var deadline = Environment.TickCount64 + monitorDurationMs;
+
+                        while (alcWeakRef.IsAlive && Environment.TickCount64 < deadline)
                         {
                             GC.Collect();
                             GC.WaitForPendingFinalizers();
-                            await Task.Delay(100);
+                            GC.Collect();
+                            await Task.Delay(pollIntervalMs);
                         }
 
                         if (!alcWeakRef.IsAlive)
@@ -268,7 +273,7 @@ public class ScriptExecutionService : IScriptExecutionService
                         }
                         else
                         {
-                            Console.WriteLine("[ALC] Warning: Not collected after 10 attempts");
+                            Console.WriteLine("[ALC] Warning: Not collected after 10 seconds");
                         }
                     });
                 }
