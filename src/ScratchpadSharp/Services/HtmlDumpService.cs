@@ -1,50 +1,79 @@
 using System;
-using System.Net;
+using System.IO;
 using System.Text;
-using Dumpify;
+using ScratchpadSharp.Core.External.NetPad.Presentation;
 using ScratchpadSharp.Core.Services;
 
 namespace ScratchpadSharp.Services;
 
 public class HtmlDumpService
 {
-    private Action<string>? _updateCallback;
-    private readonly string _htmlLoopTemplate;
+    private static readonly Lazy<string> HtmlLoopTemplate = new(LoadHtmlLoopTemplate);
 
-    private readonly StringBuilder _contentBuffer = new StringBuilder();
+    private Action<string>? _updateCallback;
+    private readonly StringBuilder _contentBuffer = new();
+    private readonly StringBuilder _textBuffer = new();
+
+    public IDumpSink DumpSink { get; }
+
+    public string TextOutput => _textBuffer.ToString();
 
     public HtmlDumpService()
     {
-        // Register this service as the HTML renderer in the core dispatcher
-        DumpDispatcher.RegisterHtmlRenderer(RenderHtml);
+        DumpSink = new DumpDispatcher(RenderHtml, AppendPlainText);
+    }
 
-        // Load NetPad styles from embedded resource in Core assembly
+    public void SetUpdateCallback(Action<string> callback)
+    {
+        _updateCallback = callback;
+    }
+
+    public void Clear()
+    {
+        _contentBuffer.Clear();
+        _textBuffer.Clear();
+        var output = HtmlLoopTemplate.Value.Replace("{{BODY}}", string.Empty);
+        _updateCallback?.Invoke(output);
+    }
+
+    private void AppendPlainText(string text)
+    {
+        _textBuffer.Append(text);
+    }
+
+    private void RenderHtml(object? data, string? label)
+    {
+        try
+        {
+            string htmlContent = data as string ?? data?.ToString() ?? string.Empty;
+            _contentBuffer.Append(htmlContent);
+
+            var output = HtmlLoopTemplate.Value.Replace("{{BODY}}", _contentBuffer.ToString());
+            _updateCallback?.Invoke(output);
+        }
+        catch (Exception ex)
+        {
+            var errorHtml = $"<div style='color:red'>Error rendering HTML: {ex.Message}</div>";
+            _contentBuffer.Append(errorHtml);
+            var output = HtmlLoopTemplate.Value.Replace("{{BODY}}", _contentBuffer.ToString());
+            _updateCallback?.Invoke(output);
+        }
+    }
+
+    private static string LoadHtmlLoopTemplate()
+    {
         var assembly = typeof(DumpDispatcher).Assembly;
-        var resourceName = "ScratchpadSharp.Core.External.NetPad.Presentation.NetPadStyles.css";
+        const string resourceName = "ScratchpadSharp.Core.External.NetPad.Presentation.NetPadStyles.css";
 
-        // Debugging: List all resources
-        foreach (var name in assembly.GetManifestResourceNames())
+        var css = "/* Error loading NetPad styles */";
+        using var stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream != null)
         {
-            // System.Diagnostics.Debug.WriteLine($"Resource: {name}");
-            _updateCallback?.Invoke($"Resource found: {name}");
+            using var reader = new StreamReader(stream);
+            css = reader.ReadToEnd();
         }
 
-        string css = "";
-        using (var stream = assembly.GetManifestResourceStream(resourceName))
-        {
-            if (stream != null)
-            {
-                using var reader = new System.IO.StreamReader(stream);
-                css = reader.ReadToEnd();
-            }
-            else
-            {
-                // Fallback if resource not found (shouldn't happen if build is correct)
-                css = "/* Error loading NetPad styles */";
-            }
-        }
-
-        _htmlLoopTemplate = $@"
+        return $@"
 <!DOCTYPE html>
 <html>
 <head>
@@ -60,43 +89,5 @@ public class HtmlDumpService
     </output-pane>
 </body>
 </html>";
-    }
-
-    public void SetUpdateCallback(Action<string> callback)
-    {
-        _updateCallback = callback;
-    }
-
-    public void Clear()
-    {
-        _contentBuffer.Clear();
-        // Invoke with empty template to clear the view but keep styles/structure ready
-        var output = _htmlLoopTemplate.Replace("{{BODY}}", string.Empty);
-        _updateCallback?.Invoke(output);
-    }
-
-    private void RenderHtml(object? data, string? label)
-    {
-        try
-        {
-            // The dispatcher sends the HTML string as the first argument
-            string htmlContent = data as string ?? data?.ToString() ?? string.Empty;
-
-            // Append the new content to our buffer
-            _contentBuffer.Append(htmlContent);
-
-            // Wrap the full accumulated content in our template with styles
-            var output = _htmlLoopTemplate.Replace("{{BODY}}", _contentBuffer.ToString());
-            _updateCallback?.Invoke(output);
-        }
-        catch (Exception ex)
-        {
-            // For errors, we might want to append them too, or just log them.
-            // Let's append a red error message to the buffer so the user sees it in context.
-            var errorHtml = $"<div style='color:red'>Error rendering HTML: {ex.Message}</div>";
-            _contentBuffer.Append(errorHtml);
-            var output = _htmlLoopTemplate.Replace("{{BODY}}", _contentBuffer.ToString());
-            _updateCallback?.Invoke(output);
-        }
     }
 }

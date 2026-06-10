@@ -1,63 +1,66 @@
 <UserControl xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:views="clr-namespace:ScratchpadSharp.Views"
     xmlns:converters="using:ScratchpadSharp.Converters"
-    xmlns:vm="using:ScratchpadSharp.ViewModels"
     x:Class="ScratchpadSharp.Views.SignatureHelpPopup"
-    Width="700"
-    MaxHeight="200">
+    Width="560"
+    MaxHeight="240">
 
     <UserControl.Resources>
         <converters:HighlightBoolConverter x:Key="HighlightBoolConverter" />
     </UserControl.Resources>
 
-    <Border Background="White" 
-            BorderBrush="#CCCCCC" 
-            BorderThickness="1" 
-            CornerRadius="4" 
-            BoxShadow="0 4 12 #00000020"
-            Padding="0">
-        
-        <!-- Signature List Only -->
+    <Border Classes="editor-popup" Padding="4,2">
         <ListBox ItemsSource="{Binding Signatures}"
                  SelectedItem="{Binding SelectedSignature}"
                  Background="Transparent"
                  BorderThickness="0"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="6,2" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+                <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+            </ListBox.Styles>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <StackPanel Spacing="2">
-                        <!-- Top Row: Signature + Summary -->
-                        <Grid ColumnDefinitions="Auto,*">
-                            
-                            <!-- Signature -->
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                 <!-- Extension Badge -->
-                                <Border Background="#E3F2FD" 
-                                        CornerRadius="3"
-                                        Padding="4,2"
+                    <StackPanel Spacing="4">
+                        <Border CornerRadius="4"
+                                Padding="8,5"
+                                Background="{Binding IsBestMatch, Converter={StaticResource HighlightBoolConverter}, ConverterParameter=#EAF7ED|Transparent}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Border Background="{StaticResource AccentSubtleBrush}"
+                                        CornerRadius="4"
+                                        Padding="5,2"
                                         IsVisible="{Binding IsExtensionMethod}">
-                                    <TextBlock Text="ext" 
+                                    <TextBlock Text="ext"
                                                FontSize="9"
-                                               Foreground="#1976D2"
+                                               Foreground="{StaticResource AccentBrush}"
                                                FontWeight="Bold" />
                                 </Border>
 
-                                <TextBlock Text="{Binding ReturnType}" 
-                                           Foreground="#0000FF" 
-                                           FontSize="11"
+                                <TextBlock Text="{Binding ReturnType}"
+                                           Foreground="{StaticResource AccentBrush}"
+                                           FontSize="12"
                                            FontFamily="Cascadia Code, Consolas, monospace" />
-                                
-                                <TextBlock Text="{Binding Name}" 
-                                           FontWeight="Bold" 
-                                           FontSize="11"
+
+                                <TextBlock Text="{Binding Name}"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
                                            FontFamily="Cascadia Code, Consolas, monospace" />
-                                
-                                <TextBlock Text="(" 
-                                           FontSize="11"
-                                           FontFamily="Cascadia Code, Consolas, monospace" />
-                                           
-                                <!-- Parameters -->
+
+                                <TextBlock Text="("
+                                           FontSize="12"
+                                           FontFamily="Cascadia Code, Consolas, monospace"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+
                                 <ItemsControl ItemsSource="{Binding Parameters}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -67,48 +70,47 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
-                                                 <TextBlock Text="{Binding Type}"
-                                                           Foreground="{Binding IsHighlighted, Converter={StaticResource HighlightBoolConverter}, ConverterParameter=#1E90FF|#666666}"
+                                                <TextBlock Text="{Binding Type}"
+                                                           Foreground="{Binding IsHighlighted, Converter={StaticResource HighlightBoolConverter}, ConverterParameter=#2F81F7|#586069}"
                                                            FontWeight="{Binding IsHighlighted, Converter={x:Static converters:BoldConverter.Instance}}"
-                                                           FontSize="11"
-                                                           FontFamily="Cascadia Code, Consolas, monospace"/>
-                                                <TextBlock Text=" " FontSize="11"/>
+                                                           FontSize="12"
+                                                           FontFamily="Cascadia Code, Consolas, monospace" />
+                                                <TextBlock Text=" " FontSize="12" />
                                                 <TextBlock Text="{Binding Name}"
-                                                           Foreground="{Binding IsHighlighted, Converter={StaticResource HighlightBoolConverter}, ConverterParameter=#1E90FF|#000000}"
+                                                           Foreground="{Binding IsHighlighted, Converter={StaticResource HighlightBoolConverter}, ConverterParameter=#2F81F7|#1B1F23}"
                                                            FontWeight="{Binding IsHighlighted, Converter={x:Static converters:BoldConverter.Instance}}"
-                                                           FontSize="11"
-                                                           FontFamily="Cascadia Code, Consolas, monospace"/>
-                                                <TextBlock Text=", " 
-                                                           FontSize="11"
-                                                           IsVisible="{Binding !IsLast}"/>
+                                                           FontSize="12"
+                                                           FontFamily="Cascadia Code, Consolas, monospace" />
+                                                <TextBlock Text=", "
+                                                           FontSize="12"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           IsVisible="{Binding !IsLast}" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                
-                                <TextBlock Text=")" 
-                                           FontSize="11"
-                                           FontFamily="Cascadia Code, Consolas, monospace" />
+
+                                <TextBlock Text=")"
+                                           FontSize="12"
+                                           FontFamily="Cascadia Code, Consolas, monospace"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
                             </StackPanel>
+                        </Border>
 
-                            <!-- Summary (Inline) -->
-                            <TextBlock Grid.Column="1" 
-                                       Text="{Binding Summary}"
-                                       FontSize="11"
-                                       Foreground="#888888"
-                                       TextTrimming="CharacterEllipsis"
-                                       Margin="12,0,0,0"
-                                       VerticalAlignment="Center"
-                                       IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                        </Grid>
-
-                        <!-- Bottom Row: Parameter Doc (Only if Best Match) -->
-                        <TextBlock Text="{Binding CurrentParameterDocumentation}"
-                                   FontSize="11"
-                                   Foreground="#333333"
-                                   TextWrapping="Wrap"
-                                   Margin="20,2,0,4"
-                                   IsVisible="{Binding IsBestMatch}" />
+                        <StackPanel Spacing="4"
+                                    Margin="8,0,8,4"
+                                    IsVisible="{Binding IsBestMatch}">
+                            <TextBlock Text="{Binding Summary}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            <TextBlock Text="{Binding CurrentParameterDocumentation}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding CurrentParameterDocumentation, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
                     </StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>

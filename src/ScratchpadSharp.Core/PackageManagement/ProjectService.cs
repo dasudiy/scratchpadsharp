@@ -121,14 +121,14 @@ public class ProjectService
     /// 更新 Config -> 重新 Resolve -> 更新 Manifest -> 刷新环境。
     /// </summary>
     public async Task AddPackageAsync(string tabId, ProjectContext context, PackageIdentity package,
-        CancellationToken ct = default)
+        CancellationToken ct = default, IProgress<PackageInstallProgress>? progress = null)
     {
         // 1. 更新意图 (Config)
         context.Config.NuGetPackages[package.Id] = package.Version.ToString();
 
+        progress?.Report(new PackageInstallProgress("Resolving dependencies...", 5, package.Id));
+
         // 2. 重新计算并保存 (Logic + IO)
-        // 为了复用逻辑，这里我们需要重新构建一个 DTO 或者直接操作 Manifest
-        // 简单起见，我们假设有一个方法能把 Context 转回 DTO，或者直接在 Context 上操作
         var packageDto = new ScriptPackage
         {
             Config = context.Config,
@@ -136,11 +136,15 @@ public class ProjectService
             RootPath = context.EffectiveRootPath
         };
 
-        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct);
+        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct, progress);
+
+        progress?.Report(new PackageInstallProgress("Updating references...", 98, package.Id));
 
         // 3. 重新补水并刷新
         HydratePaths(context);
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+
+        progress?.Report(new PackageInstallProgress($"Installed {package.Id} {package.Version}", 100, package.Id));
     }
 
     /// <summary>
@@ -271,7 +275,8 @@ public class ProjectService
     /// <summary>
     /// 执行全量解析、下载、提取，并将结果保存到磁盘。
     /// </summary>
-    private async Task ResolveAndSaveAsync(ScriptPackage package, string originalPath, CancellationToken ct)
+    private async Task ResolveAndSaveAsync(ScriptPackage package, string originalPath, CancellationToken ct,
+        IProgress<PackageInstallProgress>? progress = null)
     {
         // A. 准备意图
         var rootPackages = package.Config.NuGetPackages
@@ -279,7 +284,7 @@ public class ProjectService
             .ToList();
 
         // B. [大脑] 计算依赖图 (仅逻辑)
-        // 这一步解决了版本冲突，拿到了一个扁平的包列表
+        progress?.Report(new PackageInstallProgress("Resolving dependency graph...", 10, ""));
         var graph = await DependencyResolver.Instance.ResolveFullGraphAsync(rootPackages,
             NuGetFramework.Parse("net8.0"), ct);
 
@@ -289,10 +294,16 @@ public class ProjectService
         package.Manifest.ResolvedState.NativeAssets.Clear();
 
         // C. [工人] 下载并提取资产
-        foreach (var identity in graph)
+        var graphList = graph.ToList();
+        for (var i = 0; i < graphList.Count; i++)
         {
-            // 1. 确保物理文件存在
-            var packagePath = await NuGetService.Instance.EnsurePackageDownloadedAsync(identity, ct);
+            var identity = graphList[i];
+            var basePercent = 15 + (75.0 * i / Math.Max(graphList.Count, 1));
+            progress?.Report(new PackageInstallProgress(
+                $"Processing {identity.Id} {identity.Version}...", basePercent, identity.Id));
+
+            // 1. 确保物理文件存在（已缓存则跳过下载）
+            var packagePath = await NuGetService.Instance.EnsurePackageDownloadedAsync(identity, ct, progress);
 
             // 2. 智能提取 (ref/lib, runtimes)
             var assets = await NuGetService.Instance.GetPackageAssetsAsync(packagePath, NuGetFramework.Parse("net8.0"));

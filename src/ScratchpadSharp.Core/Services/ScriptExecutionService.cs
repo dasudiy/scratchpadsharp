@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
+using ScratchpadSharp.Core.External.NetPad.Presentation;
 using ScratchpadSharp.Core.Isolation;
 using ScratchpadSharp.Shared.Models;
 
@@ -16,12 +17,12 @@ namespace ScratchpadSharp.Core.Services;
 
 public interface IScriptExecutionService
 {
-    Task<ScriptExecutionResult> ExecuteAsync(string code, ProjectContext context, CancellationToken ct = default);
+    Task<ScriptExecutionResult> ExecuteAsync(string code, ProjectContext context, IDumpSink sink, CancellationToken ct = default);
 }
 
 public class ScriptExecutionService : IScriptExecutionService
 {
-    public async Task<ScriptExecutionResult> ExecuteAsync(string code, ProjectContext context, CancellationToken ct = default)
+    public async Task<ScriptExecutionResult> ExecuteAsync(string code, ProjectContext context, IDumpSink sink, CancellationToken ct = default)
     {
         try
         {
@@ -61,7 +62,7 @@ public class ScriptExecutionService : IScriptExecutionService
                         );
                     }).ToList();
 
-                    DumpDispatcher.Dispatch(errorRecords);
+                    sink.ResultWrite(errorRecords);
 
                     return new ScriptExecutionResult
                     {
@@ -72,7 +73,7 @@ public class ScriptExecutionService : IScriptExecutionService
                 }
                 
                 // Execute in isolated ALC
-                return await ExecuteInIsolationAsync(compilation.Assembly, compilation.EntryPoint, context.Config, context.AbsoluteNativeAssets);
+                return await ExecuteInIsolationAsync(compilation.Assembly, compilation.EntryPoint, context.Config, sink, context.AbsoluteNativeAssets);
             });
         }
         catch (Exception ex)
@@ -120,16 +121,14 @@ public class ScriptExecutionService : IScriptExecutionService
     }
 
     private async Task<ScriptExecutionResult> ExecuteInIsolationAsync(
-        MemoryStream assemblyStream, string entryPoint, ScriptConfig config, List<string>? nativePaths = null)
+        MemoryStream assemblyStream, string entryPoint, ScriptConfig config, IDumpSink sink, List<string>? nativePaths = null)
     {
         ScriptAssemblyLoadContext? alc = null;
         WeakReference? alcWeakRef = null;
 
         try
         {
-            // Set the Dump Sink to our custom one
-            // This ensures .Dump() calls go through ScratchpadDumpSink -> HtmlPresenter -> DumpDispatcher
-            ScratchpadSharp.Core.External.NetPad.Presentation.DumpExtension.UseSink(new DumpDispatcher());
+            DumpExtension.UseSink(sink);
 
             // Create isolated ALC with additional probing paths if needed
             var additionalPaths = new List<string>();
@@ -185,15 +184,10 @@ public class ScriptExecutionService : IScriptExecutionService
             var originalOut = Console.Out;
             var originalError = Console.Error;
 
-            // Create a custom writer that forwards to outputWriter AND DumpDispatcher immediately
-            // This allows real-time output in the UI
-            using var realTimeWriter = new RealTimeConsoleWriter(outputWriter, (text) =>
+            using var realTimeWriter = new RealTimeConsoleWriter(outputWriter, text =>
             {
-                // Dispatch specialized text message, or just generic text
                 if (!string.IsNullOrEmpty(text))
-                {
-                    DumpDispatcher.Dispatch(text);
-                }
+                    sink.ResultWrite(text);
             });
 
             try

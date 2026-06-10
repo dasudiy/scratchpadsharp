@@ -1,38 +1,74 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Reactive;
+using System.Reactive.Linq;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using ReactiveUI;
 using ScratchpadSharp.Core.Services;
-using ScratchpadSharp.Core.Storage;
-using ScratchpadSharp.Shared.Models;
-using ScratchpadSharp.Core.PackageManagement;
-using Splat;
-
 
 namespace ScratchpadSharp.ViewModels;
 
 public class MainWindowViewModel : ReactiveObject
 {
-    private const string TabId = "main";
-    private string output = string.Empty;
-    private string statusText = "Ready";
-    private bool isExecuting;
-    private string codeText = string.Empty;
-    private ProjectContext projectContext = null!;
-    private bool isProjectReady;
+    private ScriptTabViewModel? selectedTab;
     private Window? mainWindow;
 
-
     private readonly IScriptExecutionService scriptService;
-    private readonly Services.HtmlDumpService? htmlDumpService; // Fixed: added field
 
-    private string htmlOutput = string.Empty;
-    private bool showHtmlOutput = true;
+    public MainWindowViewModel(IScriptExecutionService scriptService)
+    {
+        this.scriptService = scriptService;
+        Tabs = new ObservableCollection<ScriptTabViewModel>();
+
+        NewTabCommand = ReactiveCommand.Create(AddTab);
+        CloseTabCommand = ReactiveCommand.Create(CloseSelectedTab,
+            this.WhenAnyValue(x => x.SelectedTab).Select(tab => tab != null));
+        OpenCommand = ReactiveCommand.CreateFromTask(OpenAsync);
+        SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, SelectedTabReady);
+        SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync, SelectedTabReady);
+        ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync, SelectedTabReady);
+        CancelCommand = ReactiveCommand.Create(Cancel,
+            this.WhenAnyValue(x => x.SelectedTab).Select(tab => tab != null));
+        FormatCommand = ReactiveCommand.CreateFromTask(FormatAsync, SelectedTabReady);
+        ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager, SelectedTabReady);
+        ExitCommand = ReactiveCommand.Create(Exit);
+
+        AddTab();
+    }
+
+    public ObservableCollection<ScriptTabViewModel> Tabs { get; }
+
+    public ScriptTabViewModel? SelectedTab
+    {
+        get => selectedTab;
+        set
+        {
+            if (selectedTab != null)
+                selectedTab.PropertyChanged -= OnSelectedTabPropertyChanged;
+
+            this.RaiseAndSetIfChanged(ref selectedTab, value);
+
+            if (selectedTab != null)
+                selectedTab.PropertyChanged += OnSelectedTabPropertyChanged;
+
+            UpdateTabSelectionStates();
+
+            this.RaisePropertyChanged(nameof(StatusText));
+            this.RaisePropertyChanged(nameof(StatusBarPath));
+            this.RaisePropertyChanged(nameof(CursorPosition));
+        }
+    }
+
+    public string StatusText => SelectedTab?.StatusText ?? "Ready";
+
+    public string StatusBarPath =>
+        SelectedTab != null ? $"ScratchpadSharp › {SelectedTab.Title}" : "ScratchpadSharp";
+
+    public string CursorPosition => SelectedTab?.CursorPosition ?? "1:1";
 
     public Window? MainWindow
     {
@@ -40,164 +76,96 @@ public class MainWindowViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref mainWindow, value);
     }
 
-    public string CodeText
-    {
-        get => codeText;
-        set => this.RaiseAndSetIfChanged(ref codeText, value);
-    }
-
-    public string Output
-    {
-        get => output;
-        set => this.RaiseAndSetIfChanged(ref output, value);
-    }
-
-    public string StatusText
-    {
-        get => statusText;
-        set => this.RaiseAndSetIfChanged(ref statusText, value);
-    }
-
-    public bool IsExecuting
-    {
-        get => isExecuting;
-        set => this.RaiseAndSetIfChanged(ref isExecuting, value);
-    }
-
-
-    public bool ShowHtmlOutput
-    {
-        get => showHtmlOutput;
-        set => this.RaiseAndSetIfChanged(ref showHtmlOutput, value);
-    }
-
-    public string HtmlOutput
-    {
-        get => htmlOutput;
-        set => this.RaiseAndSetIfChanged(ref htmlOutput, value);
-    }
-
-    public ProjectContext ProjectContext => projectContext;
-
-    public bool IsProjectReady => isProjectReady;
-
-    public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
-    public ReactiveCommand<Unit, Unit> NewCommand { get; }
+    public ReactiveCommand<Unit, Unit> NewTabCommand { get; }
+    public ReactiveCommand<Unit, Unit> CloseTabCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveAsCommand { get; }
+    public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
-    public ReactiveCommand<Unit, Unit> ExitCommand { get; }
     public ReactiveCommand<Unit, Unit> ManageReferencesCommand { get; }
-    public ReactiveCommand<Unit, Unit> ToggleOutputViewCommand { get; }
+    public ReactiveCommand<Unit, Unit> ExitCommand { get; }
 
-    public MainWindowViewModel() : this(new ScriptExecutionService(),
-        null)
+    private IObservable<bool> SelectedTabReady =>
+        this.WhenAnyValue(x => x.SelectedTab)
+            .SelectMany(tab => tab != null
+                ? tab.WhenAnyValue(t => t.IsProjectReady)
+                : Observable.Return(false));
+
+    private void OnSelectedTabPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ScriptTabViewModel.StatusText))
+            this.RaisePropertyChanged(nameof(StatusText));
+        if (e.PropertyName == nameof(ScriptTabViewModel.Title))
+            this.RaisePropertyChanged(nameof(StatusBarPath));
+        if (e.PropertyName == nameof(ScriptTabViewModel.CursorPosition))
+            this.RaisePropertyChanged(nameof(CursorPosition));
     }
 
-
-    public MainWindowViewModel(IScriptExecutionService scriptService, Services.HtmlDumpService? htmlDumpService = null)
+    private void UpdateTabSelectionStates()
     {
-        this.scriptService = scriptService;
-        this.htmlDumpService = htmlDumpService;
-
-        if (this.htmlDumpService != null)
-        {
-            this.htmlDumpService.SetUpdateCallback(html =>
-            {
-                Avalonia.Threading.Dispatcher.UIThread.Post(() => HtmlOutput = html);
-            });
-        }
-
-        codeText = string.Empty;
-        _ = InitializeProjectAsync();
-
-        ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync,
-            this.WhenAnyValue(x => x.IsExecuting, executing => !executing));
-        NewCommand = ReactiveCommand.CreateFromTask(NewAsync);
-        OpenCommand = ReactiveCommand.CreateFromTask(OpenAsync);
-        SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
-        SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync);
-        CancelCommand = ReactiveCommand.Create(Cancel);
-        FormatCommand = ReactiveCommand.CreateFromTask(FormatCodeAsync);
-        ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager);
-        ToggleOutputViewCommand = ReactiveCommand.Create(() => { ShowHtmlOutput = !ShowHtmlOutput; });
-        ExitCommand = ReactiveCommand.Create(() => { System.Diagnostics.Process.GetCurrentProcess().Kill(); });
+        foreach (var tab in Tabs)
+            tab.IsSelected = tab == selectedTab;
     }
 
-    private async Task InitializeProjectAsync()
+    public void AddTab()
     {
-        projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
-        isProjectReady = true;
+        var tab = new ScriptTabViewModel(scriptService);
+        tab.BindCloseHandler(() => CloseTab(tab));
+
+        Tabs.Add(tab);
+        SelectedTab = tab;
     }
 
-    private async Task NewAsync()
+    public void CloseTab(ScriptTabViewModel tab)
     {
-        isProjectReady = false;
-        try
-        {
-            projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
-            CodeText = string.Empty;
-            Output = string.Empty;
-            StatusText = "New file created";
-            htmlDumpService?.Clear();
-        }
-        finally
-        {
-            isProjectReady = true;
-        }
+        tab.Cleanup();
+        Tabs.Remove(tab);
+
+        if (Tabs.Count == 0)
+            AddTab();
+        else if (SelectedTab == tab || SelectedTab == null)
+            SelectedTab = Tabs.Last();
+    }
+
+    private void CloseSelectedTab()
+    {
+        if (SelectedTab != null)
+            CloseTab(SelectedTab);
     }
 
     private async Task OpenAsync()
     {
+        if (SelectedTab == null) return;
+
         try
         {
-            StatusText = "Opening file...";
+            SelectedTab.StatusText = "Opening file...";
 
             var filePath = await ShowOpenFileDialogAsync();
             if (filePath == null)
             {
-                StatusText = "Open cancelled";
+                SelectedTab.StatusText = "Open cancelled";
                 return;
             }
 
-            isProjectReady = false;
-            try
-            {
-                if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Plain .cs file: create a fresh project and load code only
-                    projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
-                    projectContext.SourcePath = filePath;
-                    CodeText = await File.ReadAllTextAsync(filePath);
-                    Output = string.Empty;
-                }
-                else
-                {
-                    projectContext = await ProjectService.Instance.LoadProjectAsync(TabId, filePath);
-                    CodeText = projectContext.Code;
-                    Output = projectContext.Output;
-                }
-
-                StatusText = $"Opened: {Path.GetFileName(filePath)}";
-            }
-            finally
-            {
-                isProjectReady = true;
-            }
+            await SelectedTab.OpenFileAsync(filePath);
+            this.RaisePropertyChanged(nameof(StatusText));
         }
         catch (Exception ex)
         {
-            Output = $"Error opening file: {ex.Message}";
-            StatusText = "Error opening file";
+            SelectedTab.Output = $"Error opening file: {ex.Message}";
+            SelectedTab.StatusText = "Error opening file";
+            this.RaisePropertyChanged(nameof(StatusText));
         }
     }
 
     private async Task SaveAsync()
     {
-        if (string.IsNullOrEmpty(projectContext.SourcePath))
+        if (SelectedTab is not { IsProjectReady: true }) return;
+
+        if (string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath))
         {
             await SaveAsAsync();
             return;
@@ -205,97 +173,79 @@ public class MainWindowViewModel : ReactiveObject
 
         try
         {
-            StatusText = "Saving...";
-            projectContext.Code = CodeText;
-
-            if (projectContext.SourcePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            {
-                // Plain .cs file: write code only
-                await File.WriteAllTextAsync(projectContext.SourcePath, CodeText);
-            }
-            else
-            {
-                await ProjectService.Instance.SaveProjectAsync(projectContext);
-            }
-
-            StatusText = $"Saved: {Path.GetFileName(projectContext.SourcePath)}";
+            SelectedTab.StatusText = "Saving...";
+            await SelectedTab.SaveAsync();
+            this.RaisePropertyChanged(nameof(StatusText));
         }
         catch (Exception ex)
         {
-            StatusText = $"Save failed: {ex.Message}";
+            SelectedTab.StatusText = $"Save failed: {ex.Message}";
+            this.RaisePropertyChanged(nameof(StatusText));
         }
     }
 
     private async Task SaveAsAsync()
     {
+        if (SelectedTab is not { IsProjectReady: true }) return;
+
         try
         {
             var filePath = await ShowSaveFileDialogAsync();
             if (string.IsNullOrEmpty(filePath)) return;
-            projectContext.SourcePath = filePath;
+
+            SelectedTab.SetSourcePath(filePath);
             await SaveAsync();
         }
         catch (Exception ex)
         {
-            StatusText = $"Save As failed: {ex.Message}";
-        }
-    }
-
-    private void Cancel()
-    {
-        StatusText = "Cancellation requested";
-        IsExecuting = false;
-        // Ideally we would trigger a CancellationTokenSource cancel here
-    }
-
-    private async Task FormatCodeAsync()
-    {
-        try
-        {
-            CodeText = await CodeFormatterService.FormatCodeAsync(TabId, CodeText);
-            StatusText = "Code formatted";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Format failed: {ex.Message}";
+            SelectedTab.StatusText = $"Save As failed: {ex.Message}";
+            this.RaisePropertyChanged(nameof(StatusText));
         }
     }
 
     private async Task ExecuteAsync()
     {
-        IsExecuting = true;
-        try
-        {
-            StatusText = "Executing...";
+        if (SelectedTab is not { IsProjectReady: true }) return;
+        await SelectedTab.RunExecuteAsync();
+        this.RaisePropertyChanged(nameof(StatusText));
+    }
 
-            // Clear previous outputs
-            Output = string.Empty;
-            htmlDumpService?.Clear();
+    private void Cancel()
+    {
+        if (SelectedTab == null) return;
+        SelectedTab.StatusText = "Cancellation requested";
+        SelectedTab.IsExecuting = false;
+        this.RaisePropertyChanged(nameof(StatusText));
+    }
 
-            var code = CodeText;
-            var result = await scriptService.ExecuteAsync(code, projectContext);
+    private async Task FormatAsync()
+    {
+        if (SelectedTab is not { IsProjectReady: true }) return;
+        await SelectedTab.RunFormatAsync();
+        this.RaisePropertyChanged(nameof(StatusText));
+    }
 
-            if (result.Success)
-            {
-                Output = result.Output;
-                projectContext.Output = result.Output;
-                StatusText = "Execution completed successfully";
-            }
-            else
-            {
-                Output = $"Error:\n{result.ErrorMessage}\n\n{result.Output}";
-                StatusText = "Execution failed";
-            }
-        }
-        catch (Exception ex)
-        {
-            Output = $"Fatal error: {ex.Message}\n\n{ex.StackTrace}";
-            StatusText = "Fatal error";
-        }
-        finally
-        {
-            IsExecuting = false;
-        }
+    private void OpenReferenceManager()
+    {
+        if (MainWindow == null || SelectedTab is not { IsProjectReady: true }) return;
+
+        var vm = new ReferenceManagementViewModel(SelectedTab.TabId, SelectedTab.ProjectContext);
+        var window = new Views.ReferenceManagementWindow { DataContext = vm };
+        window.ShowDialog(MainWindow);
+    }
+
+    private void Exit()
+    {
+        foreach (var tab in Tabs.ToList())
+            tab.Cleanup();
+
+        System.Diagnostics.Process.GetCurrentProcess().Kill();
+    }
+
+    public void CleanupAllTabs()
+    {
+        foreach (var tab in Tabs.ToList())
+            tab.Cleanup();
     }
 
     private async Task<string?> ShowOpenFileDialogAsync()
@@ -306,10 +256,10 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = "Open Script",
             AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("Scratchpad Script") { Patterns = new[] { "*.cs", "*.lqpkg" } }
-            }
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Scratchpad Script") { Patterns = ["*.cs", "*.lqpkg"] }
+            ]
         });
 
         return files.FirstOrDefault()?.Path.LocalPath;
@@ -323,26 +273,13 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = "Save Script",
             DefaultExtension = "cs",
-            FileTypeChoices = new[]
-            {
-                new FilePickerFileType("C# Script") { Patterns = new[] { "*.cs" } },
-                new FilePickerFileType("Script Package") { Patterns = new[] { "*.lqpkg" } }
-            }
+            FileTypeChoices =
+            [
+                new FilePickerFileType("C# Script") { Patterns = ["*.cs"] },
+                new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }
+            ]
         });
 
         return file?.Path.LocalPath;
-    }
-
-    private void OpenReferenceManager()
-    {
-        if (MainWindow == null) return;
-
-        var vm = new ReferenceManagementViewModel(TabId, projectContext);
-
-        var window = new Views.ReferenceManagementWindow
-        {
-            DataContext = vm
-        };
-        window.ShowDialog(MainWindow);
     }
 }

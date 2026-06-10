@@ -1,17 +1,19 @@
 <Window xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:avaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
     xmlns:views="using:ScratchpadSharp.Views"
+    xmlns:vm="using:ScratchpadSharp.ViewModels"
     xmlns:converters="using:ScratchpadSharp.Converters"
-    xmlns:the="clr-namespace:TheArtOfDev.HtmlRenderer.Avalonia;assembly=Avalonia.HtmlRenderer"
     x:Class="ScratchpadSharp.Views.MainWindow"
     Title="ScratchpadSharp"
+    Icon="/Assets/app-icon.png"
     Width="1200"
     Height="800"
+    Background="#FBFCFD"
     WindowStartupLocation="CenterScreen">
 
     <Window.KeyBindings>
-        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewCommand}" />
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewTabCommand}" />
+        <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseTabCommand}" />
         <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
         <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
@@ -26,93 +28,133 @@
     </Window.Resources>
 
     <DockPanel LastChildFill="True">
-        <!-- Menu -->
-        <Menu DockPanel.Dock="Top">
-            <MenuItem Header="File">
-                <MenuItem Header="New" Command="{Binding NewCommand}" InputGesture="Ctrl+N" />
-                <MenuItem Header="Open" Command="{Binding OpenCommand}" InputGesture="Ctrl+O" />
-                <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
-                <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}"
-                    InputGesture="Ctrl+Shift+S" />
-                <Separator />
-                <MenuItem Header="Exit" Command="{Binding ExitCommand}" />
-            </MenuItem>
-            <MenuItem Header="Edit">
-                <MenuItem Header="Format Document" Command="{Binding FormatCommand}" InputGesture="Ctrl+Shift+F" />
-                <Separator />
-                <MenuItem Header="Manage References..." Command="{Binding ManageReferencesCommand}" InputGesture="F4" />
-            </MenuItem>
-            <MenuItem Header="Run">
-                <MenuItem Header="Execute Script" Command="{Binding ExecuteCommand}"
-                    InputGesture="F5" />
-                <MenuItem Header="Cancel" Command="{Binding CancelCommand}" InputGesture="Shift+F5" />
-            </MenuItem>
-        </Menu>
 
-        <!-- Status Bar -->
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Height="24"
-            Background="#F0F0F0">
-            <TextBlock Text="Ready" Foreground="#666666" Margin="8,4" IsVisible="{Binding !IsDownloading}"/>
-            <StackPanel Orientation="Horizontal" IsVisible="{Binding IsDownloading}" Margin="8,0">
-                <ProgressBar Minimum="0" Maximum="100" Value="{Binding DownloadProgress}" Width="100" Height="10" Margin="0,7,8,0"/>
-                <TextBlock Text="{Binding DownloadMessage}" Foreground="#0066CC" VerticalAlignment="Center"/>
+        <!-- Toolbar -->
+        <Border DockPanel.Dock="Top" Classes="rider-header">
+            <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,4" VerticalAlignment="Center">
+                <Button Classes="rider-run-btn"
+                        Command="{Binding ExecuteCommand}"
+                        CommandParameter="{Binding SelectedTab}"
+                        ToolTip.Tip="Execute Script (F5)">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="▶" FontSize="11" />
+                        <TextBlock Text="Run" />
+                    </StackPanel>
+                </Button>
+                <Button Classes="rider-toolbar-btn"
+                        Command="{Binding CancelCommand}"
+                        ToolTip.Tip="Cancel (Shift+F5)">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="■" FontSize="11" />
+                        <TextBlock Text="Stop" />
+                    </StackPanel>
+                </Button>
+                <Border Classes="rider-toolbar-sep" />
+                <Button Classes="rider-toolbar-btn"
+                        Command="{Binding OpenCommand}"
+                        ToolTip.Tip="Open File (Ctrl+O)">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="📂" FontSize="12" />
+                        <TextBlock Text="Open" />
+                    </StackPanel>
+                </Button>
+                <Button Classes="rider-toolbar-btn"
+                        Command="{Binding SaveCommand}"
+                        ToolTip.Tip="Save (Ctrl+S)">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="💾" FontSize="12" />
+                        <TextBlock Text="Save" />
+                    </StackPanel>
+                </Button>
+                <Button Classes="rider-toolbar-btn"
+                        Command="{Binding FormatCommand}"
+                        ToolTip.Tip="Format Document (Ctrl+Alt+F)">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="≡" FontSize="13" FontWeight="Bold" />
+                        <TextBlock Text="Format" />
+                    </StackPanel>
+                </Button>
+                <Border Classes="rider-toolbar-sep" />
+                <Button Classes="rider-toolbar-btn"
+                        Command="{Binding ManageReferencesCommand}"
+                        ToolTip.Tip="Manage References (F4)">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="⚙" FontSize="12" />
+                        <TextBlock Text="References" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
-            <TextBlock Margin="8,4,0,4" Text="{Binding StatusText}" Foreground="#666666" />
-        </StackPanel>
+        </Border>
 
-        <!-- Main Content -->
-        <Grid x:Name="MainGrid" RowDefinitions="*, Auto, 2*" Background="White">
-            <!-- Code Editor -->
-            <avaloniaEdit:TextEditor Grid.Row="0"
-            Name="CodeEditor"
-            FontFamily="JetBrains Mono, Cascadia Code, DejaVu Sans Mono, monospace"
-            FontWeight="Medium"
-            ShowLineNumbers="True"
-            WordWrap="False"                
-            IsReadOnly="False"
-            MinHeight="200"
-            IsVisible="True"
-            IsEnabled="True"
-            Focusable="True"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch" />
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Classes="rider-status-bar">
+            <Grid ColumnDefinitions="*, Auto">
+                <TextBlock Grid.Column="0"
+                           Margin="12,0,0,0"
+                           Text="{Binding StatusBarPath}"
+                           Classes="rider-status-text" />
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="0"
+                            Margin="0,0,12,0">
+                    <TextBlock Text="{Binding StatusText}"
+                               Classes="rider-status-text"
+                               Margin="0,0,12,0" />
+                    <Border Classes="rider-status-sep" Margin="0,0,12,0" />
+                    <TextBlock Text="{Binding CursorPosition}"
+                               Classes="rider-status-text"
+                               Margin="0,0,12,0" />
+                    <Border Classes="rider-status-sep" Margin="0,0,12,0" />
+                    <TextBlock Text="UTF-8"
+                               Classes="rider-status-text"
+                               Margin="0,0,12,0" />
+                    <Border Classes="rider-status-sep" Margin="0,0,12,0" />
+                    <TextBlock Text="C#"
+                               Classes="rider-status-text"
+                               Margin="0,0,12,0" />
+                    <Border Classes="rider-status-sep" Margin="0,0,12,0" />
+                    <TextBlock Text="4 spaces"
+                               Classes="rider-status-text" />
+                </StackPanel>
+            </Grid>
+        </Border>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Row="1" Height="4" Background="#CCCCCC" />
-
-            <!-- Results Panel -->
-            <!-- Results Panel -->
-            <Border Grid.Row="2" BorderThickness="0,1,0,0">
-                <Grid RowDefinitions="Auto, *">
-                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto">
-                        <TextBlock Grid.Column="0"
-                            Text="Output"
-                            FontWeight="Bold"
-                            Padding="8,4" 
-                            VerticalAlignment="Center"/>
-                        <Button Grid.Column="1"
-                            Command="{Binding ToggleOutputViewCommand}"
-                            Content="{Binding ShowHtmlOutput, Converter={StaticResource HighlightBoolConverter}, ConverterParameter='HTML|Text'}" 
-                            Margin="4"
-                            Padding="8,2"/>
-                    </Grid>
-                    
-                    <Panel Grid.Row="1">
-                        <!-- HTML Output from Dumpify -->
-                        <ScrollViewer IsVisible="{Binding ShowHtmlOutput}">
-                             <the:HtmlPanel Text="{Binding HtmlOutput}" />
-                        </ScrollViewer>
-                        
-                        <!-- Raw Text Output -->
-                        <ScrollViewer IsVisible="{Binding !ShowHtmlOutput}">
-                            <SelectableTextBlock Text="{Binding Output}"
-                                FontFamily="Cascadia Code, Consolas, monospace"
-                                Padding="8,4"
-                                TextWrapping="Wrap" />
-                        </ScrollViewer>
-                    </Panel>
-                </Grid>
+        <!-- Tab strip + editor content -->
+        <Grid RowDefinitions="Auto,*" Background="{StaticResource SurfaceRaisedBrush}">
+            <Border Grid.Row="0" Classes="rider-tab-strip">
+                <DockPanel LastChildFill="True">
+                    <Button DockPanel.Dock="Right"
+                            Classes="rider-new-tab-btn"
+                            Content="+"
+                            Command="{Binding NewTabCommand}"
+                            ToolTip.Tip="New Tab (Ctrl+N)" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Tabs}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="0" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:ScriptTabViewModel">
+                                    <views:EditorTabHeader DataContext="{Binding}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
             </Border>
+
+            <ContentControl Grid.Row="1"
+                              Content="{Binding SelectedTab}">
+                <ContentControl.ContentTemplate>
+                    <DataTemplate DataType="vm:ScriptTabViewModel">
+                        <views:ScriptTabView DataContext="{Binding}" />
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
         </Grid>
+
     </DockPanel>
 </Window>

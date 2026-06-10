@@ -28,22 +28,17 @@ public partial class App : Application
 
         IConfiguration config = builder.Build();
 
-        // Initialize Roslyn workspace asynchronously to avoid blocking UI
         _ = Task.Run(async () =>
         {
             BclXmlResolver.Initialize(config);
             await RoslynWorkspaceService.Instance.InitializeAsync();
         });
 
-        var lifetime = ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+        var lifetime = ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
         if (lifetime != null)
         {
-            var htmlDumpService = new Services.HtmlDumpService();
-            var viewModel = new MainWindowViewModel(new ScriptExecutionService(), htmlDumpService);
-            var mainWindow = new MainWindow
-            {
-                DataContext = viewModel
-            };
+            var viewModel = new MainWindowViewModel(new ScriptExecutionService());
+            var mainWindow = new MainWindow { DataContext = viewModel };
             viewModel.MainWindow = mainWindow;
             lifetime.MainWindow = mainWindow;
         }

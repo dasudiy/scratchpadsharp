@@ -23,11 +23,12 @@ using ScratchpadSharp.Views;
 namespace ScratchpadSharp.Editor;
 
 /// <summary>
-/// Signature Help Popup, based on CompletionWindowBase but positioned above the caret.
+/// Signature Help Popup, positioned above the caret or below the completion list.
 /// </summary>
 public class SignatureHelpWindow : Popup, IStyleable
 {
     private readonly SignatureHelpPopup _popupContent;
+    private readonly Func<CompletionWindow?>? _completionWindowProvider;
     public SignatureHelpViewModel ViewModel { get; }
 
     Type IStyleable.StyleKey => typeof(PopupRoot);
@@ -59,11 +60,13 @@ public class SignatureHelpWindow : Popup, IStyleable
 
 
 
-    public SignatureHelpWindow(TextArea textArea) : base()
+    public SignatureHelpWindow(TextArea textArea, Func<CompletionWindow?>? completionWindowProvider = null) : base()
     {
         ViewModel = new SignatureHelpViewModel();
+        _completionWindowProvider = completionWindowProvider;
         _popupContent = new SignatureHelpPopup { DataContext = ViewModel };
         Child = _popupContent;
+        _popupContent.SizeChanged += (_, _) => UpdatePosition();
 
 
         TextArea = textArea ?? throw new ArgumentNullException(nameof(textArea));
@@ -110,10 +113,10 @@ public class SignatureHelpWindow : Popup, IStyleable
     public void Show()
     {
         UpdatePosition();
-
         Open();
         Height = double.NaN;
         MinHeight = 0;
+        Dispatcher.UIThread.Post(UpdatePosition, DispatcherPriority.Render);
     }
 
     public void Hide()
@@ -359,19 +362,56 @@ public class SignatureHelpWindow : Popup, IStyleable
     }
 
     /// <summary>
-    /// Updates the position of the CompletionWindow based on the parent TextView position and the screen working area.
-    /// It ensures that the CompletionWindow is completely visible on the screen.
+    /// Updates popup position relative to the text view.
     /// </summary>
-    protected void UpdatePosition()
+    public void UpdatePosition()
     {
+        if (TextArea?.TextView == null)
+            return;
+
         var textView = TextArea.TextView;
+        _visualLocation = textView.GetVisualPosition(TextArea.Caret.Position, VisualYPosition.LineBottom);
+        _visualLocationTop = textView.GetVisualPosition(TextArea.Caret.Position, VisualYPosition.LineTop);
 
-        var position = _visualLocation - textView.ScrollOffset;
+        var scrollOffset = textView.ScrollOffset;
+        var caretRect = TextArea.Caret.CalculateCaretRectangle();
+        var lineTop = _visualLocationTop - scrollOffset;
+        var lineBottom = _visualLocation - scrollOffset;
+        var popupHeight = GetPopupHeight();
+        var gap = EditorPopupTheme.PopupGap;
 
-        this.HorizontalOffset = position.X;
-        var rect = TextArea.Caret.CalculateCaretRectangle();
-        //TODO don't know how to set it properly, it should be above the caret, hardcoded for now
-        this.VerticalOffset = position.Y - rect.Height - 200;
+        HorizontalOffset = Math.Max(0, caretRect.X);
+
+        if (lineTop.Y >= popupHeight + gap)
+        {
+            IsUp = true;
+            VerticalOffset = lineTop.Y - popupHeight - gap;
+            return;
+        }
+
+        IsUp = false;
+        var completion = _completionWindowProvider?.Invoke();
+        if (completion is { IsOpen: true })
+            VerticalOffset = GetCompletionBottom(completion) + gap;
+        else
+            VerticalOffset = lineBottom.Y + gap;
+    }
+
+    private double GetPopupHeight()
+    {
+        if (_popupContent.Bounds.Height > 0)
+            return _popupContent.Bounds.Height;
+
+        _popupContent.Measure(new Size(EditorPopupTheme.SignatureWidth, double.PositiveInfinity));
+        return Math.Min(_popupContent.DesiredSize.Height, EditorPopupTheme.SignatureMaxHeight);
+    }
+
+    private static double GetCompletionBottom(CompletionWindow completion)
+    {
+        if (completion.Bounds.Height > 0)
+            return completion.VerticalOffset + completion.Bounds.Height;
+
+        return completion.VerticalOffset + completion.MaxHeight;
     }
 
     // TODO: check if needed

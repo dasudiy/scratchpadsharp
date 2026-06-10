@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
 using AvaloniaEdit;
+using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Editing;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Shared.Models;
@@ -17,23 +18,26 @@ public class SignatureHelpHandler
 {
     private readonly TextEditor _editor;
     private readonly ISignatureProvider _signatureProvider;
-    private readonly Func<MainWindowViewModel?> _viewModelProvider;
+    private readonly Func<ScriptTabViewModel?> _viewModelProvider;
     private readonly string _tabId;
 
     private SignatureHelpWindow? _signatureHelpWindow;
     private CancellationTokenSource? _updateCts;
+    private readonly Func<CompletionWindow?>? _completionWindowProvider;
     private const int UpdateDebounceMs = 100;
 
     public SignatureHelpHandler(
         TextEditor editor,
         ISignatureProvider signatureProvider,
-        Func<MainWindowViewModel?> viewModelProvider,
-        string tabId)
+        Func<ScriptTabViewModel?> viewModelProvider,
+        string tabId,
+        Func<CompletionWindow?>? completionWindowProvider = null)
     {
         _editor = editor;
         _signatureProvider = signatureProvider;
         _viewModelProvider = viewModelProvider;
         _tabId = tabId;
+        _completionWindowProvider = completionWindowProvider;
     }
 
     public void Initialize()
@@ -70,6 +74,8 @@ public class SignatureHelpHandler
     {
         HideSignatureHelp();
     }
+
+    public void UpdatePosition() => _signatureHelpWindow?.UpdatePosition();
 
     public void HideSignatureHelp()
     {
@@ -142,14 +148,18 @@ public class SignatureHelpHandler
                 {
                     if (_signatureHelpWindow == null)
                     {
-                        _signatureHelpWindow = new SignatureHelpWindow(_editor.TextArea);
-                        _signatureHelpWindow.Closed += (s, args) => _signatureHelpWindow = null;
+                        _signatureHelpWindow = new SignatureHelpWindow(
+                            _editor.TextArea,
+                            _completionWindowProvider);
+                        _signatureHelpWindow.Closed += (_, _) => _signatureHelpWindow = null;
                         _signatureHelpWindow.Show();
                     }
 
                     _signatureHelpWindow.ViewModel.UpdateSignatures(signatures, activeParam);
-
-                    // Dispatcher.UIThread.Post(() => _signatureHelpWindow?.UpdatePosition(), DispatcherPriority.Input);
+                    _signatureHelpWindow.UpdatePosition();
+                    Dispatcher.UIThread.Post(
+                        () => _signatureHelpWindow?.UpdatePosition(),
+                        DispatcherPriority.Render);
                 }
             });
         }

@@ -3,132 +3,390 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:ScratchpadSharp.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="650"
         x:Class="ScratchpadSharp.Views.ReferenceManagementWindow"
         Title="Reference Manager"
-        Width="900" Height="600"
+        Width="920" Height="660"
+        Background="#FBFCFD"
         WindowStartupLocation="CenterOwner">
 
-  <!-- <Design.DataContext> -->
-  <!--   ~1~ <vm:ReferenceManagementViewModel/> @1@ -->
-  <!-- </Design.DataContext> -->
+  <Grid RowDefinitions="*, Auto" Margin="0">
 
-  <Grid RowDefinitions="*, Auto">
-    <TabControl Grid.Row="0">
+    <!-- Modern TabControl -->
+    <TabControl Grid.Row="0" Margin="0" Padding="0"
+                Background="Transparent"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1,0,1,1">
+      <TabControl.Styles>
+        <!-- Tab item styling -->
+        <Style Selector="TabControl > TabStrip > TabStripItem">
+          <Setter Property="Background" Value="{StaticResource HeaderBgBrush}" />
+          <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+          <Setter Property="BorderThickness" Value="0,0,1,0" />
+          <Setter Property="Padding" Value="16,8" />
+          <Setter Property="FontSize" Value="11.5" />
+          <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+          <Setter Property="Transitions">
+            <Transitions>
+              <BrushTransition Property="Background" Duration="0:0:0.15" />
+              <BrushTransition Property="Foreground" Duration="0:0:0.15" />
+            </Transitions>
+          </Setter>
+        </Style>
+        <Style Selector="TabControl > TabStrip > TabStripItem:pointerover">
+          <Setter Property="Background" Value="{StaticResource HoverBgBrush}" />
+        </Style>
+        <Style Selector="TabControl > TabStrip > TabStripItem:selected">
+          <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+          <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        </Style>
+      </TabControl.Styles>
+
       <!-- References Tab -->
       <TabItem Header="References">
-        <Grid RowDefinitions="Auto, *, Auto">
-          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="4">
-              <Button Name="AddReferenceButton" Content="Add Reference..." Click="OnAddReferenceClick"/>
-              <Button Content="Restore Packages" Command="{Binding RestorePackagesCommand}" IsVisible="{Binding ShowRestoreButton}" Background="#FFD700" Foreground="Black"/> 
-          </StackPanel>
-          
-          <DataGrid Grid.Row="1" ItemsSource="{Binding AssemblyReferences}" AutoGenerateColumns="False" Margin="4">
+        <Grid RowDefinitions="Auto, *, Auto" Margin="0">
+          <!-- Action bar -->
+          <Border Grid.Row="0"
+                  Background="{StaticResource SurfaceBrush}"
+                  BorderBrush="{StaticResource BorderLightBrush}"
+                  BorderThickness="0,0,0,1"
+                  Padding="12,10">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Name="AddReferenceButton"
+                      Click="OnAddReferenceClick"
+                      BorderThickness="0"
+                      Background="{StaticResource AccentBrush}"
+                      Foreground="White"
+                      FontSize="12.5"
+                      Padding="14,6"
+                      CornerRadius="6"
+                      Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                  <TextBlock Text="+" FontSize="14" FontWeight="Bold" />
+                  <TextBlock Text="Add Reference" />
+                </StackPanel>
+              </Button>
+              <Button Content="Restore Packages"
+                      Command="{Binding RestorePackagesCommand}"
+                      IsVisible="{Binding ShowRestoreButton}"
+                      BorderThickness="0"
+                      Background="{StaticResource WarningBrush}"
+                      Foreground="White"
+                      FontSize="12.5"
+                      Padding="14,6"
+                      CornerRadius="6"
+                      Cursor="Hand" />
+            </StackPanel>
+          </Border>
+
+          <!-- DataGrid -->
+          <DataGrid Grid.Row="1"
+                    ItemsSource="{Binding AssemblyReferences}"
+                    AutoGenerateColumns="False"
+                    Margin="0"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0"
+                    Background="Transparent">
+            <DataGrid.Styles>
+              <Style Selector="DataGridRow">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Transitions">
+                  <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.1" />
+                  </Transitions>
+                </Setter>
+              </Style>
+              <Style Selector="DataGridRow:pointerover">
+                <Setter Property="Background" Value="{StaticResource HoverBgBrush}" />
+              </Style>
+              <Style Selector="DataGridRow:selected">
+                <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+              </Style>
+              <Style Selector="DataGridCell">
+                <Setter Property="Padding" Value="12,8" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+              </Style>
+              <Style Selector="DataGridColumnHeader">
+                <Setter Property="Background" Value="{StaticResource HeaderBgBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                <Setter Property="FontSize" Value="11.5" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="12,8" />
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+                <Setter Property="BorderThickness" Value="0,0,1,1" />
+              </Style>
+            </DataGrid.Styles>
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="200" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="100" IsReadOnly="True"/>
-              <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="*" IsReadOnly="True"/>
+              <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="200" IsReadOnly="True" />
+              <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="100" IsReadOnly="True" />
+              <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="*" IsReadOnly="True" />
               <DataGridTemplateColumn Header="Action" Width="80">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
-                    <Button Content="Remove" 
-                            Command="{Binding $parent[Window].DataContext.RemoveAssemblyReferenceCommand}" 
+                    <Button Content="Remove"
+                            Command="{Binding $parent[Window].DataContext.RemoveAssemblyReferenceCommand}"
                             CommandParameter="{Binding}"
-                            IsEnabled="{Binding !IsDefault}"/>
+                            IsEnabled="{Binding !IsDefault}"
+                            Background="Transparent"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            Foreground="{StaticResource TextSecondaryBrush}"
+                            FontSize="11"
+                            Padding="6,3"
+                            CornerRadius="4"
+                            Cursor="Hand"
+                            HorizontalAlignment="Center">
+                      <Button.Styles>
+                        <Style Selector="Button:pointerover">
+                          <Setter Property="Background" Value="{StaticResource DangerBrush}" />
+                          <Setter Property="Foreground" Value="White" />
+                          <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+                        </Style>
+                      </Button.Styles>
+                    </Button>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
+
+          <!-- Footer status -->
+          <Border Grid.Row="2"
+                  Background="{StaticResource HeaderBgBrush}"
+                  BorderBrush="{StaticResource BorderLightBrush}"
+                  BorderThickness="0,1,0,0"
+                  Padding="12,6">
+            <TextBlock Text="{Binding StatusText}"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11.5"
+                       FontStyle="Italic" />
+          </Border>
         </Grid>
       </TabItem>
 
       <!-- Packages Tab -->
       <TabItem Header="Packages">
-        <Grid RowDefinitions="Auto, *">
+        <Grid RowDefinitions="Auto, *" Margin="0">
           <!-- 3 Columns -->
-          <Grid Grid.Row="1" ColumnDefinitions="*, 4, *, 4, *">
+          <Grid Grid.Row="1" ColumnDefinitions="*, 4, *, 4, *"
+                Margin="0" Background="{StaticResource SurfaceRaisedBrush}">
+
             <!-- Left: Local Cache -->
-            <Grid Grid.Column="0" RowDefinitions="Auto, Auto, *">
-                <TextBlock Grid.Row="0" Text="Local Cache" FontWeight="Bold" Margin="4"/>
-                <TextBox Grid.Row="1" Text="{Binding LocalSearchQuery}" Watermark="Filter local..." Margin="4,0,4,4"/>
-                <ListBox Grid.Row="2" ItemsSource="{Binding LocalPackages}" SelectedItem="{Binding SelectedPackage}">
+            <Grid Grid.Column="0" RowDefinitions="Auto, Auto, *" Margin="0">
+                <Border Grid.Row="0"
+                        Background="{StaticResource HeaderBgBrush}"
+                        BorderBrush="{StaticResource BorderLightBrush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="12,8">
+                  <TextBlock Text="Local Cache" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource TextPrimaryBrush}" />
+                </Border>
+                <TextBox Grid.Row="1"
+                         Text="{Binding LocalSearchQuery}"
+                         Watermark="Filter local packages..."
+                         Margin="8,6"
+                         Padding="8,6"
+                         BorderBrush="{StaticResource BorderBrush}"
+                         BorderThickness="1"
+                         CornerRadius="6"
+                         FontSize="12.5"
+                         Background="{StaticResource SurfaceRaisedBrush}" />
+                <ListBox Grid.Row="2"
+                         ItemsSource="{Binding LocalPackages}"
+                         SelectedItem="{Binding SelectedPackage}"
+                         Margin="4,0"
+                         BorderThickness="0"
+                         Background="Transparent">
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="12,8" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}" />
+                        <Setter Property="BorderThickness" Value="0,0,0,1" />
+                        <Setter Property="Transitions">
+                          <Transitions>
+                            <BrushTransition Property="Background" Duration="0:0:0.1" />
+                          </Transitions>
+                        </Setter>
+                      </Style>
+                      <Style Selector="ListBoxItem:pointerover">
+                        <Setter Property="Background" Value="{StaticResource HoverBgBrush}" />
+                      </Style>
+                      <Style Selector="ListBoxItem:selected">
+                        <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+                      </Style>
+                    </ListBox.Styles>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Identity.Id}" FontWeight="Bold"/>
-                                <TextBlock Text="{Binding Identity.Version}" FontSize="11" Foreground="Gray"/>
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding Identity.Id}" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding Identity.Version}" FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" />
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
             </Grid>
 
-            <GridSplitter Grid.Column="1" Background="#DDDDDD" ResizeBehavior="PreviousAndNext"/>
+            <GridSplitter Grid.Column="1" Background="{StaticResource BorderLightBrush}" ResizeBehavior="PreviousAndNext" />
 
             <!-- Middle: Online Search -->
-            <Grid Grid.Column="2" RowDefinitions="Auto, Auto, Auto, *, Auto">
-                <TextBlock Grid.Row="0" Text="Online Results" FontWeight="Bold" Margin="4"/>
-                <Grid Grid.Row="1" ColumnDefinitions="*, Auto" Margin="4,0,4,4">
-                    <TextBox Grid.Column="0" Text="{Binding OnlineSearchQuery}" Watermark="Search NuGet..." Margin="0,0,4,0"/>
+            <Grid Grid.Column="2" RowDefinitions="Auto, Auto, Auto, *, Auto" Margin="0">
+                <Border Grid.Row="0"
+                        Background="{StaticResource HeaderBgBrush}"
+                        BorderBrush="{StaticResource BorderLightBrush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="12,8">
+                  <TextBlock Text="Online Results" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource TextPrimaryBrush}" />
+                </Border>
+                <Grid Grid.Row="1" ColumnDefinitions="*, Auto" Margin="8,6,8,4">
+                    <TextBox Grid.Column="0"
+                             Text="{Binding OnlineSearchQuery}"
+                             Watermark="Search NuGet..."
+                             Padding="8,6"
+                             BorderBrush="{StaticResource BorderBrush}"
+                             BorderThickness="1"
+                             CornerRadius="6"
+                             FontSize="12.5"
+                             Background="{StaticResource SurfaceRaisedBrush}" />
                 </Grid>
-                <Grid Grid.Row="2" ColumnDefinitions="*, Auto" Margin="4,0,4,4">
-                    <ComboBox Grid.Column="0" ItemsSource="{Binding PackageSources}" SelectedItem="{Binding SelectedSource}" Margin="0,0,4,0" HorizontalAlignment="Stretch"/>
-                    <CheckBox Grid.Column="1" Content="Pre-release" IsChecked="{Binding IncludePreRelease}"/>
+                <Grid Grid.Row="2" ColumnDefinitions="*, Auto" Margin="8,0,8,6">
+                    <ComboBox Grid.Column="0"
+                              ItemsSource="{Binding PackageSources}"
+                              SelectedItem="{Binding SelectedSource}"
+                              HorizontalAlignment="Stretch"
+                              Padding="8,5"
+                              FontSize="12.5"
+                              BorderBrush="{StaticResource BorderBrush}"
+                              CornerRadius="6" />
+                    <CheckBox Grid.Column="1"
+                              Content="Pre-release"
+                              IsChecked="{Binding IncludePreRelease}"
+                              Margin="8,0,0,0"
+                              FontSize="12.5"
+                              Foreground="{StaticResource TextSecondaryBrush}" />
                 </Grid>
-                
-                <ListBox Grid.Row="3" ItemsSource="{Binding OnlinePackages}" SelectedItem="{Binding SelectedPackage}">
+
+                <ListBox Grid.Row="3"
+                         ItemsSource="{Binding OnlinePackages}"
+                         SelectedItem="{Binding SelectedPackage}"
+                         Margin="4,0"
+                         BorderThickness="0"
+                         Background="Transparent">
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="12,10" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}" />
+                        <Setter Property="BorderThickness" Value="0,0,0,1" />
+                        <Setter Property="Transitions">
+                          <Transitions>
+                            <BrushTransition Property="Background" Duration="0:0:0.1" />
+                          </Transitions>
+                        </Setter>
+                      </Style>
+                      <Style Selector="ListBoxItem:pointerover">
+                        <Setter Property="Background" Value="{StaticResource HoverBgBrush}" />
+                      </Style>
+                      <Style Selector="ListBoxItem:selected">
+                        <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+                      </Style>
+                    </ListBox.Styles>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Identity.Id}" FontWeight="Bold"/>
-                                <TextBlock Text="{Binding Identity.Version}" FontSize="11" Foreground="Gray"/>
-                                <TextBlock Text="{Binding DownloadCount, StringFormat='{}Downloads: {0}'}" FontSize="11" Foreground="Gray"/>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding Identity.Id}" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource TextPrimaryBrush}" />
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                  <TextBlock Text="{Binding Identity.Version}" FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" />
+                                  <TextBlock Text="{Binding DownloadCount, StringFormat='{}⬇ {0:N0}'}" FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" />
+                                </StackPanel>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                
-                <TextBlock Grid.Row="4" Text="{Binding StatusText}" Margin="4" FontStyle="Italic" HorizontalAlignment="Right" Foreground="Gray"/>
+
+                <TextBlock Grid.Row="4"
+                           Text="{Binding StatusText}"
+                           Margin="12,6"
+                           FontStyle="Italic"
+                           FontSize="11.5"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Right" />
             </Grid>
 
-            <GridSplitter Grid.Column="3" Background="#DDDDDD" ResizeBehavior="PreviousAndNext"/>
+            <GridSplitter Grid.Column="3" Background="{StaticResource BorderLightBrush}" ResizeBehavior="PreviousAndNext" />
 
             <!-- Right: Details -->
-            <Grid Grid.Column="4" Margin="4">
-                 <ScrollViewer IsVisible="{Binding SelectedPackage, Converter={x:Static ObjectConverters.IsNotNull}}">
-                     <StackPanel>
-                         <TextBlock Text="{Binding SelectedPackage.Identity.Id}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"/>
-                         <TextBlock Text="{Binding SelectedPackage.Identity.Version}" FontSize="12" Foreground="Gray" Margin="0,0,0,8"/>
-                         
-                         <TextBlock Text="{Binding SelectedPackage.Description}" TextWrapping="Wrap" Margin="0,8"/>
-                         
-                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4">
-                              <TextBlock Text="Authors:" FontWeight="Bold"/>
-                              <TextBlock Text="{Binding SelectedPackage.Authors}" TextWrapping="Wrap"/>
+            <Grid Grid.Column="4" Margin="0" Background="{StaticResource SurfaceRaisedBrush}">
+                 <ScrollViewer IsVisible="{Binding SelectedPackage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Margin="16,16,16,0">
+                     <StackPanel Spacing="12">
+                         <TextBlock Text="{Binding SelectedPackageDetails.Identity.Id}"
+                                    FontSize="20" FontWeight="Bold"
+                                    Foreground="{StaticResource TextPrimaryBrush}"
+                                    TextWrapping="Wrap"/>
+                         <TextBlock Text="{Binding SelectedVersionItem.Version}"
+                                    FontSize="12.5"
+                                    Foreground="{StaticResource TextMutedBrush}" />
+
+                         <Separator Background="{StaticResource BorderLightBrush}" Height="1" Margin="0,4" />
+
+                         <TextBlock Text="{Binding SelectedPackageDetails.Description}"
+                                    TextWrapping="Wrap"
+                                    FontSize="12.5"
+                                    Foreground="{StaticResource TextSecondaryBrush}"
+                                    LineHeight="20" />
+
+                         <StackPanel Orientation="Horizontal" Spacing="6">
+                              <TextBlock Text="Authors:" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource TextPrimaryBrush}" />
+                              <TextBlock Text="{Binding SelectedPackageDetails.Authors}"
+                                         TextWrapping="Wrap"
+                                         FontSize="12.5"
+                                         Foreground="{StaticResource TextSecondaryBrush}" />
                          </StackPanel>
 
-                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4" IsVisible="{Binding SelectedPackage.Published, Converter={x:Static ObjectConverters.IsNotNull}}">
-                              <TextBlock Text="Published:" FontWeight="Bold"/>
-                              <TextBlock Text="{Binding SelectedPackage.Published}"/>
+                         <StackPanel Orientation="Horizontal" Spacing="6"
+                                     IsVisible="{Binding SelectedPackageDetails.Published, Converter={x:Static ObjectConverters.IsNotNull}}">
+                              <TextBlock Text="Published:" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource TextPrimaryBrush}" />
+                              <TextBlock Text="{Binding SelectedPackageDetails.Published}"
+                                         FontSize="12.5"
+                                         Foreground="{StaticResource TextSecondaryBrush}" />
                          </StackPanel>
 
-                         <Button Content="Project URL" 
+                         <Button Content="Project URL"
                                  Command="{Binding $parent[Window].DataContext.OpenUrlCommand}"
-                                 CommandParameter="{Binding SelectedPackage.ProjectUrl}"
-                                 IsVisible="{Binding SelectedPackage.ProjectUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                 Background="Transparent" BorderThickness="0" Foreground="Blue" HorizontalAlignment="Left" Padding="0"/>
+                                 CommandParameter="{Binding SelectedPackageDetails.ProjectUrl}"
+                                 IsVisible="{Binding SelectedPackageDetails.ProjectUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Foreground="{StaticResource AccentBrush}"
+                                 FontSize="12.5"
+                                 HorizontalAlignment="Left"
+                                 Padding="0"
+                                 Cursor="Hand" />
 
-                         <Expander Header="Dependencies" Margin="0,8,0,0">
-                              <ItemsControl ItemsSource="{Binding SelectedPackage.DependencySets}">
+                         <Expander Header="Dependencies"
+                                   Background="{StaticResource SurfaceBrush}"
+                                   BorderBrush="{StaticResource BorderBrush}"
+                                   BorderThickness="1"
+                                   CornerRadius="6"
+                                   Padding="12">
+                           <Expander.HeaderTemplate>
+                             <DataTemplate>
+                               <TextBlock Text="Dependencies"
+                                          FontWeight="SemiBold"
+                                          FontSize="12.5"
+                                          Foreground="{StaticResource TextPrimaryBrush}" />
+                             </DataTemplate>
+                           </Expander.HeaderTemplate>
+                              <ItemsControl ItemsSource="{Binding SelectedPackageDetails.DependencySets}">
                                   <ItemsControl.ItemTemplate>
                                       <DataTemplate>
                                           <StackPanel Margin="0,4">
-                                              <TextBlock Text="{Binding TargetFramework}" FontWeight="Bold" FontSize="11"/>
+                                              <TextBlock Text="{Binding TargetFramework}" FontWeight="SemiBold" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
                                               <ItemsControl ItemsSource="{Binding Packages}">
                                                   <ItemsControl.ItemTemplate>
                                                       <DataTemplate>
-                                                          <TextBlock FontSize="11" Margin="8,1,0,0">
+                                                          <TextBlock FontSize="11.5" Margin="12,1,0,0" Foreground="{StaticResource TextSecondaryBrush}">
                                                               <TextBlock.Text>
                                                                   <MultiBinding StringFormat="{}{0} {1}">
                                                                       <Binding Path="Id"/>
@@ -145,31 +403,110 @@
                               </ItemsControl>
                          </Expander>
 
-                         <Separator Margin="0,16"/>
-                         
-                         <TextBlock Text="Wait to Install:" FontWeight="Bold" Margin="0,8,0,0"/>
-                         <ComboBox ItemsSource="{Binding AvailableVersions}" SelectedItem="{Binding SelectedVersion}" HorizontalAlignment="Stretch"/>
+                         <Separator Background="{StaticResource BorderLightBrush}" Height="1" Margin="0,8" />
 
-                         <Button Content="Install Package" 
-                                 Command="{Binding InstallPackageCommand}" 
-                                 HorizontalAlignment="Stretch" 
-                                 Margin="0,16,0,0"/>
-                         
-                         <TextBlock Text="{Binding StatusText}" Foreground="Green" Margin="0,8" TextWrapping="Wrap"/>
+                         <TextBlock Text="Version to Install:"
+                                    FontWeight="SemiBold"
+                                    FontSize="12.5"
+                                    Foreground="{StaticResource TextPrimaryBrush}" />
+                         <CheckBox Content="Include pre-release versions"
+                                   IsChecked="{Binding IncludePreReleaseVersions}"
+                                   FontSize="12.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                         <ComboBox ItemsSource="{Binding AvailableVersions}"
+                                   SelectedItem="{Binding SelectedVersionItem}"
+                                   HorizontalAlignment="Stretch"
+                                   Padding="8,6"
+                                   FontSize="12.5"
+                                   BorderBrush="{StaticResource BorderBrush}"
+                                   CornerRadius="6">
+                             <ComboBox.ItemTemplate>
+                                 <DataTemplate>
+                                     <TextBlock Text="{Binding DisplayText}" />
+                                 </DataTemplate>
+                             </ComboBox.ItemTemplate>
+                         </ComboBox>
+
+                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding InstallProgress}"
+                                      IsVisible="{Binding IsInstalling}"
+                                      Height="6"
+                                      Foreground="{StaticResource AccentBrush}"
+                                      Background="{StaticResource BorderLightBrush}"
+                                      CornerRadius="3" />
+
+                         <Button Content="Install Package"
+                                 Command="{Binding InstallPackageCommand}"
+                                 HorizontalAlignment="Stretch"
+                                 IsEnabled="{Binding !IsInstalling}"
+                                 Background="{StaticResource AccentBrush}"
+                                 Foreground="White"
+                                 BorderThickness="0"
+                                 Padding="14,8"
+                                 FontSize="12.5"
+                                 FontWeight="SemiBold"
+                                 CornerRadius="6"
+                                 Cursor="Hand">
+                           <Button.Styles>
+                             <Style Selector="Button:pointerover">
+                               <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                             </Style>
+                             <Style Selector="Button:disabled">
+                               <Setter Property="Opacity" Value="0.5" />
+                             </Style>
+                           </Button.Styles>
+                         </Button>
+
+                         <TextBlock Text="{Binding StatusText}"
+                                    Foreground="{StaticResource SuccessBrush}"
+                                    FontSize="11.5"
+                                    TextWrapping="Wrap"
+                                    Margin="0,0,0,16" />
                      </StackPanel>
                  </ScrollViewer>
-                 
-                 <TextBlock Text="Select a package to view details" 
-                            IsVisible="{Binding SelectedPackage, Converter={x:Static ObjectConverters.IsNull}}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Foreground="Gray"/>
+
+                 <!-- Empty state -->
+                 <Border IsVisible="{Binding SelectedPackage, Converter={x:Static ObjectConverters.IsNull}}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center">
+                   <StackPanel Spacing="8" HorizontalAlignment="Center">
+                     <TextBlock Text="📦" FontSize="32" HorizontalAlignment="Center" />
+                     <TextBlock Text="Select a package to view details"
+                                Foreground="{StaticResource TextMutedBrush}"
+                                FontSize="12.5"
+                                HorizontalAlignment="Center" />
+                   </StackPanel>
+                 </Border>
             </Grid>
           </Grid>
         </Grid>
       </TabItem>
     </TabControl>
-    
-    <Button Grid.Row="1" Content="Close" HorizontalAlignment="Right" Margin="8" Command="{Binding CloseCommand}" Click="OnCloseClick"/>
+
+    <!-- Footer -->
+    <Border Grid.Row="1"
+            Background="{StaticResource HeaderBgBrush}"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="12,8">
+      <Button Content="Close"
+              Command="{Binding CloseCommand}"
+              Click="OnCloseClick"
+              HorizontalAlignment="Right"
+              Background="Transparent"
+              BorderBrush="{StaticResource BorderBrush}"
+              BorderThickness="1"
+              Foreground="{StaticResource TextSecondaryBrush}"
+              FontSize="12.5"
+              Padding="16,6"
+              CornerRadius="6"
+              Cursor="Hand">
+        <Button.Styles>
+          <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="{StaticResource HoverBgBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+          </Style>
+        </Button.Styles>
+      </Button>
+    </Border>
   </Grid>
 </Window>

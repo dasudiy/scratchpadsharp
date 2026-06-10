@@ -3,6 +3,7 @@
     x:Class="ScratchpadSharp.App">
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://ScratchpadSharp/Assets/Styles/RiderTheme.axaml" />
         <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
     </Application.Styles>

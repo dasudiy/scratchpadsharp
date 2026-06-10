@@ -6,7 +6,7 @@ using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
-using DynamicData;
+using NuGet.Packaging;
 using NuGet.Packaging.Core;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
@@ -20,28 +20,28 @@ namespace ScratchpadSharp.ViewModels;
 public class ReferenceManagementViewModel : ReactiveObject
 {
     private readonly string tabId;
-
     private readonly ProjectContext projectContext;
 
     private string localSearchQuery = string.Empty;
     private string onlineSearchQuery = string.Empty;
     private bool isSearching;
     private bool includePreRelease;
+    private bool includePreReleaseVersions;
     private IPackageSearchMetadata? selectedPackage;
-    private string? selectedVersion;
-    private readonly ObservableCollection<string> availableVersions = new();
+    private IPackageSearchMetadata? selectedPackageDetails;
+    private PackageVersionItem? selectedVersionItem;
+    private readonly ObservableCollection<PackageVersionItem> availableVersions = new();
     private bool isInstalling;
     private string? selectedSource;
+    private double installProgress;
 
     public ObservableCollection<AssemblyReferenceItem> AssemblyReferences { get; } = new();
     public ObservableCollection<IPackageSearchMetadata> LocalPackages { get; } = new();
     public ObservableCollection<IPackageSearchMetadata> OnlinePackages { get; } = new();
     public ObservableCollection<string> PackageSources { get; } = new();
 
-    // In-memory cache for local packages filtering
     private List<IPackageSearchMetadata> allLocalPackages = new();
 
-    // Status
     private string statusText = string.Empty;
 
     public string StatusText
@@ -76,6 +76,12 @@ public class ReferenceManagementViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref includePreRelease, value);
     }
 
+    public bool IncludePreReleaseVersions
+    {
+        get => includePreReleaseVersions;
+        set => this.RaiseAndSetIfChanged(ref includePreReleaseVersions, value);
+    }
+
     public bool IsSearching
     {
         get => isSearching;
@@ -94,22 +100,38 @@ public class ReferenceManagementViewModel : ReactiveObject
         set
         {
             this.RaiseAndSetIfChanged(ref selectedPackage, value);
-            _ = LoadVersionsAsync(value);
+            _ = OnSelectedPackageChangedAsync(value);
         }
     }
 
-    public string? SelectedVersion
+    public IPackageSearchMetadata? SelectedPackageDetails
     {
-        get => selectedVersion;
-        set => this.RaiseAndSetIfChanged(ref selectedVersion, value);
+        get => selectedPackageDetails;
+        set => this.RaiseAndSetIfChanged(ref selectedPackageDetails, value);
     }
 
-    public ObservableCollection<string> AvailableVersions => availableVersions;
+    public PackageVersionItem? SelectedVersionItem
+    {
+        get => selectedVersionItem;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref selectedVersionItem, value);
+            _ = LoadVersionDetailsAsync(value);
+        }
+    }
+
+    public ObservableCollection<PackageVersionItem> AvailableVersions => availableVersions;
 
     public bool IsInstalling
     {
         get => isInstalling;
         set => this.RaiseAndSetIfChanged(ref isInstalling, value);
+    }
+
+    public double InstallProgress
+    {
+        get => installProgress;
+        set => this.RaiseAndSetIfChanged(ref installProgress, value);
     }
 
     public ReactiveCommand<Unit, Unit> LocalSearchCommand { get; }
@@ -126,7 +148,6 @@ public class ReferenceManagementViewModel : ReactiveObject
 
         RefreshReferences();
 
-        // Setup Commands
         LocalSearchCommand = ReactiveCommand.Create(FilterLocalPackages);
         OnlineSearchCommand = ReactiveCommand.CreateFromTask(SearchOnlineAsync);
 
@@ -148,10 +169,8 @@ public class ReferenceManagementViewModel : ReactiveObject
         });
 
         InstallPackageCommand = ReactiveCommand.CreateFromTask(InstallPackageAsync,
-            this.WhenAnyValue(x => x.SelectedPackage, x => x.SelectedVersion,
-                (p, v) => p != null && !string.IsNullOrEmpty(v)));
-
-        // RemovePackageCommand = ReactiveCommand.CreateFromTask(RemovePackageAsync);
+            this.WhenAnyValue(x => x.SelectedPackage, x => x.SelectedVersionItem,
+                (p, v) => p != null && v != null));
 
         RemoveAssemblyReferenceCommand = ReactiveCommand.CreateFromTask<AssemblyReferenceItem>(async req =>
         {
@@ -167,7 +186,6 @@ public class ReferenceManagementViewModel : ReactiveObject
 
         CloseCommand = ReactiveCommand.Create(() => { });
 
-        // Handle errors from async commands to prevent app crash
         InstallPackageCommand.ThrownExceptions
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(ex => StatusText = $"Install failed: {ex.Message}");
@@ -176,10 +194,8 @@ public class ReferenceManagementViewModel : ReactiveObject
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(ex => StatusText = $"Remove failed: {ex.Message}");
 
-        // Initial Load
         _ = LoadDataAsync();
 
-        // Subscribe to search query changes with debounce
         this.WhenAnyValue(x => x.LocalSearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(300))
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -194,13 +210,20 @@ public class ReferenceManagementViewModel : ReactiveObject
             .Throttle(TimeSpan.FromMilliseconds(500))
             .Select(_ => Unit.Default)
             .InvokeCommand(OnlineSearchCommand);
+
+        this.WhenAnyValue(x => x.IncludePreReleaseVersions)
+            .Throttle(TimeSpan.FromMilliseconds(300))
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(includePreRelease =>
+            {
+                _ = ReloadVersionsAsync();
+            });
     }
 
     private async Task LoadDataAsync()
     {
         await LoadPackageSourcesAsync();
         await LoadLocalPackagesAsync();
-        // CheckRestoreNeeded();
     }
 
     private void RefreshReferences()
@@ -209,7 +232,6 @@ public class ReferenceManagementViewModel : ReactiveObject
 
         foreach (var refPath in projectContext.Config.References)
         {
-            // Skip BCL assembly names (e.g. "System.Runtime") — only show actual file paths
             if (!refPath.Contains(Path.DirectorySeparatorChar) &&
                 !refPath.Contains('/') &&
                 !refPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -225,23 +247,6 @@ public class ReferenceManagementViewModel : ReactiveObject
                 { Name = pkg.Key, Path = pkg.Value, IsDefault = false, Source = "NuGet" });
         }
     }
-
-    // private void CheckRestoreNeeded()
-    // {
-    //     bool needed = false;
-    //     foreach (var pkg in _config.NuGetPackages)
-    //     {
-    //         if (!_allLocalPackages.Any(p =>
-    //                 p.Id.Equals(pkg.Key, StringComparison.OrdinalIgnoreCase) && p.Version == pkg.Value))
-    //         {
-    //             needed = true;
-    //             break;
-    //         }
-    //     }
-    //
-    //     ShowRestoreButton = needed;
-    // }
-
 
     private async Task LoadPackageSourcesAsync()
     {
@@ -316,38 +321,113 @@ public class ReferenceManagementViewModel : ReactiveObject
         }
     }
 
-    private async Task LoadVersionsAsync(IPackageSearchMetadata? package)
+    private async Task OnSelectedPackageChangedAsync(IPackageSearchMetadata? package)
     {
         availableVersions.Clear();
-        SelectedVersion = null;
+        SelectedVersionItem = null;
+        SelectedPackageDetails = package;
 
         if (package == null) return;
 
-        var versions = await NuGetService.Instance.GetPackageVersionsAsync(package.Identity.Id);
-        foreach (var v in versions) availableVersions.Add(v);
+        await LoadVersionsAsync(package);
+    }
 
-        if (availableVersions.Any())
+    private async Task ReloadVersionsAsync()
+    {
+        if (SelectedPackage == null) return;
+        await LoadVersionsAsync(SelectedPackage);
+    }
+
+    private async Task LoadVersionsAsync(IPackageSearchMetadata package)
+    {
+        var previousVersion = SelectedVersionItem?.Version;
+        availableVersions.Clear();
+        SelectedVersionItem = null;
+
+        var packageId = package.Identity.Id;
+        var cachedVersions = (await NuGetService.Instance.GetCachedVersionsAsync(packageId)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var onlineVersions = await NuGetService.Instance.GetPackageVersionsAsync(packageId);
+
+        var allVersions = onlineVersions
+            .Concat(cachedVersions)
+            .Select(v => NuGetVersion.Parse(v))
+            .Distinct()
+            .Where(v => IncludePreReleaseVersions || !v.IsPrerelease)
+            .OrderByDescending(v => v)
+            .ToList();
+
+        foreach (var version in allVersions)
         {
-            SelectedVersion = availableVersions.First();
+            var versionString = version.ToNormalizedString();
+            var isCached = cachedVersions.Contains(versionString) ||
+                           NuGetService.Instance.IsPackageCached(new PackageIdentity(packageId, version));
+
+            availableVersions.Add(new PackageVersionItem
+            {
+                Version = versionString,
+                IsCached = isCached
+            });
+        }
+
+        if (availableVersions.Count == 0) return;
+
+        SelectedVersionItem = availableVersions.FirstOrDefault(v =>
+                                  previousVersion != null &&
+                                  v.Version.Equals(previousVersion, StringComparison.OrdinalIgnoreCase))
+                              ?? availableVersions.First();
+    }
+
+    private async Task LoadVersionDetailsAsync(PackageVersionItem? versionItem)
+    {
+        if (SelectedPackage == null || versionItem == null)
+        {
+            SelectedPackageDetails = SelectedPackage;
+            return;
+        }
+
+        try
+        {
+            var identity = new PackageIdentity(SelectedPackage.Identity.Id, NuGetVersion.Parse(versionItem.Version));
+            var metadata = await NuGetService.Instance.GetPackageMetadataAsync(identity);
+            SelectedPackageDetails = metadata ?? SelectedPackage;
+        }
+        catch
+        {
+            SelectedPackageDetails = SelectedPackage;
         }
     }
 
     private async Task InstallPackageAsync()
     {
-        if (SelectedPackage == null || SelectedVersion == null) return;
+        if (SelectedPackage == null || SelectedVersionItem == null) return;
 
-        var identity = new PackageIdentity(SelectedPackage.Identity.Id, NuGetVersion.Parse(SelectedVersion));
-        StatusText = $"Installing {identity.Id} {identity.Version}...";
+        var identity = new PackageIdentity(SelectedPackage.Identity.Id,
+            NuGetVersion.Parse(SelectedVersionItem.Version));
+
+        var progress = new Progress<PackageInstallProgress>(p =>
+        {
+            StatusText = p.Message;
+            InstallProgress = p.Percent;
+        });
+
+        StatusText = SelectedVersionItem.IsCached
+            ? $"Installing {identity.Id} {identity.Version} from cache..."
+            : $"Downloading and installing {identity.Id} {identity.Version}...";
         IsInstalling = true;
+        InstallProgress = 0;
+
         try
         {
-            await ProjectService.Instance.AddPackageAsync(tabId, projectContext, identity);
+            await ProjectService.Instance.AddPackageAsync(tabId, projectContext, identity, default, progress);
             StatusText = $"Installed {identity.Id} {identity.Version}";
+            InstallProgress = 100;
             RefreshReferences();
+            await LoadLocalPackagesAsync();
         }
         catch (Exception ex)
         {
             StatusText = $"Install failed: {ex.Message}";
+            InstallProgress = 0;
         }
         finally
         {
@@ -378,4 +458,11 @@ public class AssemblyReferenceItem
     public string Path { get; set; } = string.Empty;
     public bool IsDefault { get; set; }
     public string Source { get; set; } = string.Empty;
+}
+
+public class PackageVersionItem
+{
+    public string Version { get; set; } = string.Empty;
+    public bool IsCached { get; set; }
+    public string DisplayText => IsCached ? $"{Version} (cached)" : $"{Version} (download)";
 }
