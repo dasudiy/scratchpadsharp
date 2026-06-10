@@ -48,39 +48,39 @@ public class RoslynCompletionData : ICompletionData
 
             var panel = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal };
 
-            // 主文本
             var mainText = new TextBlock
             {
                 Text = enhancedItem.DisplayText,
-                FontWeight = enhancedItem.IsRecommended ? FontWeight.Bold : FontWeight.Normal,
+                FontSize = EditorPopupTheme.ItemFontSize,
+                FontFamily = EditorPopupTheme.CodeFont,
+                FontWeight = enhancedItem.IsRecommended ? FontWeight.SemiBold : FontWeight.Normal,
                 Foreground = enhancedItem.IsRecommended
-                    ? new SolidColorBrush(Color.FromRgb(0, 102, 204))
-                    : Brushes.Black
+                    ? EditorPopupTheme.Accent
+                    : EditorPopupTheme.TextPrimary
             };
             panel.Children.Add(mainText);
 
-            // 内联描述
             if (!string.IsNullOrEmpty(enhancedItem.InlineDescription))
             {
-                var inlineDesc = new TextBlock
+                panel.Children.Add(new TextBlock
                 {
-                    Text = $" ({enhancedItem.InlineDescription})",
-                    Foreground = Brushes.Gray,
-                    Margin = new Avalonia.Thickness(4, 0, 0, 0)
-                };
-                panel.Children.Add(inlineDesc);
+                    Text = $" — {enhancedItem.InlineDescription}",
+                    FontSize = EditorPopupTheme.MetaFontSize,
+                    Foreground = EditorPopupTheme.TextMuted,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
             }
 
-            // 推荐标记
             if (enhancedItem.IsRecommended)
             {
-                var star = new TextBlock
+                panel.Children.Add(new TextBlock
                 {
                     Text = " ★",
-                    Foreground = new SolidColorBrush(Color.FromRgb(255, 193, 7)),
-                    Margin = new Avalonia.Thickness(4, 0, 0, 0)
-                };
-                panel.Children.Add(star);
+                    FontSize = EditorPopupTheme.MetaFontSize,
+                    Foreground = EditorPopupTheme.Warning,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+                });
             }
 
             content = panel;
@@ -95,44 +95,41 @@ public class RoslynCompletionData : ICompletionData
             if (description != null)
                 return description;
 
-            var panel = new StackPanel { MaxWidth = 400 };
+            var panel = new StackPanel { MaxWidth = EditorPopupTheme.DescriptionMaxWidth };
 
-            // 类型信息
-            if (!string.IsNullOrEmpty(enhancedItem.InlineDescription))
+            var typeInfo = new TextBlock
             {
-                var typeInfo = new TextBlock
-                {
-                    Text = GetKindDisplayName(enhancedItem.Kind),
-                    FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0, 122, 204)),
-                    Margin = new Avalonia.Thickness(0, 0, 0, 4)
-                };
-                panel.Children.Add(typeInfo);
-            }
+                Text = GetKindDisplayName(enhancedItem.Kind),
+                FontSize = EditorPopupTheme.MetaFontSize,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = EditorPopupTheme.Accent,
+                Margin = new Avalonia.Thickness(0, 0, 0, 4)
+            };
+            panel.Children.Add(typeInfo);
 
-            // 完整签名
             var signature = new TextBlock
             {
                 Text = enhancedItem.DisplayText,
-                FontFamily = new FontFamily("Cascadia Code, Consolas, monospace"),
+                FontFamily = EditorPopupTheme.CodeFont,
+                FontSize = EditorPopupTheme.CodeFontSize,
+                Foreground = EditorPopupTheme.TextPrimary,
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 Margin = new Avalonia.Thickness(0, 0, 0, 8)
             };
             panel.Children.Add(signature);
 
-            // 文档
             if (!string.IsNullOrEmpty(enhancedItem.Documentation))
             {
                 AddDocumentation(panel, enhancedItem.Documentation);
             }
             else
             {
-                // Lazy load documentation
                 var loadingText = new TextBlock
                 {
                     Text = "Loading documentation...",
                     FontStyle = FontStyle.Italic,
-                    Foreground = Brushes.Gray,
+                    FontSize = EditorPopupTheme.MetaFontSize,
+                    Foreground = EditorPopupTheme.TextMuted,
                     Margin = new Avalonia.Thickness(0, 0, 0, 8)
                 };
                 panel.Children.Add(loadingText);
@@ -144,23 +141,22 @@ public class RoslynCompletionData : ICompletionData
         }
     }
 
-    private void AddDocumentation(StackPanel panel, string doc)
+    private static void AddDocumentation(StackPanel panel, string doc)
     {
-        var separator = new Border
+        panel.Children.Add(new Border
         {
             Height = 1,
-            Background = new SolidColorBrush(Color.FromRgb(224, 224, 224)),
+            Background = EditorPopupTheme.Border,
             Margin = new Avalonia.Thickness(0, 0, 0, 8)
-        };
-        panel.Children.Add(separator);
+        });
 
-        var docText = new TextBlock
+        panel.Children.Add(new TextBlock
         {
             Text = doc,
+            FontSize = EditorPopupTheme.MetaFontSize,
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.FromRgb(80, 80, 80))
-        };
-        panel.Children.Add(docText);
+            Foreground = EditorPopupTheme.TextSecondary
+        });
     }
 
     private async void LoadDescriptionAsync(StackPanel panel, TextBlock loadingPlaceholder)

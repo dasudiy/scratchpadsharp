@@ -90,7 +90,11 @@ public partial class ScriptTabView : UserControl
             CodeEditor,
             signatureProvider,
             () => viewModel,
-            viewModel.TabId);
+            viewModel.TabId,
+            () => _codeCompletionHandler?.ActiveCompletionWindow);
+
+        _codeCompletionHandler.SetCompletionWindowChangedCallback(
+            () => _signatureHelpHandler?.UpdatePosition());
 
         InitializeSyntaxHighlighting();
         InitializeCodeCompletion();

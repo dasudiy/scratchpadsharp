@@ -1,7 +1,8 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:avaloniaEdit="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
-        xmlns:avaloniaEditEditing="clr-namespace:AvaloniaEdit.Editing;assembly=AvaloniaEdit">
+        xmlns:avaloniaEditEditing="clr-namespace:AvaloniaEdit.Editing;assembly=AvaloniaEdit"
+        xmlns:codeCompletion="clr-namespace:AvaloniaEdit.CodeCompletion;assembly=AvaloniaEdit">
 
     <!-- Modern Design System Palette -->
     <Styles.Resources>
@@ -296,6 +297,53 @@
         <Setter Property="Background" Value="{StaticResource BorderLightBrush}" />
         <Setter Property="Margin" Value="6,0" />
         <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Shared editor popup chrome (signature + completion) -->
+    <Style Selector="Border.editor-popup">
+        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+    <!-- IntelliSense completion popup -->
+    <Style Selector="codeCompletion|CompletionList">
+        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style Selector="codeCompletion|CompletionList ListBoxItem">
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="codeCompletion|CompletionList ListBoxItem:pointerover">
+        <Setter Property="Background" Value="{StaticResource HoverBgBrush}" />
+    </Style>
+
+    <Style Selector="codeCompletion|CompletionList ListBoxItem:selected">
+        <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+    </Style>
+
+    <!-- Completion description tooltip -->
+    <Style Selector="codeCompletion|CompletionTipContentControl">
+        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="MaxWidth" Value="300" />
     </Style>
 
 </Styles>

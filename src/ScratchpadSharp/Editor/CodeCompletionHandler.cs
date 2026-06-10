@@ -27,6 +27,12 @@ public class CodeCompletionHandler(
     private CancellationTokenSource? completionCts;
     private DateTime lastCompletionRequest = DateTime.MinValue;
     private DateTime lastTextChange = DateTime.MinValue;
+    private Action? completionWindowChanged;
+
+    public CompletionWindow? ActiveCompletionWindow => completionWindow is { IsOpen: true } ? completionWindow : null;
+
+    public void SetCompletionWindowChangedCallback(Action? callback) =>
+        completionWindowChanged = callback;
 
     public void OnTextChanged()
     {
@@ -185,13 +191,19 @@ public class CodeCompletionHandler(
 
                 // Create new completion window
                 completionWindow = new CompletionWindow(editor.TextArea);
-                completionWindow.Closed += (s, e) => completionWindow = null;
+                completionWindow.Closed += (_, _) =>
+                {
+                    completionWindow = null;
+                    completionWindowChanged?.Invoke();
+                };
+                completionWindow.SizeChanged += (_, _) => completionWindowChanged?.Invoke();
 
-                // Set window size
-                completionWindow.Width = 650;
-                completionWindow.Height = 450;
-                completionWindow.MinWidth = 450;
-                completionWindow.MinHeight = 250;
+                completionWindow.Width = EditorPopupTheme.ListWidth;
+                completionWindow.MaxWidth = EditorPopupTheme.ListWidth;
+                completionWindow.MaxHeight = EditorPopupTheme.ListMaxHeight;
+                completionWindow.Height = EditorPopupTheme.ListMaxHeight;
+                completionWindow.MinWidth = 280;
+                completionWindow.MinHeight = 160;
 
                 var data = completionWindow.CompletionList.CompletionData;
                 foreach (var item in result.Items)
@@ -229,6 +241,8 @@ public class CodeCompletionHandler(
 
                     completionWindow.CompletionList.SelectItem(string.Empty);
                     completionWindow.Show();
+                    completionWindowChanged?.Invoke();
+                    Dispatcher.UIThread.Post(() => completionWindowChanged?.Invoke(), DispatcherPriority.Render);
                 }
             });
         }
