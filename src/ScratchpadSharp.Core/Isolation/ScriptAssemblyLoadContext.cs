@@ -16,12 +16,42 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver? resolver;
     private readonly List<string> additionalProbingPaths;
+    private readonly Dictionary<string, string> compileReferencePaths;
 
-    public ScriptAssemblyLoadContext(string? assemblyPath = null, List<string>? additionalPaths = null) 
+    public ScriptAssemblyLoadContext(
+        string? assemblyPath = null,
+        List<string>? additionalPaths = null,
+        IEnumerable<string>? compileReferences = null)
         : base(isCollectible: true)
     {
         resolver = assemblyPath != null ? new AssemblyDependencyResolver(assemblyPath) : null;
         additionalProbingPaths = additionalPaths ?? new List<string>();
+        compileReferencePaths = BuildCompileReferenceMap(compileReferences);
+    }
+
+    private static Dictionary<string, string> BuildCompileReferenceMap(IEnumerable<string>? compileReferences)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (compileReferences == null)
+            return map;
+
+        foreach (var path in compileReferences)
+        {
+            if (!File.Exists(path))
+                continue;
+
+            try
+            {
+                var name = AssemblyName.GetAssemblyName(path).Name;
+                if (!string.IsNullOrEmpty(name))
+                    map[name] = path;
+            }
+            catch
+            {
+            }
+        }
+
+        return map;
     }
 
     protected override Assembly? Load(AssemblyName assemblyName)
@@ -34,6 +64,13 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
             {
                 return LoadFromAssemblyPath(assemblyPath);
             }
+        }
+
+        // Resolve from the same compile references used by Roslyn
+        if (assemblyName.Name != null &&
+            compileReferencePaths.TryGetValue(assemblyName.Name, out var compilePath))
+        {
+            return LoadFromAssemblyPath(compilePath);
         }
 
         // Try additional probing paths

@@ -73,18 +73,18 @@ public class ScriptExecutionService : IScriptExecutionService
                 }
                 
                 // Execute in isolated ALC
-                return await ExecuteInIsolationAsync(compilation.Assembly, compilation.EntryPoint, context.Config, sink, context.AbsoluteNativeAssets);
+                return await ExecuteInIsolationAsync(
+                    compilation.Assembly,
+                    compilation.EntryPoint,
+                    context.Config,
+                    sink,
+                    context.AbsoluteNativeAssets,
+                    context.AbsoluteCompileReferences);
             });
         }
         catch (Exception ex)
         {
-            return new ScriptExecutionResult
-            {
-                Success = false,
-                ErrorMessage = ex.Message,
-                Output = ex.ToString(),
-                Exception = ex
-            };
+            return FailExecution(sink, ex.Message, ex);
         }
     }
 
@@ -121,7 +121,12 @@ public class ScriptExecutionService : IScriptExecutionService
     }
 
     private async Task<ScriptExecutionResult> ExecuteInIsolationAsync(
-        MemoryStream assemblyStream, string entryPoint, ScriptConfig config, IDumpSink sink, List<string>? nativePaths = null)
+        MemoryStream assemblyStream,
+        string entryPoint,
+        ScriptConfig config,
+        IDumpSink sink,
+        List<string>? nativePaths = null,
+        List<string>? compileReferences = null)
     {
         ScriptAssemblyLoadContext? alc = null;
         WeakReference? alcWeakRef = null;
@@ -148,7 +153,7 @@ public class ScriptExecutionService : IScriptExecutionService
                 additionalPaths.Add(nugetPackagesPath);
             }
 
-            alc = new ScriptAssemblyLoadContext(null, additionalPaths);
+            alc = new ScriptAssemblyLoadContext(null, additionalPaths, compileReferences);
             alcWeakRef = new WeakReference(alc);
 
             // Load assembly from memory
@@ -158,21 +163,13 @@ public class ScriptExecutionService : IScriptExecutionService
             var type = assembly.GetType("__ScriptRunner");
             if (type == null)
             {
-                return new ScriptExecutionResult
-                {
-                    Success = false,
-                    ErrorMessage = "Could not find script runner type"
-                };
+                return FailExecution(sink, "Could not find script runner type");
             }
 
             var method = type.GetMethod("__Execute", BindingFlags.Public | BindingFlags.Static);
             if (method == null)
             {
-                return new ScriptExecutionResult
-                {
-                    Success = false,
-                    ErrorMessage = "Could not find script entry point"
-                };
+                return FailExecution(sink, "Could not find script entry point");
             }
 
             // Set connection string
@@ -201,11 +198,7 @@ public class ScriptExecutionService : IScriptExecutionService
 
                 if (executeTask == null)
                 {
-                    return new ScriptExecutionResult
-                    {
-                        Success = false,
-                        ErrorMessage = "Method invocation failed"
-                    };
+                    return FailExecution(sink, "Method invocation failed");
                 }
 
                 await executeTask.WaitAsync(cts.Token);
@@ -226,22 +219,15 @@ public class ScriptExecutionService : IScriptExecutionService
         }
         catch (OperationCanceledException)
         {
-            return new ScriptExecutionResult
-            {
-                Success = false,
-                ErrorMessage = $"Script execution timed out after {config.TimeoutSeconds} seconds",
-                Output = "Execution timeout"
-            };
+            return FailExecution(
+                sink,
+                $"Script execution timed out after {config.TimeoutSeconds} seconds",
+                output: "Execution timeout");
         }
         catch (Exception ex)
         {
-            return new ScriptExecutionResult
-            {
-                Success = false,
-                ErrorMessage = ex.InnerException?.Message ?? ex.Message,
-                Output = (ex.InnerException ?? ex).ToString(),
-                Exception = ex.InnerException ?? ex
-            };
+            var displayEx = ex.InnerException ?? ex;
+            return FailExecution(sink, displayEx.Message, displayEx, displayEx.ToString());
         }
         finally
         {
@@ -281,6 +267,24 @@ public class ScriptExecutionService : IScriptExecutionService
 
             assemblyStream?.Dispose();
         }
+    }
+
+    private static ScriptExecutionResult FailExecution(
+        IDumpSink sink,
+        string errorMessage,
+        Exception? exception = null,
+        string? output = null)
+    {
+        var displayException = exception ?? new Exception(errorMessage);
+        sink.ResultWrite(displayException, new DumpOptions { Title = "Error" });
+
+        return new ScriptExecutionResult
+        {
+            Success = false,
+            ErrorMessage = errorMessage,
+            Output = output ?? string.Empty,
+            Exception = exception
+        };
     }
 
     // Helper class for real-time console redirection

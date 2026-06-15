@@ -34,7 +34,6 @@
             <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,4" VerticalAlignment="Center">
                 <Button Classes="rider-run-btn"
                         Command="{Binding ExecuteCommand}"
-                        CommandParameter="{Binding SelectedTab}"
                         ToolTip.Tip="Execute Script (F5)">
                     <StackPanel Orientation="Horizontal" Spacing="5">
                         <TextBlock Text="▶" FontSize="11" />
