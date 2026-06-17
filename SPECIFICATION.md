@@ -704,7 +704,7 @@ public async Task SaveAsync(ScriptPackage package, string path)
 
 ### 15.3 License
 
-MIT License (TBD)
+[MIT License](LICENSE)
 
 ### 15.4 Contributors
 
