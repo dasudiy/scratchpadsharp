@@ -51,8 +51,10 @@ public class ScriptTabViewModel : ReactiveObject
         ToggleOutputPanelCommand = ReactiveCommand.Create(() => { IsOutputPanelExpanded = !IsOutputPanelExpanded; });
         CloseCommand = ReactiveCommand.Create(() => { });
 
-        _ = InitializeProjectAsync();
+        InitializationTask = InitializeProjectAsync();
     }
+
+    public Task InitializationTask { get; }
 
     public void BindCloseHandler(Action closeHandler)
     {
@@ -211,6 +213,39 @@ public class ScriptTabViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(IsProjectReady));
             this.RaisePropertyChanged(nameof(ProjectContext));
         }
+    }
+
+    public async Task RestoreFromSessionAsync(TabSessionState state)
+    {
+        await InitializationTask;
+
+        if (!string.IsNullOrEmpty(state.SourcePath) && File.Exists(state.SourcePath))
+            await OpenFileAsync(state.SourcePath);
+
+        if (state.Config != null)
+        {
+            isProjectReady = false;
+            this.RaisePropertyChanged(nameof(IsProjectReady));
+            try
+            {
+                await ProjectService.Instance.RestoreConfigAsync(TabId, projectContext, state.Config);
+            }
+            finally
+            {
+                isProjectReady = true;
+                this.RaisePropertyChanged(nameof(IsProjectReady));
+                this.RaisePropertyChanged(nameof(ProjectContext));
+            }
+        }
+
+        if (!string.IsNullOrEmpty(state.Code))
+        {
+            CodeText = state.Code;
+            projectContext.Code = state.Code;
+        }
+
+        if (string.IsNullOrEmpty(projectContext.SourcePath) && !string.IsNullOrEmpty(state.Title))
+            Title = state.Title;
     }
 
     public async Task SaveAsync()

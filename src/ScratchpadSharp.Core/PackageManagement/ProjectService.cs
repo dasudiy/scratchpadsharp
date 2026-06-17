@@ -122,6 +122,25 @@ public class ProjectService
             InvalidOperationException("Source path is null"));
     }
 
+    public async Task RestoreConfigAsync(string tabId, ProjectContext context, ScriptConfig config,
+        CancellationToken ct = default)
+    {
+        context.Config = config.Clone();
+
+        var packageDto = new ScriptPackage
+        {
+            Config = context.Config,
+            Manifest = context.Manifest,
+            RootPath = context.EffectiveRootPath
+        };
+
+        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct);
+
+        context.Manifest = packageDto.Manifest!;
+        HydratePaths(context);
+        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+    }
+
     /// <summary>
     /// 添加 NuGet 包引用。
     /// 更新 Config -> 重新 Resolve -> 更新 Manifest -> 刷新环境。

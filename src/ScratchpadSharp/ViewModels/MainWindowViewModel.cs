@@ -8,7 +8,9 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using ReactiveUI;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
+using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.ViewModels;
 
@@ -37,7 +39,7 @@ public class MainWindowViewModel : ReactiveObject
         ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager, SelectedTabReady);
         ExitCommand = ReactiveCommand.Create(Exit);
 
-        AddTab();
+        _ = RestoreSessionAsync();
     }
 
     public ObservableCollection<ScriptTabViewModel> Tabs { get; }
@@ -111,11 +113,72 @@ public class MainWindowViewModel : ReactiveObject
 
     public void AddTab()
     {
-        var tab = new ScriptTabViewModel(scriptService);
-        tab.BindCloseHandler(() => CloseTab(tab));
-
+        var tab = CreateTab();
         Tabs.Add(tab);
         SelectedTab = tab;
+    }
+
+    private ScriptTabViewModel CreateTab()
+    {
+        var tab = new ScriptTabViewModel(scriptService);
+        tab.BindCloseHandler(() => CloseTab(tab));
+        return tab;
+    }
+
+    private async Task RestoreSessionAsync()
+    {
+        if (!ApplicationSettings.RestoreSessionOnStartup)
+        {
+            AddTab();
+            return;
+        }
+
+        var session = SessionPersistenceService.Load();
+        if (session?.Tabs is not { Count: > 0 })
+        {
+            AddTab();
+            return;
+        }
+
+        ScriptTabViewModel? selectedTab = null;
+
+        for (var i = 0; i < session.Tabs.Count; i++)
+        {
+            var tab = CreateTab();
+            Tabs.Add(tab);
+            await tab.RestoreFromSessionAsync(session.Tabs[i]);
+
+            if (i == session.SelectedTabIndex)
+                selectedTab = tab;
+        }
+
+        SelectedTab = selectedTab ?? Tabs.Last();
+    }
+
+    public void SaveSession()
+    {
+        if (!ApplicationSettings.RestoreSessionOnStartup || Tabs.Count == 0)
+            return;
+
+        var selectedIndex = SelectedTab != null ? Tabs.IndexOf(SelectedTab) : 0;
+        if (selectedIndex < 0)
+            selectedIndex = 0;
+
+        var session = new ApplicationSession
+        {
+            SelectedTabIndex = selectedIndex,
+            Tabs = Tabs.Select(tab => new TabSessionState
+            {
+                SourcePath = string.IsNullOrWhiteSpace(tab.ProjectContext.SourcePath)
+                    ? null
+                    : tab.ProjectContext.SourcePath,
+                Code = tab.CodeText,
+                Title = tab.Title,
+                Config = tab.ProjectContext.Config.Clone()
+            }).ToList()
+        };
+
+        SessionPersistenceService.Save(session);
     }
 
     public void CloseTab(ScriptTabViewModel tab)
@@ -236,10 +299,7 @@ public class MainWindowViewModel : ReactiveObject
 
     private void Exit()
     {
-        foreach (var tab in Tabs.ToList())
-            tab.Cleanup();
-
-        System.Diagnostics.Process.GetCurrentProcess().Kill();
+        MainWindow?.Close();
     }
 
     public void CleanupAllTabs()

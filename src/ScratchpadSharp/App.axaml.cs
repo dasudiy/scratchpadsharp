@@ -28,6 +28,7 @@ public partial class App : Application
         IConfiguration config = builder.Build();
 
         ConfigurationLoader.Initialize(config);
+        ApplicationSettings.Initialize(config);
         BclXmlResolver.Initialize(config);
 
         _ = RoslynWorkspaceService.Instance.EnsureInitializedAsync();

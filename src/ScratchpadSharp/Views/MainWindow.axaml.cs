@@ -15,7 +15,10 @@ public partial class MainWindow : Window
         Closing += (_, _) =>
         {
             if (DataContext is MainWindowViewModel vm)
+            {
+                vm.SaveSession();
                 vm.CleanupAllTabs();
+            }
         };
     }
 
