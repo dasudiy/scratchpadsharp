@@ -11,6 +11,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 - **NuGet Support**: Dynamic package resolution
 - **EF Core Ready**: Built-in database support
 - **Git-Friendly Storage**: .lqpkg zip format with Developer Mode
+- **Session Restore**: Reopen tabs, unsaved code, and references after restart (configurable)
 
 ## Project Structure
 
@@ -91,6 +92,7 @@ To point at a specific binary:
 
 - [SPECIFICATION.md](SPECIFICATION.md) — Technical design and architecture
 - [docs/reference-management.md](docs/reference-management.md) — NuGet and assembly reference pipeline
+- [docs/session-restore.md](docs/session-restore.md) — Session persistence (unsaved files, references, tabs)
 - [docs/dump-workflow.md](docs/dump-workflow.md) — `.Dump()` HTML output flow
 - [docs/intellisense-workflow.md](docs/intellisense-workflow.md) — Code completion pipeline
 - [docs/method-signature-help-workflow.md](docs/method-signature-help-workflow.md) — Signature help pipeline

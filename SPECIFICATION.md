@@ -389,6 +389,15 @@ public class MainWindowViewModel : ViewModelBase
 }
 ```
 
+### 6.4 Session lifecycle
+
+When `Application.RestoreSessionOnStartup` is `true` (default):
+
+- **On window close**: `MainWindowViewModel.SaveSession()` writes all tabs to `{LocalApplicationData}/ScratchpadSharp/session.json` — including unsaved tabs (no `SourcePath`), unsaved code edits, and reference state (`Config` + `Manifest`).
+- **On startup**: `RestoreSessionAsync()` recreates tabs from that file instead of opening a single empty tab.
+
+Unsaved tabs depend entirely on session data; saved `.lqpkg` tabs with embedded local DLLs require `PrepareEffectiveRootForSessionRestoreAsync` so `EffectiveRootPath` matches the package extract directory. Details: [docs/session-restore.md](docs/session-restore.md).
+
 ---
 
 ## 7. Configuration
@@ -399,6 +408,7 @@ public class MainWindowViewModel : ViewModelBase
 {
   "Application": {
     "DeveloperMode": false,
+    "RestoreSessionOnStartup": true,
     "RecentFiles": []
   },
   "Editor": {
@@ -418,6 +428,14 @@ public class MainWindowViewModel : ViewModelBase
     "PackageCacheFolder": "./.packages"
   },
 ```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Application.RestoreSessionOnStartup` | `true` | Persist and restore open tabs, editor code, and references on exit/launch |
+| `Application.DeveloperMode` | `false` | Folder-based package layout (reserved) |
+| `Application.RecentFiles` | `[]` | Reserved; session restore uses `session.json` instead |
+
+Session data path: `{LocalApplicationData}/ScratchpadSharp/session.json`. See [docs/session-restore.md](docs/session-restore.md).
 
 > **Note**: `PackageCacheFolder` is reserved in appsettings; runtime package downloads use the NuGet global packages folder via `NuGetService`.
   "DefaultUsings": [

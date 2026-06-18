@@ -3,6 +3,7 @@ using System.IO;
 using System.Reactive;
 using System.Threading.Tasks;
 using ReactiveUI;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.PackageManagement;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.Storage;
@@ -29,7 +30,7 @@ public class ScriptTabViewModel : ReactiveObject
     private readonly IScriptExecutionService scriptService;
     private readonly HtmlDumpService htmlDumpService;
 
-    public ScriptTabViewModel(IScriptExecutionService scriptService)
+    public ScriptTabViewModel(IScriptExecutionService scriptService, bool deferInitialization = false)
     {
         this.scriptService = scriptService;
         htmlDumpService = new HtmlDumpService();
@@ -51,7 +52,7 @@ public class ScriptTabViewModel : ReactiveObject
         ToggleOutputPanelCommand = ReactiveCommand.Create(() => { IsOutputPanelExpanded = !IsOutputPanelExpanded; });
         CloseCommand = ReactiveCommand.Create(() => { });
 
-        InitializationTask = InitializeProjectAsync();
+        InitializationTask = deferInitialization ? Task.CompletedTask : InitializeProjectAsync();
     }
 
     public Task InitializationTask { get; }
@@ -217,35 +218,51 @@ public class ScriptTabViewModel : ReactiveObject
 
     public async Task RestoreFromSessionAsync(TabSessionState state)
     {
-        await InitializationTask;
-
-        if (!string.IsNullOrEmpty(state.SourcePath) && File.Exists(state.SourcePath))
-            await OpenFileAsync(state.SourcePath);
-
-        if (state.Config != null)
+        isProjectReady = false;
+        this.RaisePropertyChanged(nameof(IsProjectReady));
+        try
         {
-            isProjectReady = false;
-            this.RaisePropertyChanged(nameof(IsProjectReady));
-            try
+            projectContext = await ProjectService.Instance.CreateShellProjectAsync(TabId);
+
+            if (!string.IsNullOrEmpty(state.SourcePath))
+            {
+                projectContext.SourcePath = state.SourcePath;
+
+                if (File.Exists(state.SourcePath) || Directory.Exists(state.SourcePath))
+                {
+                    await ProjectService.Instance.PrepareEffectiveRootForSessionRestoreAsync(
+                        projectContext, state.SourcePath);
+                }
+            }
+
+            if (state.Config != null &&
+                state.Manifest?.ResolvedState.Assemblies is { Count: > 0 })
+            {
+                await ProjectService.Instance.ApplySavedProjectStateAsync(
+                    TabId, projectContext, state.Config, state.Manifest);
+            }
+            else if (state.Config != null)
             {
                 await ProjectService.Instance.RestoreConfigAsync(TabId, projectContext, state.Config);
             }
-            finally
+
+            if (!string.IsNullOrEmpty(state.Code))
             {
-                isProjectReady = true;
-                this.RaisePropertyChanged(nameof(IsProjectReady));
-                this.RaisePropertyChanged(nameof(ProjectContext));
+                CodeText = state.Code;
+                projectContext.Code = state.Code;
             }
-        }
 
-        if (!string.IsNullOrEmpty(state.Code))
+            if (!string.IsNullOrEmpty(state.SourcePath))
+                Title = Path.GetFileName(state.SourcePath);
+            else if (!string.IsNullOrEmpty(state.Title))
+                Title = state.Title;
+        }
+        finally
         {
-            CodeText = state.Code;
-            projectContext.Code = state.Code;
+            isProjectReady = true;
+            this.RaisePropertyChanged(nameof(IsProjectReady));
+            this.RaisePropertyChanged(nameof(ProjectContext));
         }
-
-        if (string.IsNullOrEmpty(projectContext.SourcePath) && !string.IsNullOrEmpty(state.Title))
-            Title = state.Title;
     }
 
     public async Task SaveAsync()

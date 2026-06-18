@@ -118,9 +118,9 @@ public class MainWindowViewModel : ReactiveObject
         SelectedTab = tab;
     }
 
-    private ScriptTabViewModel CreateTab()
+    private ScriptTabViewModel CreateTab(bool deferInitialization = false)
     {
-        var tab = new ScriptTabViewModel(scriptService);
+        var tab = new ScriptTabViewModel(scriptService, deferInitialization);
         tab.BindCloseHandler(() => CloseTab(tab));
         return tab;
     }
@@ -144,7 +144,7 @@ public class MainWindowViewModel : ReactiveObject
 
         for (var i = 0; i < session.Tabs.Count; i++)
         {
-            var tab = CreateTab();
+            var tab = CreateTab(deferInitialization: true);
             Tabs.Add(tab);
             await tab.RestoreFromSessionAsync(session.Tabs[i]);
 
@@ -174,7 +174,8 @@ public class MainWindowViewModel : ReactiveObject
                     : tab.ProjectContext.SourcePath,
                 Code = tab.CodeText,
                 Title = tab.Title,
-                Config = tab.ProjectContext.Config.Clone()
+                Config = tab.ProjectContext.Config.Clone(),
+                Manifest = tab.ProjectContext.Manifest
             }).ToList()
         };
 

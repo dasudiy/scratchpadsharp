@@ -74,7 +74,7 @@ flowchart LR
 **补水（Hydrate）**：
 
 - NuGet 资产：`globalPackagesFolder / id.toLower() / version.toLower() / relPath`
-- Local 资产：`EffectiveRootPath / relPath`
+- Local 资产：`EffectiveRootPath / relPath`；若 `RelativePath` 已是绝对路径则直接使用
 
 Native 资产按当前平台 RID（`RuntimeInformation.RuntimeIdentifier`）从字典中过滤后补水到 `AbsoluteNativeAssets`。
 
@@ -128,6 +128,26 @@ flowchart TD
 
 - `AbsoluteCompileReferences` → Roslyn 编译引用
 - `AbsoluteNativeAssets` → `ScriptAssemblyLoadContext` 的额外探针路径
+
+### 5. Session 恢复（`RestoreFromSessionAsync`）
+
+应用退出时将会话写入 `~/.local/share/ScratchpadSharp/session.json`（见 [session-restore.md](session-restore.md)）。每个标签页保存 `Config`（意图）和 `Manifest`（已解析资产），启动时优先走快速路径，避免重复 NuGet Resolve。
+
+```mermaid
+flowchart TD
+    S1["1. CreateShellProjectAsync<br/>空项目 + Roslyn 激活"]
+    S2["2. PrepareEffectiveRootForSessionRestore<br/>.lqpkg → 稳定解压目录<br/>文件夹包 → SourcePath"]
+    S3["3. ApplySavedProjectStateAsync<br/>Config + Manifest → HydratePaths → UpdateReferences"]
+    S4["4. 恢复 Code / Title"]
+
+    S1 --> S2 --> S3 --> S4
+```
+
+**未保存标签页**（无 `SourcePath`）：代码、NuGet 包、本地引用全部来自 session 文件，不依赖磁盘上的项目文件。NuGet 引用通过 Manifest 补水；本地 DLL 若为绝对路径则可直接解析。
+
+**`.lqpkg` 内嵌 Local 资产**：Manifest 中路径相对于 `{Temp}/ScratchpadSharp/Packages/{包名}/`。恢复时必须先 `PrepareEffectiveRootForSessionRestoreAsync`，不能用随机 shell 临时目录，否则 Local 引用会丢失。
+
+若 session 仅有 `Config`、无 `Manifest`（旧格式），回退为 `RestoreConfigAsync`（完整 `ResolveAndSaveAsync`）。
 
 ---
 

@@ -18,4 +18,6 @@ public class TabSessionState
     public string Title { get; set; } = "Untitled";
 
     public ScriptConfig? Config { get; set; }
+
+    public PackageManifest? Manifest { get; set; }
 }

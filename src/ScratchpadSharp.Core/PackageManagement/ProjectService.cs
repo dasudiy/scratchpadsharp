@@ -53,20 +53,53 @@ public class ProjectService
 
         HydratePaths(context);
 
-        // 5. 激活环境 (Roslyn)
-        await RoslynWorkspaceService.Instance.EnsureInitializedAsync();
-        RoslynWorkspaceService.Instance.RemoveProject(tabId);
-        RoslynWorkspaceService.Instance.CreateProject(tabId);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await ActivateRoslynProjectAsync(tabId, context);
         // TODO: 如果需要，在这里注入 Compiler Options (AllowUnsafe, Nullable 等)
 
         return context;
     }
 
-    /// <summary>
-    /// 打开/加载项目。
-    /// 自动处理解压、依赖检查、路径补水和 Roslyn 初始化。
-    /// </summary>
+    public async Task<ProjectContext> CreateShellProjectAsync(string tabId, CancellationToken ct = default)
+    {
+        var path = Path.GetTempFileName();
+        File.Delete(path);
+        Directory.CreateDirectory(path);
+
+        var context = new ProjectContext
+        {
+            SourcePath = null,
+            EffectiveRootPath = path,
+            Manifest = new PackageManifest(),
+            Config = ConfigurationLoader.CreateDefaultConfig()
+        };
+
+        await ActivateRoslynProjectAsync(tabId, context);
+        return context;
+    }
+
+    public async Task ApplySavedProjectStateAsync(string tabId, ProjectContext context, ScriptConfig config,
+        PackageManifest manifest, CancellationToken ct = default)
+    {
+        context.Config = config.Clone();
+        context.Manifest = manifest;
+        HydratePaths(context);
+        await ActivateRoslynProjectAsync(tabId, context);
+    }
+
+    public async Task PrepareEffectiveRootForSessionRestoreAsync(ProjectContext context, string sourcePath,
+        CancellationToken ct = default)
+    {
+        if (PackageService.Instance.IsZipPackage(sourcePath))
+        {
+            var package = await PackageService.Instance.LoadAsync(sourcePath);
+            context.EffectiveRootPath = package.RootPath;
+            return;
+        }
+
+        if (PackageService.Instance.IsFolderPackage(sourcePath))
+            context.EffectiveRootPath = sourcePath;
+    }
+
     public async Task<ProjectContext> LoadProjectAsync(string tabId, string path, CancellationToken ct = default)
     {
         // 1. 物理读取 (Data Transfer Object)
@@ -97,15 +130,19 @@ public class ProjectService
 
         HydratePaths(context);
 
-        // 5. 激活环境 (Roslyn)
-        await RoslynWorkspaceService.Instance.EnsureInitializedAsync();
-        RoslynWorkspaceService.Instance.RemoveProject(tabId);
-        RoslynWorkspaceService.Instance.CreateProject(tabId);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await ActivateRoslynProjectAsync(tabId, context);
         // TODO: 如果需要，在这里注入 Compiler Options (AllowUnsafe, Nullable 等)
 
 
         return context;
+    }
+
+    private async Task ActivateRoslynProjectAsync(string tabId, ProjectContext context)
+    {
+        await RoslynWorkspaceService.Instance.EnsureInitializedAsync();
+        RoslynWorkspaceService.Instance.RemoveProject(tabId);
+        RoslynWorkspaceService.Instance.CreateProject(tabId);
+        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
     }
 
     public async Task SaveProjectAsync(ProjectContext projectContext)
@@ -410,7 +447,9 @@ public class ProjectService
             }
             else // Local
             {
-                absPath = Path.Combine(context.EffectiveRootPath, asset.RelativePath);
+                absPath = Path.IsPathRooted(asset.RelativePath)
+                    ? asset.RelativePath
+                    : Path.Combine(context.EffectiveRootPath, asset.RelativePath);
             }
 
             if (File.Exists(absPath))
@@ -433,7 +472,9 @@ public class ProjectService
                 }
                 else
                 {
-                    absPath = Path.Combine(context.EffectiveRootPath, asset.RelativePath);
+                    absPath = Path.IsPathRooted(asset.RelativePath)
+                        ? asset.RelativePath
+                        : Path.Combine(context.EffectiveRootPath, asset.RelativePath);
                 }
 
                 if (File.Exists(absPath))
