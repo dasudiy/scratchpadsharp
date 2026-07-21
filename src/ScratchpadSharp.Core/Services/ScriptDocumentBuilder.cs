@@ -52,6 +52,7 @@ public class __ScriptRunner
 
     public static async Task<object?> __Execute()
     {
+        var ConnectionString = __ConnectionString;
     " + lineDirective + @"
         ";
 

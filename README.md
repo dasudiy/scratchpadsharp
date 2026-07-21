@@ -10,6 +10,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 - **Multi-Tab Editing**: Independent Roslyn project per tab
 - **Rich Object Visualization**: HTML-based dumping (NetPad/O2Html)
 - **NuGet Support**: Dynamic package resolution
+- **EF Core Ready**: EF Core + SQLite in script defaults, `ConnectionString` injected into scripts
 - **Git-Friendly Storage**: .lqpkg zip format with Developer Mode folder layout
 - **Session Restore**: Reopen tabs, unsaved code, and references after restart (configurable)
 
@@ -86,10 +87,10 @@ To point at a specific binary:
 - [x] Reference Management window (F4)
 - [x] Session restore (tabs, unsaved code, references)
 
-### Phase 4: EF Core & Polish
-- [x] Connection string injection (via ScriptConfig)
+### Phase 4: EF Core & Polish ✓ Complete (core)
+- [x] Connection string injection (via ScriptConfig → script-local `ConnectionString`)
 - [x] Compilation error reporting (mapped to `Script.cs` line/column)
-- [ ] EF Core integration
+- [x] EF Core scaffolding (EF + SQLite defaults, [docs/ef-core.md](docs/ef-core.md))
 - [x] Editor error highlighting (wavy underlines from compilation diagnostics)
 - [x] ANSI color support (console Text view renders SGR / Spectre sequences)
 - [x] True execution cancellation (CancellationToken linked with timeout; Stop cancels wait)
@@ -111,6 +112,7 @@ Config resolves as **base → user → query**:
 - [docs/dump-workflow.md](docs/dump-workflow.md) — `.Dump()` HTML output flow
 - [docs/intellisense-workflow.md](docs/intellisense-workflow.md) — Code completion pipeline
 - [docs/method-signature-help-workflow.md](docs/method-signature-help-workflow.md) — Signature help pipeline
+- [docs/ef-core.md](docs/ef-core.md) — EF Core + SQLite defaults and usage
 
 ## Acknowledgements
 
