@@ -72,8 +72,7 @@
 
                     <ScrollViewer IsVisible="{Binding !ShowHtmlOutput}"
                                   Background="#FFFFFF">
-                        <SelectableTextBlock Text="{Binding OutputDisplayText}"
-                            Classes="rider-output-text" />
+                        <the:HtmlPanel Text="{Binding OutputDisplayHtml}" />
                     </ScrollViewer>
                 </Panel>
             </Border>

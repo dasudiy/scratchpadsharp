@@ -93,6 +93,7 @@ public class ScriptTabViewModel : ReactiveObject
         {
             this.RaiseAndSetIfChanged(ref output, value);
             this.RaisePropertyChanged(nameof(OutputDisplayText));
+            this.RaisePropertyChanged(nameof(OutputDisplayHtml));
         }
     }
 
@@ -133,7 +134,20 @@ public class ScriptTabViewModel : ReactiveObject
     public string OutputDisplayText =>
         string.IsNullOrWhiteSpace(Output)
             ? "(No output yet — run the script with Console.WriteLine() or .Dump())"
-            : Output;
+            : AnsiToHtml.Strip(Output);
+
+    public string OutputDisplayHtml
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Output))
+            {
+                return """<pre style="margin:0;padding:12px 8px;font-family:JetBrains Mono,Cascadia Code,Consolas,monospace;font-size:12.5px;color:#6E7681;">(No output yet — run the script with Console.WriteLine() or .Dump())</pre>""";
+            }
+
+            return AnsiToHtml.Convert(Output);
+        }
+    }
 
     public string OutputPanelToggleGlyph => IsOutputPanelExpanded ? "−" : "+";
 

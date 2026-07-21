@@ -90,8 +90,8 @@ To point at a specific binary:
 - [x] Connection string injection (via ScriptConfig)
 - [x] Compilation error reporting (mapped to `Script.cs` line/column)
 - [ ] EF Core integration
-- [x] Editor error highlighting (gutter/squiggles)
-- [ ] ANSI color support
+- [x] Editor error highlighting (wavy underlines from compilation diagnostics)
+- [x] ANSI color support (console Text view renders SGR / Spectre sequences)
 - [x] True execution cancellation (CancellationToken linked with timeout; Stop cancels wait)
 
 ### Phase 4.5: Layered Configuration ✓ Complete
