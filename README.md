@@ -94,14 +94,14 @@ To point at a specific binary:
 - [ ] ANSI color support
 - [x] True execution cancellation (CancellationToken linked with timeout; Stop cancels wait)
 
-### Phase 4.5: Layered Configuration ✓ Complete (core)
+### Phase 4.5: Layered Configuration ✓ Complete
 
 Config resolves as **base → user → query**:
 
 - [x] User settings layer `appsettings.user.json` in `{LocalApplicationData}/ScratchpadSharp/` (shipped `appsettings.json` stays read-only factory defaults; must live outside `bin`)
 - [x] Global Settings UI editing the user layer, with hot-reload re-init of `ApplicationSettings` / `ConfigurationLoader` on `reloadOnChange`
 - [x] Per-query Script settings in Reference Manager (F4): timeout / connection string → existing `config.json`
-- [ ] Inherited-vs-overridden value cues in the Script settings UI
+- [x] Inherited-vs-overridden value cues in the Script settings UI
 
 ## Documentation
 

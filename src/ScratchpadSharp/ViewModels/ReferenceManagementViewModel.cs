@@ -57,13 +57,21 @@ public class ReferenceManagementViewModel : ReactiveObject
     public decimal TimeoutSeconds
     {
         get => timeoutSeconds;
-        set => this.RaiseAndSetIfChanged(ref timeoutSeconds, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref timeoutSeconds, value);
+            UpdateInheritanceHints();
+        }
     }
 
     public string ConnectionString
     {
         get => connectionString;
-        set => this.RaiseAndSetIfChanged(ref connectionString, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref connectionString, value);
+            UpdateInheritanceHints();
+        }
     }
 
     public string ScriptSettingsStatus
@@ -71,6 +79,9 @@ public class ReferenceManagementViewModel : ReactiveObject
         get => scriptSettingsStatus;
         set => this.RaiseAndSetIfChanged(ref scriptSettingsStatus, value);
     }
+
+    public string TimeoutInheritanceHint { get; private set; } = string.Empty;
+    public string ConnectionStringInheritanceHint { get; private set; } = string.Empty;
 
     private bool showRestoreButton;
 
@@ -163,6 +174,7 @@ public class ReferenceManagementViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
     public ReactiveCommand<Uri?, Unit> OpenUrlCommand { get; }
     public ReactiveCommand<Unit, Unit> ApplyScriptSettingsCommand { get; }
+    public ReactiveCommand<Unit, Unit> ResetScriptSettingsCommand { get; }
 
     public ReferenceManagementViewModel(string tabId, ProjectContext projectContext)
     {
@@ -173,6 +185,7 @@ public class ReferenceManagementViewModel : ReactiveObject
             ? projectContext.Config.TimeoutSeconds
             : ApplicationSettings.DefaultTimeoutSeconds;
         ConnectionString = projectContext.Config.ConnectionString ?? string.Empty;
+        UpdateInheritanceHints();
 
         RefreshReferences();
 
@@ -214,6 +227,7 @@ public class ReferenceManagementViewModel : ReactiveObject
 
         CloseCommand = ReactiveCommand.Create(() => { });
         ApplyScriptSettingsCommand = ReactiveCommand.Create(ApplyScriptSettings);
+        ResetScriptSettingsCommand = ReactiveCommand.Create(ResetScriptSettingsToDefaults);
 
         InstallPackageCommand.ThrownExceptions
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -259,7 +273,31 @@ public class ReferenceManagementViewModel : ReactiveObject
     {
         projectContext.Config.TimeoutSeconds = (int)TimeoutSeconds;
         projectContext.Config.ConnectionString = ConnectionString ?? string.Empty;
+        UpdateInheritanceHints();
         ScriptSettingsStatus = "Applied to in-memory config. Save the query to persist config.json.";
+    }
+
+    private void ResetScriptSettingsToDefaults()
+    {
+        TimeoutSeconds = ApplicationSettings.DefaultTimeoutSeconds;
+        ConnectionString = string.Empty;
+        ApplyScriptSettings();
+        ScriptSettingsStatus = "Reset to global defaults (still need Save on the query to persist).";
+    }
+
+    private void UpdateInheritanceHints()
+    {
+        var defaultTimeout = ApplicationSettings.DefaultTimeoutSeconds;
+        TimeoutInheritanceHint = (int)TimeoutSeconds == defaultTimeout
+            ? $"Matches global default ({defaultTimeout}s) — inherited unless you change it."
+            : $"Custom for this query (global default is {defaultTimeout}s).";
+
+        ConnectionStringInheritanceHint = string.IsNullOrWhiteSpace(ConnectionString)
+            ? "Empty — using inherited/empty connection string."
+            : "Set on this query (overrides empty global default).";
+
+        this.RaisePropertyChanged(nameof(TimeoutInheritanceHint));
+        this.RaisePropertyChanged(nameof(ConnectionStringInheritanceHint));
     }
 
     private void RefreshReferences()
