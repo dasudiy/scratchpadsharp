@@ -10,6 +10,7 @@ using Avalonia.Platform.Storage;
 using ReactiveUI;
 using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
+using ScratchpadSharp.Core.Storage;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.ViewModels;
@@ -30,8 +31,12 @@ public class MainWindowViewModel : ReactiveObject
         CloseTabCommand = ReactiveCommand.Create(CloseSelectedTab,
             this.WhenAnyValue(x => x.SelectedTab).Select(tab => tab != null));
         OpenCommand = ReactiveCommand.CreateFromTask(OpenAsync);
+        OpenFolderCommand = ReactiveCommand.CreateFromTask(OpenFolderAsync);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, SelectedTabReady);
         SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync, SelectedTabReady);
+        SaveAsFolderCommand = ReactiveCommand.CreateFromTask(SaveAsFolderAsync, SelectedTabReady);
+        PackCommand = ReactiveCommand.CreateFromTask(PackAsync, SelectedTabReady);
+        UnpackCommand = ReactiveCommand.CreateFromTask(UnpackAsync, SelectedTabReady);
         ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync, SelectedTabReady);
         CancelCommand = ReactiveCommand.Create(Cancel,
             this.WhenAnyValue(x => x.SelectedTab)
@@ -85,8 +90,12 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> NewTabCommand { get; }
     public ReactiveCommand<Unit, Unit> CloseTabCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenCommand { get; }
+    public ReactiveCommand<Unit, Unit> OpenFolderCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveAsCommand { get; }
+    public ReactiveCommand<Unit, Unit> SaveAsFolderCommand { get; }
+    public ReactiveCommand<Unit, Unit> PackCommand { get; }
+    public ReactiveCommand<Unit, Unit> UnpackCommand { get; }
     public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
@@ -230,6 +239,38 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 
+    private async Task OpenFolderAsync()
+    {
+        if (SelectedTab == null) return;
+
+        try
+        {
+            SelectedTab.StatusText = "Opening folder package...";
+            var folderPath = await ShowOpenFolderDialogAsync("Open Developer Mode package folder");
+            if (folderPath == null)
+            {
+                SelectedTab.StatusText = "Open cancelled";
+                return;
+            }
+
+            if (!PackageService.Instance.IsFolderPackage(folderPath))
+            {
+                SelectedTab.StatusText = "Not a Scratchpad folder package (.lqpkg/manifest.json missing)";
+                this.RaisePropertyChanged(nameof(StatusText));
+                return;
+            }
+
+            await SelectedTab.OpenFileAsync(folderPath);
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+        catch (Exception ex)
+        {
+            SelectedTab.Output = $"Error opening folder: {ex.Message}";
+            SelectedTab.StatusText = "Error opening folder";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+    }
+
     private async Task SaveAsync()
     {
         if (SelectedTab is not { IsProjectReady: true }) return;
@@ -268,6 +309,91 @@ public class MainWindowViewModel : ReactiveObject
         catch (Exception ex)
         {
             SelectedTab.StatusText = $"Save As failed: {ex.Message}";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+    }
+
+    private async Task SaveAsFolderAsync()
+    {
+        if (SelectedTab is not { IsProjectReady: true }) return;
+
+        try
+        {
+            var folderPath = await ShowOpenFolderDialogAsync("Save as Developer Mode folder");
+            if (string.IsNullOrEmpty(folderPath)) return;
+
+            SelectedTab.SetSourcePath(folderPath);
+            await SaveAsync();
+            SelectedTab.StatusText = $"Saved developer folder: {Path.GetFileName(folderPath)}";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+        catch (Exception ex)
+        {
+            SelectedTab.StatusText = $"Save as folder failed: {ex.Message}";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+    }
+
+    private async Task PackAsync()
+    {
+        if (SelectedTab is not { IsProjectReady: true }) return;
+
+        try
+        {
+            var sourcePath = SelectedTab.ProjectContext.SourcePath;
+            if (string.IsNullOrEmpty(sourcePath) || !PackageService.Instance.IsFolderPackage(sourcePath))
+            {
+                SelectedTab.StatusText = "Pack needs a Developer Mode folder — use Save as Folder first";
+                this.RaisePropertyChanged(nameof(StatusText));
+                return;
+            }
+
+            await SelectedTab.SaveAsync();
+
+            var zipPath = await ShowSavePackageDialogAsync();
+            if (string.IsNullOrEmpty(zipPath)) return;
+
+            if (!zipPath.EndsWith(".lqpkg", StringComparison.OrdinalIgnoreCase))
+                zipPath += ".lqpkg";
+
+            SelectedTab.StatusText = "Packing...";
+            await PackageService.Instance.PackAsync(sourcePath, zipPath);
+            SelectedTab.StatusText = $"Packed: {Path.GetFileName(zipPath)}";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+        catch (Exception ex)
+        {
+            SelectedTab.StatusText = $"Pack failed: {ex.Message}";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+    }
+
+    private async Task UnpackAsync()
+    {
+        if (SelectedTab is not { IsProjectReady: true }) return;
+
+        try
+        {
+            var sourcePath = SelectedTab.ProjectContext.SourcePath;
+            if (string.IsNullOrEmpty(sourcePath) || !PackageService.Instance.IsZipPackage(sourcePath))
+            {
+                SelectedTab.StatusText = "Unpack needs an open .lqpkg file";
+                this.RaisePropertyChanged(nameof(StatusText));
+                return;
+            }
+
+            var folderPath = await ShowOpenFolderDialogAsync("Unpack to folder");
+            if (string.IsNullOrEmpty(folderPath)) return;
+
+            SelectedTab.StatusText = "Unpacking...";
+            await PackageService.Instance.UnpackAsync(sourcePath, folderPath);
+            await SelectedTab.OpenFileAsync(folderPath);
+            SelectedTab.StatusText = $"Unpacked to: {Path.GetFileName(folderPath)}";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+        catch (Exception ex)
+        {
+            SelectedTab.StatusText = $"Unpack failed: {ex.Message}";
             this.RaisePropertyChanged(nameof(StatusText));
         }
     }
@@ -338,6 +464,19 @@ public class MainWindowViewModel : ReactiveObject
         return files.FirstOrDefault()?.Path.LocalPath;
     }
 
+    private async Task<string?> ShowOpenFolderDialogAsync(string title)
+    {
+        if (MainWindow?.StorageProvider == null) return null;
+
+        var folders = await MainWindow.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false
+        });
+
+        return folders.FirstOrDefault()?.Path.LocalPath;
+    }
+
     private async Task<string?> ShowSaveFileDialogAsync()
     {
         if (MainWindow?.StorageProvider == null) return null;
@@ -349,6 +488,23 @@ public class MainWindowViewModel : ReactiveObject
             FileTypeChoices =
             [
                 new FilePickerFileType("C# Script") { Patterns = ["*.cs"] },
+                new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }
+            ]
+        });
+
+        return file?.Path.LocalPath;
+    }
+
+    private async Task<string?> ShowSavePackageDialogAsync()
+    {
+        if (MainWindow?.StorageProvider == null) return null;
+
+        var file = await MainWindow.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Pack to .lqpkg",
+            DefaultExtension = "lqpkg",
+            FileTypeChoices =
+            [
                 new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }
             ]
         });

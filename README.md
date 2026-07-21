@@ -62,8 +62,8 @@ To point at a specific binary:
 - [x] Native library resolver (Linux .so support)
 - [x] In-memory compilation using CSharpCompilation
 - [x] Isolated script execution with timeout support
-- [x] Developer Mode folder layout (`PackageService` storage layer; UI toggle pending)
-- [x] Pack/unpack (`PackAsync`/`UnpackAsync` library API; UI commands pending)
+- [x] Developer Mode folder layout (Open Folder / Save Folder UI + `PackageService`)
+- [x] Pack/unpack (toolbar Pack / Unpack wired to `PackAsync`/`UnpackAsync`)
 
 ### Phase 2.5: Roslyn IntelliSense ✓ Complete
 - [x] Shared workspace architecture (single AdhocWorkspace)
