@@ -45,6 +45,7 @@ public class MainWindowViewModel : ReactiveObject
                     : Observable.Return(false)));
         FormatCommand = ReactiveCommand.CreateFromTask(FormatAsync, SelectedTabReady);
         ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager, SelectedTabReady);
+        OpenDatabaseCommand = ReactiveCommand.Create(OpenDatabase, SelectedTabReady);
         OpenSettingsCommand = ReactiveCommand.Create(OpenSettings);
         ExitCommand = ReactiveCommand.Create(Exit);
 
@@ -100,6 +101,7 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
     public ReactiveCommand<Unit, Unit> ManageReferencesCommand { get; }
+    public ReactiveCommand<Unit, Unit> OpenDatabaseCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
 
@@ -425,6 +427,15 @@ public class MainWindowViewModel : ReactiveObject
 
         var vm = new ReferenceManagementViewModel(SelectedTab.TabId, SelectedTab.ProjectContext);
         var window = new Views.ReferenceManagementWindow { DataContext = vm };
+        window.ShowDialog(MainWindow);
+    }
+
+    private void OpenDatabase()
+    {
+        if (MainWindow == null || SelectedTab is not { IsProjectReady: true }) return;
+
+        var vm = new DatabaseViewModel(SelectedTab.TabId, SelectedTab.ProjectContext);
+        var window = new Views.DatabaseWindow { DataContext = vm };
         window.ShowDialog(MainWindow);
     }
 

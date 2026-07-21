@@ -110,8 +110,8 @@ Config resolves as **base → user → query**:
 - [x] Empty per-query connection string inherits ScriptDefaults at execution
 - [x] Restore Packages in Reference Manager (F4)
 - [x] Provider selection + automatic NuGet packages (`DatabaseProvider` / F4 Script)
-- [ ] Database window: test connection + schema browser
-- [ ] Typed DbContext scaffold / Settings ScriptDefaults UI
+- [x] Database window (F6): test connection + schema browser (SQLite + SQL Server via host ADO.NET)
+- [ ] Typed DbContext scaffold / ad-hoc SQL / Settings ScriptDefaults UI
 
 ## Documentation
 

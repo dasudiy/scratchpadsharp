@@ -1,0 +1,140 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ScratchpadSharp.ViewModels"
+        x:Class="ScratchpadSharp.Views.DatabaseWindow"
+        x:DataType="vm:DatabaseViewModel"
+        Title="Database"
+        Width="780"
+        Height="560"
+        Background="#FBFCFD"
+        WindowStartupLocation="CenterOwner">
+
+  <Grid RowDefinitions="Auto,*,Auto" Margin="0">
+    <Border Grid.Row="0"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="16,12">
+      <StackPanel Spacing="10">
+        <TextBlock Text="Connection"
+                   FontWeight="SemiBold"
+                   Foreground="{StaticResource TextPrimaryBrush}" />
+        <DockPanel LastChildFill="True">
+          <TextBlock DockPanel.Dock="Left"
+                     Width="120"
+                     Text="Provider"
+                     VerticalAlignment="Center"
+                     Foreground="{StaticResource TextSecondaryBrush}" />
+          <ComboBox Margin="12,0,0,0"
+                    ItemsSource="{Binding Providers}"
+                    SelectedItem="{Binding SelectedProvider}"
+                    MinWidth="200"
+                    HorizontalAlignment="Left">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </DockPanel>
+        <DockPanel LastChildFill="True">
+          <TextBlock DockPanel.Dock="Left"
+                     Width="120"
+                     Text="Connection string"
+                     VerticalAlignment="Top"
+                     Margin="0,6,0,0"
+                     Foreground="{StaticResource TextSecondaryBrush}" />
+          <TextBox Margin="12,0,0,0"
+                   AcceptsReturn="True"
+                   TextWrapping="Wrap"
+                   MinHeight="64"
+                   Text="{Binding ConnectionString}" />
+        </DockPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="Test Connection"
+                  Command="{Binding TestConnectionCommand}"
+                  Background="{StaticResource AccentBrush}"
+                  Foreground="White"
+                  BorderThickness="0"
+                  Padding="14,6"
+                  CornerRadius="6"
+                  Cursor="Hand" />
+          <Button Content="Refresh Schema"
+                  Command="{Binding RefreshSchemaCommand}"
+                  Background="Transparent"
+                  BorderBrush="{StaticResource BorderBrush}"
+                  BorderThickness="1"
+                  Foreground="{StaticResource TextSecondaryBrush}"
+                  Padding="14,6"
+                  CornerRadius="6"
+                  Cursor="Hand" />
+          <Button Content="Apply to query"
+                  Command="{Binding ApplyToQueryCommand}"
+                  Background="Transparent"
+                  BorderBrush="{StaticResource BorderBrush}"
+                  BorderThickness="1"
+                  Foreground="{StaticResource TextSecondaryBrush}"
+                  Padding="14,6"
+                  CornerRadius="6"
+                  Cursor="Hand" />
+        </StackPanel>
+        <TextBlock Text="{Binding StatusText}"
+                   TextWrapping="Wrap"
+                   FontSize="11.5"
+                   Foreground="{StaticResource TextMutedBrush}" />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="16,12">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+      <TextBlock Text="Schema"
+                 FontWeight="SemiBold"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 Margin="0,0,0,8" />
+      <Border Grid.Row="1"
+              BorderBrush="{StaticResource BorderBrush}"
+              BorderThickness="1"
+              CornerRadius="6"
+              Background="White"
+              Padding="4">
+        <TreeView ItemsSource="{Binding SchemaRoots}"
+                  SelectedItem="{Binding SelectedNode}">
+          <TreeView.ItemTemplate>
+            <TreeDataTemplate ItemsSource="{Binding Children}">
+              <TextBlock Text="{Binding DisplayText}"
+                         FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
+                         FontSize="12.5" />
+            </TreeDataTemplate>
+          </TreeView.ItemTemplate>
+        </TreeView>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="2"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="16,10">
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Content="Close"
+                Command="{Binding CloseCommand}"
+                Click="OnCloseClick"
+                Background="Transparent"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                Foreground="{StaticResource TextSecondaryBrush}"
+                Padding="14,6"
+                CornerRadius="6"
+                Cursor="Hand"
+                HorizontalAlignment="Right" />
+        <TextBlock Text="Host uses ADO.NET (Microsoft.Data.Sqlite / SqlClient), independent of script EF packages."
+                   VerticalAlignment="Center"
+                   FontSize="11.5"
+                   TextWrapping="Wrap"
+                   Foreground="{StaticResource TextMutedBrush}" />
+      </DockPanel>
+    </Border>
+  </Grid>
+</Window>
