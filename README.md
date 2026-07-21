@@ -7,10 +7,10 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 - **Fast Script Execution**: Roslyn-based C# compilation
 - **Memory Isolation**: AssemblyLoadContext with unloading
 - **IntelliSense Support**: Code completion, signature help, and formatting
+- **Multi-Tab Editing**: Independent Roslyn project per tab
 - **Rich Object Visualization**: HTML-based dumping (NetPad/O2Html)
 - **NuGet Support**: Dynamic package resolution
-- **EF Core Ready**: Built-in database support
-- **Git-Friendly Storage**: .lqpkg zip format with Developer Mode
+- **Git-Friendly Storage**: .lqpkg zip format with Developer Mode folder layout
 - **Session Restore**: Reopen tabs, unsaved code, and references after restart (configurable)
 
 ## Project Structure
@@ -62,8 +62,8 @@ To point at a specific binary:
 - [x] Native library resolver (Linux .so support)
 - [x] In-memory compilation using CSharpCompilation
 - [x] Isolated script execution with timeout support
-- [ ] Developer Mode (folder structure)
-- [ ] Pack/unpack commands
+- [x] Developer Mode folder layout (`PackageService` storage layer; UI toggle pending)
+- [x] Pack/unpack (`PackAsync`/`UnpackAsync` library API; UI commands pending)
 
 ### Phase 2.5: Roslyn IntelliSense ✓ Complete
 - [x] Shared workspace architecture (single AdhocWorkspace)
@@ -81,12 +81,26 @@ To point at a specific binary:
 - [x] Memory leak prevention for Dumps
 - [x] config.json support
 
+### Phase 3.5: Multi-Tab & Session ✓ Complete
+- [x] Multi-tab editing with per-tab Roslyn projects
+- [x] Reference Management window (F4)
+- [x] Session restore (tabs, unsaved code, references)
+
 ### Phase 4: EF Core & Polish
-- [ ] EF Core integration
 - [x] Connection string injection (via ScriptConfig)
-- [ ] Error highlighting
+- [x] Compilation error reporting (mapped to `Script.cs` line/column)
+- [ ] EF Core integration
+- [ ] Editor error highlighting (gutter/squiggles)
 - [ ] ANSI color support
-- [ ] Settings UI
+- [ ] True execution cancellation (Stop currently only resets UI state)
+
+### Phase 4.5: Layered Configuration (planned)
+
+Config resolves as **base → user → query**:
+
+- [ ] User settings layer `appsettings.user.json` in `{LocalApplicationData}/ScratchpadSharp/` (shipped `appsettings.json` stays read-only factory defaults; must live outside `bin`)
+- [ ] Global Settings UI editing the user layer, with hot-reload re-init of `ApplicationSettings` / `ConfigurationLoader` on `reloadOnChange`
+- [ ] Per-query settings UI: extend Reference Manager (F4) with timeout / connection string, showing inherited-vs-overridden values; persist to the **existing** `config.json` (`ScriptConfig`) — no new per-query file
 
 ## Documentation
 
