@@ -104,6 +104,15 @@ Config resolves as **base → user → query**:
 - [x] Per-query Script settings in Reference Manager (F4): timeout / connection string → existing `config.json`
 - [x] Inherited-vs-overridden value cues in the Script settings UI
 
+### Phase 5: Database Explorer — In progress
+
+- [x] Await NuGet resolve on Run (non-blocking tab open; no missing-ref race)
+- [x] Empty per-query connection string inherits ScriptDefaults at execution
+- [x] Restore Packages in Reference Manager (F4)
+- [ ] Provider selection + automatic NuGet packages
+- [ ] Database window: test connection + schema browser
+- [ ] Typed DbContext scaffold / Settings ScriptDefaults UI
+
 ## Documentation
 
 - [SPECIFICATION.md](SPECIFICATION.md) — Technical design and architecture

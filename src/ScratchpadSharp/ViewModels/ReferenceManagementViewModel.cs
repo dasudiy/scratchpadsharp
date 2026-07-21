@@ -175,6 +175,7 @@ public class ReferenceManagementViewModel : ReactiveObject
     public ReactiveCommand<Uri?, Unit> OpenUrlCommand { get; }
     public ReactiveCommand<Unit, Unit> ApplyScriptSettingsCommand { get; }
     public ReactiveCommand<Unit, Unit> ResetScriptSettingsCommand { get; }
+    public ReactiveCommand<Unit, Unit> RestorePackagesCommand { get; }
 
     public ReferenceManagementViewModel(string tabId, ProjectContext projectContext)
     {
@@ -188,6 +189,7 @@ public class ReferenceManagementViewModel : ReactiveObject
         UpdateInheritanceHints();
 
         RefreshReferences();
+        ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
 
         LocalSearchCommand = ReactiveCommand.Create(FilterLocalPackages);
         OnlineSearchCommand = ReactiveCommand.CreateFromTask(SearchOnlineAsync);
@@ -228,6 +230,8 @@ public class ReferenceManagementViewModel : ReactiveObject
         CloseCommand = ReactiveCommand.Create(() => { });
         ApplyScriptSettingsCommand = ReactiveCommand.Create(ApplyScriptSettings);
         ResetScriptSettingsCommand = ReactiveCommand.Create(ResetScriptSettingsToDefaults);
+        RestorePackagesCommand = ReactiveCommand.CreateFromTask(RestorePackagesAsync,
+            this.WhenAnyValue(x => x.IsInstalling, installing => !installing));
 
         InstallPackageCommand.ThrownExceptions
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -236,6 +240,10 @@ public class ReferenceManagementViewModel : ReactiveObject
         RemoveAssemblyReferenceCommand.ThrownExceptions
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(ex => StatusText = $"Remove failed: {ex.Message}");
+
+        RestorePackagesCommand.ThrownExceptions
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(ex => StatusText = $"Restore failed: {ex.Message}");
 
         _ = LoadDataAsync();
 
@@ -279,10 +287,30 @@ public class ReferenceManagementViewModel : ReactiveObject
 
     private void ResetScriptSettingsToDefaults()
     {
-        TimeoutSeconds = ApplicationSettings.DefaultTimeoutSeconds;
-        ConnectionString = string.Empty;
+        var defaults = ConfigurationLoader.CreateDefaultConfig();
+        TimeoutSeconds = defaults.TimeoutSeconds > 0
+            ? defaults.TimeoutSeconds
+            : ApplicationSettings.DefaultTimeoutSeconds;
+        ConnectionString = defaults.ConnectionString ?? string.Empty;
         ApplyScriptSettings();
-        ScriptSettingsStatus = "Reset to global defaults (still need Save on the query to persist).";
+        ScriptSettingsStatus = "Reset to ScriptDefaults (still need Save on the query to persist).";
+    }
+
+    private async Task RestorePackagesAsync()
+    {
+        StatusText = "Restoring packages...";
+        try
+        {
+            await ProjectService.Instance.ResolveConfiguredPackagesAsync(tabId, projectContext);
+            RefreshReferences();
+            ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
+            StatusText = "Packages restored";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Restore failed: {ex.Message}";
+            ShowRestoreButton = true;
+        }
     }
 
     private void UpdateInheritanceHints()
@@ -292,9 +320,14 @@ public class ReferenceManagementViewModel : ReactiveObject
             ? $"Matches global default ({defaultTimeout}s) — inherited unless you change it."
             : $"Custom for this query (global default is {defaultTimeout}s).";
 
+        var defaultCs = ConfigurationLoader.CreateDefaultConfig().ConnectionString ?? string.Empty;
         ConnectionStringInheritanceHint = string.IsNullOrWhiteSpace(ConnectionString)
-            ? "Empty — using inherited/empty connection string."
-            : "Set on this query (overrides empty global default).";
+            ? (string.IsNullOrEmpty(defaultCs)
+                ? "Empty — no ScriptDefaults connection string to inherit."
+                : $"Empty — at run time inherits ScriptDefaults ({defaultCs}).")
+            : string.Equals(ConnectionString, defaultCs, StringComparison.Ordinal)
+                ? "Matches ScriptDefaults."
+                : "Set on this query (overrides ScriptDefaults).";
 
         this.RaisePropertyChanged(nameof(TimeoutInheritanceHint));
         this.RaisePropertyChanged(nameof(ConnectionStringInheritanceHint));
@@ -496,6 +529,7 @@ public class ReferenceManagementViewModel : ReactiveObject
             StatusText = $"Installed {identity.Id} {identity.Version}";
             InstallProgress = 100;
             RefreshReferences();
+            ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
             await LoadLocalPackagesAsync();
         }
         catch (Exception ex)

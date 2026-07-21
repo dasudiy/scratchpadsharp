@@ -23,6 +23,7 @@ public class ScriptTabViewModel : ReactiveObject
     private string codeText = string.Empty;
     private ProjectContext projectContext = null!;
     private bool isProjectReady;
+    private bool arePackagesLoading;
     private string htmlOutput = string.Empty;
     private bool showHtmlOutput = true;
     private bool isOutputPanelExpanded = true;
@@ -33,6 +34,7 @@ public class ScriptTabViewModel : ReactiveObject
     private readonly IScriptExecutionService scriptService;
     private readonly HtmlDumpService htmlDumpService;
     private CancellationTokenSource? executeCts;
+    private Task packageResolveTask = Task.CompletedTask;
 
     public ScriptTabViewModel(IScriptExecutionService scriptService, bool deferInitialization = false)
     {
@@ -161,6 +163,13 @@ public class ScriptTabViewModel : ReactiveObject
 
     public bool IsProjectReady => isProjectReady;
 
+    /// <summary>True while NuGet packages resolve in the background; does not gate toolbar commands.</summary>
+    public bool ArePackagesLoading
+    {
+        get => arePackagesLoading;
+        private set => this.RaiseAndSetIfChanged(ref arePackagesLoading, value);
+    }
+
     public string CursorPosition
     {
         get => cursorPosition;
@@ -185,7 +194,7 @@ public class ScriptTabViewModel : ReactiveObject
         {
             projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
             MarkProjectReady();
-            _ = ResolvePackagesInBackgroundAsync();
+            packageResolveTask = ResolvePackagesInBackgroundAsync();
         }
         catch (Exception ex)
         {
@@ -207,7 +216,7 @@ public class ScriptTabViewModel : ReactiveObject
             StatusText = "New file created";
             htmlDumpService.Clear();
             MarkProjectReady();
-            _ = ResolvePackagesInBackgroundAsync();
+            packageResolveTask = ResolvePackagesInBackgroundAsync();
         }
         catch (Exception ex)
         {
@@ -226,8 +235,12 @@ public class ScriptTabViewModel : ReactiveObject
     private async Task ResolvePackagesInBackgroundAsync()
     {
         if (projectContext.Config.NuGetPackages.Count == 0)
+        {
+            ArePackagesLoading = false;
             return;
+        }
 
+        ArePackagesLoading = true;
         var previousStatus = StatusText;
         StatusText = "Loading packages...";
         try
@@ -247,6 +260,10 @@ public class ScriptTabViewModel : ReactiveObject
         catch (Exception ex)
         {
             StatusText = $"Package load failed: {ex.Message}";
+        }
+        finally
+        {
+            ArePackagesLoading = false;
         }
     }
 
@@ -276,8 +293,9 @@ public class ScriptTabViewModel : ReactiveObject
             StatusText = $"Opened: {Title}";
             htmlDumpService.Clear();
             MarkProjectReady();
-            if (needsPackageResolve)
-                _ = ResolvePackagesInBackgroundAsync();
+            packageResolveTask = needsPackageResolve
+                ? ResolvePackagesInBackgroundAsync()
+                : Task.CompletedTask;
         }
         finally
         {
@@ -326,6 +344,9 @@ public class ScriptTabViewModel : ReactiveObject
                 Title = Path.GetFileName(state.SourcePath);
             else if (!string.IsNullOrEmpty(state.Title))
                 Title = state.Title;
+
+            packageResolveTask = Task.CompletedTask;
+            ArePackagesLoading = false;
         }
         finally
         {
@@ -405,6 +426,14 @@ public class ScriptTabViewModel : ReactiveObject
         IsExecuting = true;
         try
         {
+            var resolveTask = packageResolveTask;
+            if (!resolveTask.IsCompleted)
+            {
+                StatusText = "Waiting for packages...";
+                await resolveTask;
+                token.ThrowIfCancellationRequested();
+            }
+
             StatusText = "Executing...";
             Output = string.Empty;
             htmlDumpService.Clear();

@@ -11,6 +11,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using ScratchpadSharp.Core.External.NetPad.Presentation;
 using ScratchpadSharp.Core.Isolation;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Services;
@@ -163,7 +164,7 @@ public class ScriptExecutionService : IScriptExecutionService
                 return FailExecution(sink, "Could not find script entry point");
 
             var connectionStringProp = type.GetProperty("__ConnectionString", BindingFlags.Public | BindingFlags.Static);
-            connectionStringProp?.SetValue(null, config.ConnectionString);
+            connectionStringProp?.SetValue(null, ConfigurationLoader.ResolveConnectionString(config));
 
             using var outputWriter = new StringWriter();
             var originalOut = Console.Out;

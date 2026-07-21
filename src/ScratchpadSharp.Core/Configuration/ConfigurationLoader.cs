@@ -26,4 +26,13 @@ public static class ConfigurationLoader
     }
 
     public static ScriptConfig CreateDefaultConfig() => _defaults.Clone();
+
+    /// <summary>Per-query empty connection string inherits ScriptDefaults at run time.</summary>
+    public static string ResolveConnectionString(ScriptConfig config)
+    {
+        if (!string.IsNullOrWhiteSpace(config.ConnectionString))
+            return config.ConnectionString;
+
+        return _defaults.ConnectionString ?? string.Empty;
+    }
 }
