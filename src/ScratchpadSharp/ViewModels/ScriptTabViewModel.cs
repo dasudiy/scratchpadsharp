@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reactive;
 using System.Threading;
@@ -27,6 +28,7 @@ public class ScriptTabViewModel : ReactiveObject
     private bool isOutputPanelExpanded = true;
     private string cursorPosition = "1:1";
     private bool isSelected;
+    private IReadOnlyList<CompilationError> compilationErrors = Array.Empty<CompilationError>();
 
     private readonly IScriptExecutionService scriptService;
     private readonly HtmlDumpService htmlDumpService;
@@ -149,6 +151,12 @@ public class ScriptTabViewModel : ReactiveObject
     {
         get => cursorPosition;
         set => this.RaiseAndSetIfChanged(ref cursorPosition, value);
+    }
+
+    public IReadOnlyList<CompilationError> CompilationErrors
+    {
+        get => compilationErrors;
+        private set => this.RaiseAndSetIfChanged(ref compilationErrors, value);
     }
 
     public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
@@ -304,6 +312,13 @@ public class ScriptTabViewModel : ReactiveObject
         StatusText = "Cancellation requested";
     }
 
+    public void ClearCompilationErrors()
+    {
+        if (CompilationErrors.Count == 0)
+            return;
+        CompilationErrors = Array.Empty<CompilationError>();
+    }
+
     public Task RunExecuteAsync() => ExecuteAsync();
 
     public Task RunFormatAsync() => FormatCodeAsync();
@@ -338,30 +353,39 @@ public class ScriptTabViewModel : ReactiveObject
 
             if (token.IsCancellationRequested)
             {
+                CompilationErrors = Array.Empty<CompilationError>();
                 Output = CombineOutput(result.Output, htmlDumpService.TextOutput);
                 StatusText = "Execution cancelled";
             }
             else if (result.Success)
             {
+                CompilationErrors = Array.Empty<CompilationError>();
                 Output = CombineOutput(result.Output, htmlDumpService.TextOutput);
                 projectContext.Output = Output;
                 StatusText = "Execution completed successfully";
             }
             else
             {
+                CompilationErrors = result.CompilationErrors.Count > 0
+                    ? result.CompilationErrors
+                    : Array.Empty<CompilationError>();
                 Output = CombineOutput(
                     $"Error:\n{result.ErrorMessage}\n\n{result.Output}",
                     htmlDumpService.TextOutput);
-                StatusText = "Execution failed";
+                StatusText = CompilationErrors.Count > 0
+                    ? $"Compilation failed ({CompilationErrors.Count})"
+                    : "Execution failed";
             }
         }
         catch (OperationCanceledException)
         {
+            CompilationErrors = Array.Empty<CompilationError>();
             Output = CombineOutput("Execution cancelled", htmlDumpService.TextOutput);
             StatusText = "Execution cancelled";
         }
         catch (Exception ex)
         {
+            CompilationErrors = Array.Empty<CompilationError>();
             Output = $"Fatal error: {ex.Message}\n\n{ex.StackTrace}";
             StatusText = "Fatal error";
         }

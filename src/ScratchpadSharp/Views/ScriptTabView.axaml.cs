@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Xml;
 using Avalonia;
 using Avalonia.Controls;
@@ -28,6 +29,7 @@ public partial class ScriptTabView : UserControl
 
     private CodeCompletionHandler? _codeCompletionHandler;
     private SignatureHelpHandler? _signatureHelpHandler;
+    private CompilationErrorRenderer? _errorRenderer;
     private bool _isEditorInitialized;
 
     public ScriptTabView()
@@ -67,6 +69,7 @@ public partial class ScriptTabView : UserControl
         _isEditorInitialized = false;
         _codeCompletionHandler = null;
         _signatureHelpHandler = null;
+        _errorRenderer = null;
 
         TryInitializeEditor();
     }
@@ -112,6 +115,7 @@ public partial class ScriptTabView : UserControl
         InitializeCodeCompletion();
         ApplyEditorChrome();
         ApplyEditorSettings();
+        InitializeErrorRenderer();
 
         CodeEditor.Document ??= new TextDocument();
         CodeEditor.TextChanged += OnCodeEditorTextChanged;
@@ -121,6 +125,7 @@ public partial class ScriptTabView : UserControl
         CodeEditor.Document.Text = viewModel.CodeText;
         UpdateOutputPanelLayout(viewModel.IsOutputPanelExpanded);
         UpdateCursorPosition();
+        ApplyCompilationErrors();
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -136,6 +141,9 @@ public partial class ScriptTabView : UserControl
 
         if (e.PropertyName == nameof(ScriptTabViewModel.IsOutputPanelExpanded))
             UpdateOutputPanelLayout(viewModel.IsOutputPanelExpanded);
+
+        if (e.PropertyName == nameof(ScriptTabViewModel.CompilationErrors))
+            ApplyCompilationErrors();
     }
 
     private void OnCaretPositionChanged(object? sender, EventArgs e) => UpdateCursorPosition();
@@ -164,7 +172,28 @@ public partial class ScriptTabView : UserControl
         if (viewModel != null && CodeEditor != null)
             viewModel.CodeText = CodeEditor.Document.Text;
 
+        viewModel?.ClearCompilationErrors();
         _codeCompletionHandler?.OnTextChanged();
+    }
+
+    private void InitializeErrorRenderer()
+    {
+        if (CodeEditor?.TextArea == null) return;
+
+        _errorRenderer = new CompilationErrorRenderer();
+        CodeEditor.TextArea.TextView.BackgroundRenderers.Add(_errorRenderer);
+    }
+
+    private void ApplyCompilationErrors()
+    {
+        if (_errorRenderer == null || CodeEditor?.Document == null || viewModel == null)
+            return;
+
+        _errorRenderer.SetErrors(
+            CodeEditor.Document,
+            viewModel.CompilationErrors.Select(e => (e.Line, e.Column, e.EndLine, e.EndColumn)));
+
+        CodeEditor.TextArea.TextView.InvalidateLayer(_errorRenderer.Layer);
     }
 
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)

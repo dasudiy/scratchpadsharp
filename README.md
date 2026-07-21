@@ -90,7 +90,7 @@ To point at a specific binary:
 - [x] Connection string injection (via ScriptConfig)
 - [x] Compilation error reporting (mapped to `Script.cs` line/column)
 - [ ] EF Core integration
-- [ ] Editor error highlighting (gutter/squiggles)
+- [x] Editor error highlighting (gutter/squiggles)
 - [ ] ANSI color support
 - [x] True execution cancellation (CancellationToken linked with timeout; Stop cancels wait)
 

@@ -53,7 +53,9 @@ public class ScriptExecutionService : IScriptExecutionService
                             d.Id,
                             d.GetMessage(),
                             lineSpan.StartLinePosition.Line + 1,
-                            lineSpan.StartLinePosition.Character + 1
+                            lineSpan.StartLinePosition.Character + 1,
+                            lineSpan.EndLinePosition.Line + 1,
+                            lineSpan.EndLinePosition.Character + 1
                         );
                     }).ToList();
 
@@ -63,7 +65,8 @@ public class ScriptExecutionService : IScriptExecutionService
                     {
                         Success = false,
                         ErrorMessage = "Compilation failed",
-                        Output = errorText
+                        Output = errorText,
+                        CompilationErrors = errorRecords
                     };
                 }
 
@@ -313,5 +316,3 @@ public class ScriptGlobals
 {
     public string ConnectionString { get; set; } = string.Empty;
 }
-
-public record CompilationError(string Id, string Message, int Line, int Column);
