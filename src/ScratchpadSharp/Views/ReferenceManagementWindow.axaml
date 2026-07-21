@@ -496,6 +496,30 @@
               <DockPanel LastChildFill="True">
                 <TextBlock DockPanel.Dock="Left"
                            Width="160"
+                           Text="Database provider"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+                <ComboBox Margin="12,0,0,0"
+                          ItemsSource="{Binding DatabaseProviders}"
+                          SelectedItem="{Binding SelectedDatabaseProvider}"
+                          MinWidth="220"
+                          HorizontalAlignment="Left">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </DockPanel>
+              <TextBlock Text="{Binding DatabaseProviderHint}"
+                         FontSize="11.5"
+                         TextWrapping="Wrap"
+                         Margin="172,0,0,0"
+                         Foreground="{StaticResource TextMutedBrush}" />
+
+              <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left"
+                           Width="160"
                            Text="Timeout (seconds)"
                            VerticalAlignment="Center"
                            Foreground="{StaticResource TextSecondaryBrush}" />

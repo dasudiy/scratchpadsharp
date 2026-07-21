@@ -13,6 +13,7 @@ using NuGet.Versioning;
 using ReactiveUI;
 using ScratchpadSharp.Shared.Models;
 using ScratchpadSharp.Core.Configuration;
+using ScratchpadSharp.Core.Database;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.PackageManagement;
 
@@ -46,7 +47,9 @@ public class ReferenceManagementViewModel : ReactiveObject
     private string statusText = string.Empty;
     private decimal timeoutSeconds;
     private string connectionString = string.Empty;
+    private DatabaseProviderInfo? selectedDatabaseProvider;
     private string scriptSettingsStatus = string.Empty;
+    private bool isApplyingScriptSettings;
 
     public string StatusText
     {
@@ -74,14 +77,36 @@ public class ReferenceManagementViewModel : ReactiveObject
         }
     }
 
+    public IReadOnlyList<DatabaseProviderInfo> DatabaseProviders => DatabaseProviderCatalog.All;
+
+    public DatabaseProviderInfo? SelectedDatabaseProvider
+    {
+        get => selectedDatabaseProvider;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref selectedDatabaseProvider, value);
+            UpdateInheritanceHints();
+        }
+    }
+
+    public string SelectedDatabaseProviderId =>
+        SelectedDatabaseProvider?.Id ?? DatabaseProviderIds.None;
+
     public string ScriptSettingsStatus
     {
         get => scriptSettingsStatus;
         set => this.RaiseAndSetIfChanged(ref scriptSettingsStatus, value);
     }
 
+    public bool IsApplyingScriptSettings
+    {
+        get => isApplyingScriptSettings;
+        set => this.RaiseAndSetIfChanged(ref isApplyingScriptSettings, value);
+    }
+
     public string TimeoutInheritanceHint { get; private set; } = string.Empty;
     public string ConnectionStringInheritanceHint { get; private set; } = string.Empty;
+    public string DatabaseProviderHint { get; private set; } = string.Empty;
 
     private bool showRestoreButton;
 
@@ -186,6 +211,8 @@ public class ReferenceManagementViewModel : ReactiveObject
             ? projectContext.Config.TimeoutSeconds
             : ApplicationSettings.DefaultTimeoutSeconds;
         ConnectionString = projectContext.Config.ConnectionString ?? string.Empty;
+        SelectedDatabaseProvider = DatabaseProviderCatalog.Get(
+            DatabaseProviderCatalog.InferProviderId(projectContext.Config));
         UpdateInheritanceHints();
 
         RefreshReferences();
@@ -228,10 +255,13 @@ public class ReferenceManagementViewModel : ReactiveObject
         });
 
         CloseCommand = ReactiveCommand.Create(() => { });
-        ApplyScriptSettingsCommand = ReactiveCommand.Create(ApplyScriptSettings);
+        ApplyScriptSettingsCommand = ReactiveCommand.CreateFromTask(ApplyScriptSettingsAsync,
+            this.WhenAnyValue(x => x.IsApplyingScriptSettings, x => x.IsInstalling,
+                (applying, installing) => !applying && !installing));
         ResetScriptSettingsCommand = ReactiveCommand.Create(ResetScriptSettingsToDefaults);
         RestorePackagesCommand = ReactiveCommand.CreateFromTask(RestorePackagesAsync,
-            this.WhenAnyValue(x => x.IsInstalling, installing => !installing));
+            this.WhenAnyValue(x => x.IsInstalling, x => x.IsApplyingScriptSettings,
+                (installing, applying) => !installing && !applying));
 
         InstallPackageCommand.ThrownExceptions
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -277,12 +307,42 @@ public class ReferenceManagementViewModel : ReactiveObject
         await LoadLocalPackagesAsync();
     }
 
-    private void ApplyScriptSettings()
+    private async Task ApplyScriptSettingsAsync()
     {
-        projectContext.Config.TimeoutSeconds = (int)TimeoutSeconds;
-        projectContext.Config.ConnectionString = ConnectionString ?? string.Empty;
-        UpdateInheritanceHints();
-        ScriptSettingsStatus = "Applied to in-memory config. Save the query to persist config.json.";
+        IsApplyingScriptSettings = true;
+        try
+        {
+            projectContext.Config.TimeoutSeconds = (int)TimeoutSeconds;
+            projectContext.Config.ConnectionString = ConnectionString ?? string.Empty;
+
+            var currentProvider = DatabaseProviderCatalog.InferProviderId(projectContext.Config);
+            var nextProvider = SelectedDatabaseProvider?.Id ?? DatabaseProviderIds.None;
+            var providerChanged = !currentProvider.Equals(nextProvider, StringComparison.OrdinalIgnoreCase);
+
+            if (providerChanged)
+            {
+                ScriptSettingsStatus = "Applying database provider packages...";
+                await ProjectService.Instance.SetDatabaseProviderAsync(tabId, projectContext, nextProvider);
+                ConnectionString = projectContext.Config.ConnectionString ?? string.Empty;
+                RefreshReferences();
+                ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
+            }
+            else
+            {
+                projectContext.Config.DatabaseProvider = DatabaseProviderCatalog.Get(nextProvider).Id;
+            }
+
+            UpdateInheritanceHints();
+            ScriptSettingsStatus = "Applied to in-memory config. Save the query to persist config.json.";
+        }
+        catch (Exception ex)
+        {
+            ScriptSettingsStatus = $"Apply failed: {ex.Message}";
+        }
+        finally
+        {
+            IsApplyingScriptSettings = false;
+        }
     }
 
     private void ResetScriptSettingsToDefaults()
@@ -292,8 +352,10 @@ public class ReferenceManagementViewModel : ReactiveObject
             ? defaults.TimeoutSeconds
             : ApplicationSettings.DefaultTimeoutSeconds;
         ConnectionString = defaults.ConnectionString ?? string.Empty;
-        ApplyScriptSettings();
-        ScriptSettingsStatus = "Reset to ScriptDefaults (still need Save on the query to persist).";
+        SelectedDatabaseProvider = DatabaseProviderCatalog.Get(
+            DatabaseProviderCatalog.InferProviderId(defaults));
+        UpdateInheritanceHints();
+        ScriptSettingsStatus = "UI reset to ScriptDefaults — click Apply to update packages and config.";
     }
 
     private async Task RestorePackagesAsync()
@@ -329,9 +391,20 @@ public class ReferenceManagementViewModel : ReactiveObject
                 ? "Matches ScriptDefaults."
                 : "Set on this query (overrides ScriptDefaults).";
 
+        var provider = SelectedDatabaseProvider ?? DatabaseProviderCatalog.Get(DatabaseProviderIds.None);
+        DatabaseProviderHint = provider.Id == DatabaseProviderIds.None
+            ? "No EF Core packages. Apply removes EF NuGet packages from this query."
+            : $"Apply installs {EfHint(provider)} and uses options.{provider.UseExtensionMethod}(...).";
+
         this.RaisePropertyChanged(nameof(TimeoutInheritanceHint));
         this.RaisePropertyChanged(nameof(ConnectionStringInheritanceHint));
+        this.RaisePropertyChanged(nameof(DatabaseProviderHint));
     }
+
+    private static string EfHint(DatabaseProviderInfo provider) =>
+        string.IsNullOrEmpty(provider.EfProviderPackageId)
+            ? DatabaseProviderCatalog.EfCorePackageId
+            : $"{DatabaseProviderCatalog.EfCorePackageId} + {provider.EfProviderPackageId}";
 
     private void RefreshReferences()
     {

@@ -10,7 +10,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 - **Multi-Tab Editing**: Independent Roslyn project per tab
 - **Rich Object Visualization**: HTML-based dumping (NetPad/O2Html)
 - **NuGet Support**: Dynamic package resolution
-- **EF Core Ready**: EF Core + SQLite in script defaults, `ConnectionString` injected into scripts
+- **EF Core Ready**: selectable DB provider (SQLite / SQL Server) with matching NuGet packages; `ConnectionString` injected into scripts
 - **Git-Friendly Storage**: .lqpkg zip format with Developer Mode folder layout
 - **Session Restore**: Reopen tabs, unsaved code, and references after restart (configurable)
 
@@ -109,7 +109,7 @@ Config resolves as **base → user → query**:
 - [x] Await NuGet resolve on Run (non-blocking tab open; no missing-ref race)
 - [x] Empty per-query connection string inherits ScriptDefaults at execution
 - [x] Restore Packages in Reference Manager (F4)
-- [ ] Provider selection + automatic NuGet packages
+- [x] Provider selection + automatic NuGet packages (`DatabaseProvider` / F4 Script)
 - [ ] Database window: test connection + schema browser
 - [ ] Typed DbContext scaffold / Settings ScriptDefaults UI
 

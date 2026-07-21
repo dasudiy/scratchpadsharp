@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using ScratchpadSharp.Core.Database;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Configuration;
@@ -22,6 +23,7 @@ public static class ConfigurationLoader
                 defaults.TimeoutSeconds = executionTimeout.Value;
         }
 
+        defaults.DatabaseProvider = DatabaseProviderCatalog.InferProviderId(defaults);
         _defaults = defaults;
     }
 

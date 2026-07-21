@@ -4,6 +4,7 @@ using NuGet.Frameworks;
 using NuGet.Packaging.Core;
 using NuGet.Versioning;
 using ScratchpadSharp.Core.Configuration;
+using ScratchpadSharp.Core.Database;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.Storage;
 using ScratchpadSharp.Shared.Models;
@@ -74,6 +75,43 @@ public class ProjectService
         context.Manifest = packageDto.Manifest!;
         HydratePaths(context);
         await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+    }
+
+    /// <summary>
+    /// Sets <see cref="ScriptConfig.DatabaseProvider"/>, swaps EF NuGet packages, and resolves.
+    /// </summary>
+    public async Task SetDatabaseProviderAsync(string tabId, ProjectContext context, string providerId,
+        CancellationToken ct = default, IProgress<PackageInstallProgress>? progress = null)
+    {
+        DatabaseProviderCatalog.ApplyToConfig(context.Config, providerId);
+
+        if (context.Config.NuGetPackages.Count == 0 &&
+            !context.Config.References.Any(IsLocalReferencePath))
+        {
+            context.Manifest = new PackageManifest();
+            HydratePaths(context);
+            await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+            return;
+        }
+
+        progress?.Report(new PackageInstallProgress("Resolving provider packages...", 5, providerId));
+
+        var packageDto = new ScriptPackage
+        {
+            Config = context.Config,
+            Manifest = context.Manifest,
+            RootPath = context.EffectiveRootPath,
+            Code = context.Code,
+            Output = context.Output
+        };
+
+        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct, progress);
+
+        context.Manifest = packageDto.Manifest!;
+        HydratePaths(context);
+        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+
+        progress?.Report(new PackageInstallProgress("Provider packages ready", 100, providerId));
     }
 
     private static bool IsLocalReferencePath(string reference) =>

@@ -1,6 +1,6 @@
 # EF Core in ScratchpadSharp
 
-ScratchpadSharp ships EF Core + the SQLite provider in `ScriptDefaults` so new scripts can query a database without manually adding packages.
+ScratchpadSharp ships EF Core + a selectable database provider in `ScriptDefaults` so new scripts can query a database without manually adding packages.
 
 ## Defaults
 
@@ -8,13 +8,22 @@ From `appsettings.json` → `ScriptDefaults` (overridable via `appsettings.user.
 
 | Setting | Default |
 |---------|---------|
-| NuGet | `Microsoft.EntityFrameworkCore` 8.0.11, `Microsoft.EntityFrameworkCore.Sqlite` 8.0.11 |
+| `DatabaseProvider` | `Sqlite` (`None` / `Sqlite` / `SqlServer`) |
+| NuGet | `Microsoft.EntityFrameworkCore` 8.0.11 + provider package (see below) |
 | Using | `Microsoft.EntityFrameworkCore` |
 | Connection string | `Data Source=scratchpad.db` |
 
-Edit the connection string per query in **References (F4) → Script**. To change it globally, edit `ScriptDefaults.ConnectionString` in the user override file `appsettings.user.json` under `{LocalApplicationData}/ScratchpadSharp/` — the Settings window does not edit `ScriptDefaults` yet.
+### Provider → NuGet mapping
 
-**Inheritance:** if the per-query connection string is empty/whitespace, execution injects `ScriptDefaults.ConnectionString` (`ConfigurationLoader.ResolveConnectionString`). **Reset** in F4 → Script restores the full `ScriptDefaults` values (not an empty string).
+| Provider | Packages | `OnConfiguring` helper |
+|----------|----------|------------------------|
+| `None` | (removes EF packages) | — |
+| `Sqlite` | `Microsoft.EntityFrameworkCore` + `.Sqlite` | `UseSqlite` |
+| `SqlServer` | `Microsoft.EntityFrameworkCore` + `.SqlServer` | `UseSqlServer` |
+
+Change provider per query in **References (F4) → Script → Database provider**, then **Apply** (swaps NuGet packages and resolves). To change the global default, edit `ScriptDefaults.DatabaseProvider` / packages in `appsettings.user.json` — the Settings window does not edit `ScriptDefaults` yet.
+
+**Inheritance:** if the per-query connection string is empty/whitespace, execution injects `ScriptDefaults.ConnectionString` (`ConfigurationLoader.ResolveConnectionString`). Switching provider replaces the connection string when it was empty or still equal to the previous provider's template. **Reset** in F4 → Script restores ScriptDefaults values in the UI; click **Apply** to write packages/config.
 
 ## Package loading
 
@@ -36,7 +45,7 @@ public class BloggingContext : DbContext
     public DbSet<Blog> Blogs => Set<Blog>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder options)
-        => options.UseSqlite(ConnectionString);
+        => options.UseSqlite(ConnectionString); // UseSqlServer(...) after switching provider
 }
 
 await using var db = new BloggingContext();
@@ -50,12 +59,11 @@ db.Blogs.ToList().Dump("Blogs");
 
 ## Notes
 
-- Providers other than SQLite: add the NuGet package in Reference Manager (F4) and call the matching `Use*` extension.
+- After switching provider, update `Use*` in your `DbContext` to match (F4 hint shows the method name).
 - The SQLite file path in `Data Source=...` is relative to the process working directory unless absolute.
 - Native SQLite assets are resolved through the existing NuGet / ALC native probing path.
 
 ## Roadmap
 
-- **Phase B:** `DatabaseProvider` on `ScriptConfig` with automatic NuGet swap (`UseSqlite` / `UseSqlServer` / …).
 - **Phase C:** dedicated Database window (F6): test connection, schema tree (ADO.NET on host).
 - **Phase D:** typed scaffold, ad-hoc SQL, Settings UI for ScriptDefaults.
