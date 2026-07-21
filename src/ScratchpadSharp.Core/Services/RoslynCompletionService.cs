@@ -186,21 +186,28 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             System.Diagnostics.Debug.WriteLine($"[Completion] Found {meaningfulItems.Length} meaningful items");
 
+            if (documentText.Length == 0)
+                documentText = await document.GetTextAsync(cancellationToken);
+
+            var filterPrefix = GetTypedFilterPrefix(documentText, adjustedPosition, meaningfulItems);
+
             var enhancedItems = EnhanceCompletionItems(
                 meaningfulItems,
                 scriptDocument,
+                isMemberAccess,
                 cancellationToken);
 
-            var sortedItems = ApplyPrioritySort(enhancedItems).ToList();
-            var limitedItems = ApplyResultLimit(sortedItems, MaxCompletionItems).ToImmutableArray();
+            var sortedItems = ApplyPrioritySort(enhancedItems, filterPrefix).ToList();
+            var limitedItems = ApplyResultLimit(sortedItems, MaxCompletionItems, filterPrefix)
+                .ToImmutableArray();
 
-            System.Diagnostics.Debug.WriteLine($"[Completion] Returning {limitedItems.Length} enhanced items");
+            System.Diagnostics.Debug.WriteLine($"[Completion] Returning {limitedItems.Length} enhanced items (prefix='{filterPrefix}')");
 
             return new CompletionResult
             {
                 Items = limitedItems,
                 TriggerCharacter = triggerChar,
-                IsIncomplete = sortedItems.Count() > MaxCompletionItems
+                IsIncomplete = sortedItems.Count > MaxCompletionItems
             };
         }
         catch (Exception ex)
@@ -305,6 +312,7 @@ public class RoslynCompletionService : IRoslynCompletionService
     private static List<EnhancedCompletionItem> EnhanceCompletionItems(
         ImmutableArray<CompletionItem> items,
         ScriptDocumentBuilder.ScriptDocument scriptDocument,
+        bool isMemberAccess,
         CancellationToken cancellationToken)
     {
         var enhanced = new List<EnhancedCompletionItem>();
@@ -324,7 +332,7 @@ public class RoslynCompletionService : IRoslynCompletionService
                 InlineDescription = item.InlineDescription,
                 Tags = item.Tags.ToImmutableArray(),
                 Kind = DetermineCompletionKind(item.Tags),
-                Priority = CalculateBasePriority(item),
+                Priority = CalculateBasePriority(item, isMemberAccess),
                 CompletionSpan = adjustedSpan
             };
 
@@ -372,7 +380,7 @@ public class RoslynCompletionService : IRoslynCompletionService
         return CompletionItemKind.Method; // 默认
     }
 
-    private static int CalculateBasePriority(CompletionItem item)
+    private static int CalculateBasePriority(CompletionItem item, bool isMemberAccess)
     {
         int priority = 0;
 
@@ -394,35 +402,51 @@ public class RoslynCompletionService : IRoslynCompletionService
         if (tags.Contains(WellKnownTags.Parameter))
             priority += 2900;
 
-        // 成员优先于类型
-        if (tags.Contains(WellKnownTags.Property))
-            priority += 2000;
-        if (tags.Contains(WellKnownTags.Method))
-            priority += 1900;
-        if (tags.Contains(WellKnownTags.Field))
-            priority += 1800;
+        if (isMemberAccess)
+        {
+            // After '.': members before types
+            if (tags.Contains(WellKnownTags.Property))
+                priority += 2000;
+            if (tags.Contains(WellKnownTags.Method))
+                priority += 1900;
+            if (tags.Contains(WellKnownTags.Field))
+                priority += 1800;
+            if (tags.Contains(WellKnownTags.Class))
+                priority += 1000;
+            if (tags.Contains(WellKnownTags.Interface))
+                priority += 900;
+            if (tags.Contains(WellKnownTags.Structure))
+                priority += 800;
+            if (tags.Contains(WellKnownTags.Enum))
+                priority += 700;
+        }
+        else
+        {
+            // Identifier / type position: types before arbitrary members so
+            // BCL types like Regex are not crowded out by NuGet method spam.
+            if (tags.Contains(WellKnownTags.Class))
+                priority += 2000;
+            if (tags.Contains(WellKnownTags.Interface))
+                priority += 1900;
+            if (tags.Contains(WellKnownTags.Structure))
+                priority += 1800;
+            if (tags.Contains(WellKnownTags.Enum))
+                priority += 1700;
+            if (tags.Contains(WellKnownTags.Property))
+                priority += 1000;
+            if (tags.Contains(WellKnownTags.Method))
+                priority += 900;
+            if (tags.Contains(WellKnownTags.Field))
+                priority += 800;
+        }
 
         // 命名空间（便于 using 和限定名补全）
         if (tags.Contains(WellKnownTags.Namespace))
             priority += 1050;
 
-        // 类型
-        if (tags.Contains(WellKnownTags.Class))
-            priority += 1000;
-        if (tags.Contains(WellKnownTags.Interface))
-            priority += 900;
-        if (tags.Contains(WellKnownTags.Structure))
-            priority += 800;
-        if (tags.Contains(WellKnownTags.Enum))
-            priority += 700;
-
         // 扩展方法稍微降低优先级
         if (tags.Contains(WellKnownTags.ExtensionMethod))
             priority -= 100;
-
-        // 过时的成员降低优先级
-        // if (tags.Contains(WellKnownTags.Deprecated))
-        //     priority -= 5000;
 
         return priority;
     }
@@ -555,29 +579,79 @@ public class RoslynCompletionService : IRoslynCompletionService
 
     private static bool IsIdentifierPart(char ch) => char.IsLetterOrDigit(ch) || ch == '_';
 
+    private static string GetTypedFilterPrefix(
+        SourceText text,
+        int position,
+        ImmutableArray<CompletionItem> items)
+    {
+        if (text.Length == 0 || items.Length == 0)
+            return string.Empty;
+
+        var start = items[0].Span.Start;
+        if (start < 0 || start > text.Length)
+            return string.Empty;
+
+        var end = Math.Clamp(position, start, text.Length);
+        return end > start
+            ? text.ToString(TextSpan.FromBounds(start, end))
+            : string.Empty;
+    }
+
+    private static int GetPrefixMatchRank(EnhancedCompletionItem item, string? filterPrefix)
+    {
+        if (string.IsNullOrEmpty(filterPrefix))
+            return 0;
+
+        var text = !string.IsNullOrEmpty(item.FilterText) ? item.FilterText : item.DisplayText;
+        if (text.Equals(filterPrefix, StringComparison.OrdinalIgnoreCase))
+            return 3;
+        if (text.StartsWith(filterPrefix, StringComparison.OrdinalIgnoreCase))
+            return 2;
+        if (text.Contains(filterPrefix, StringComparison.OrdinalIgnoreCase))
+            return 1;
+        return 0;
+    }
+
+    private static bool MatchesFilterPrefix(EnhancedCompletionItem item, string filterPrefix) =>
+        GetPrefixMatchRank(item, filterPrefix) >= 2;
+
     private static IEnumerable<EnhancedCompletionItem> ApplyResultLimit(
         List<EnhancedCompletionItem> sortedItems,
-        int maxItems)
+        int maxItems,
+        string filterPrefix)
     {
-        var namespaces = sortedItems
-            .Where(i => i.Tags.Contains(WellKnownTags.Namespace))
-            .ToList();
-        var others = sortedItems
-            .Where(i => !i.Tags.Contains(WellKnownTags.Namespace))
-            .Take(Math.Max(0, maxItems - namespaces.Count));
+        if (string.IsNullOrEmpty(filterPrefix))
+        {
+            var namespaces = sortedItems
+                .Where(i => i.Tags.Contains(WellKnownTags.Namespace))
+                .ToList();
+            var others = sortedItems
+                .Where(i => !i.Tags.Contains(WellKnownTags.Namespace))
+                .Take(Math.Max(0, maxItems - namespaces.Count));
 
-        return namespaces.Concat(others).Take(maxItems);
+            return namespaces.Concat(others).Take(maxItems);
+        }
+
+        // Always keep prefix matches (Regex for "Reg") so NuGet type spam cannot
+        // push them past MaxCompletionItems before AvaloniaEdit filters the list.
+        var prefixMatches = sortedItems.Where(i => MatchesFilterPrefix(i, filterPrefix)).ToList();
+        if (prefixMatches.Count >= maxItems)
+            return prefixMatches.Take(maxItems);
+
+        var remaining = sortedItems
+            .Where(i => !MatchesFilterPrefix(i, filterPrefix))
+            .Take(maxItems - prefixMatches.Count);
+
+        return prefixMatches.Concat(remaining);
     }
 
     private static IEnumerable<EnhancedCompletionItem> ApplyPrioritySort(
-        List<EnhancedCompletionItem> items)
+        List<EnhancedCompletionItem> items,
+        string filterPrefix)
     {
-        // 多级排序:
-        // 1. 推荐项优先
-        // 2. 按计算的优先级
-        // 3. 按排序文本
         return items
             .OrderByDescending(i => i.IsRecommended)
+            .ThenByDescending(i => GetPrefixMatchRank(i, filterPrefix))
             .ThenByDescending(i => i.Priority)
             .ThenBy(i => i.SortText)
             .ThenBy(i => i.DisplayText);

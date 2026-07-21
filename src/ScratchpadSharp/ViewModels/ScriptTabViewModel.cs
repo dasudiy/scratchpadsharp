@@ -181,10 +181,17 @@ public class ScriptTabViewModel : ReactiveObject
 
     public async Task InitializeProjectAsync()
     {
-        projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
-        isProjectReady = true;
-        this.RaisePropertyChanged(nameof(IsProjectReady));
-        this.RaisePropertyChanged(nameof(ProjectContext));
+        try
+        {
+            projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
+            MarkProjectReady();
+            _ = ResolvePackagesInBackgroundAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Project init failed: {ex.Message}";
+            throw;
+        }
     }
 
     public async Task ResetToNewAsync()
@@ -199,12 +206,47 @@ public class ScriptTabViewModel : ReactiveObject
             Title = "Untitled";
             StatusText = "New file created";
             htmlDumpService.Clear();
+            MarkProjectReady();
+            _ = ResolvePackagesInBackgroundAsync();
         }
-        finally
+        catch (Exception ex)
         {
-            isProjectReady = true;
-            this.RaisePropertyChanged(nameof(IsProjectReady));
+            StatusText = $"New file failed: {ex.Message}";
+            MarkProjectReady();
+        }
+    }
+
+    private void MarkProjectReady()
+    {
+        isProjectReady = true;
+        this.RaisePropertyChanged(nameof(IsProjectReady));
+        this.RaisePropertyChanged(nameof(ProjectContext));
+    }
+
+    private async Task ResolvePackagesInBackgroundAsync()
+    {
+        if (projectContext.Config.NuGetPackages.Count == 0)
+            return;
+
+        var previousStatus = StatusText;
+        StatusText = "Loading packages...";
+        try
+        {
+            await ProjectService.Instance.ResolveConfiguredPackagesAsync(TabId, projectContext);
+            if (StatusText == "Loading packages...")
+            {
+                StatusText = string.IsNullOrEmpty(previousStatus) ||
+                             previousStatus == "Loading packages..." ||
+                             previousStatus == "Ready"
+                    ? "Ready"
+                    : previousStatus;
+            }
+
             this.RaisePropertyChanged(nameof(ProjectContext));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Package load failed: {ex.Message}";
         }
     }
 
@@ -214,12 +256,14 @@ public class ScriptTabViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(IsProjectReady));
         try
         {
+            var needsPackageResolve = false;
             if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             {
                 projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
                 projectContext.SourcePath = filePath;
                 CodeText = await File.ReadAllTextAsync(filePath);
                 Output = string.Empty;
+                needsPackageResolve = true;
             }
             else
             {
@@ -231,12 +275,14 @@ public class ScriptTabViewModel : ReactiveObject
             Title = Path.GetFileName(filePath);
             StatusText = $"Opened: {Title}";
             htmlDumpService.Clear();
+            MarkProjectReady();
+            if (needsPackageResolve)
+                _ = ResolvePackagesInBackgroundAsync();
         }
         finally
         {
-            isProjectReady = true;
-            this.RaisePropertyChanged(nameof(IsProjectReady));
-            this.RaisePropertyChanged(nameof(ProjectContext));
+            if (!isProjectReady)
+                MarkProjectReady();
         }
     }
 

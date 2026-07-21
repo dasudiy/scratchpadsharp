@@ -24,40 +24,12 @@ public class ProjectService
     }
 
     /// <summary>
-    /// 打开/加载项目。
-    /// 自动处理解压、依赖检查、路径补水和 Roslyn 初始化。
+    /// Creates a new tab project with BCL IntelliSense immediately.
+    /// Default NuGet packages (e.g. EF Core) are resolved via
+    /// <see cref="ResolveConfiguredPackagesAsync"/> so the toolbar is not blocked.
     /// </summary>
-    public async Task<ProjectContext> NewProjectAsync(string tabId, CancellationToken ct = default)
-    {
-        var packageDto = new ScriptPackage
-        {
-            Config = ConfigurationLoader.CreateDefaultConfig()
-        };
-
-        // use temp path
-        var path = Path.GetTempFileName();
-        File.Delete(path);
-        Directory.CreateDirectory(path);
-
-        // 记录日志：Manifest 缺失，正在重建依赖图...
-        await ResolveAndSaveAsync(packageDto, path, ct);
-
-        // 4. 补水 (Hydration): 将相对路径转为绝对路径
-        var context = new ProjectContext
-        {
-            SourcePath = null,
-            EffectiveRootPath = path,
-            Manifest = packageDto.Manifest!,
-            Config = packageDto.Config
-        };
-
-        HydratePaths(context);
-
-        await ActivateRoslynProjectAsync(tabId, context);
-        // TODO: 如果需要，在这里注入 Compiler Options (AllowUnsafe, Nullable 等)
-
-        return context;
-    }
+    public Task<ProjectContext> NewProjectAsync(string tabId, CancellationToken ct = default) =>
+        CreateShellProjectAsync(tabId, ct);
 
     public async Task<ProjectContext> CreateShellProjectAsync(string tabId, CancellationToken ct = default)
     {
@@ -76,6 +48,38 @@ public class ProjectService
         await ActivateRoslynProjectAsync(tabId, context);
         return context;
     }
+
+    /// <summary>
+    /// Resolves <see cref="ScriptConfig.NuGetPackages"/> / local references into the
+    /// manifest, hydrates absolute paths, and refreshes Roslyn references.
+    /// </summary>
+    public async Task ResolveConfiguredPackagesAsync(string tabId, ProjectContext context,
+        CancellationToken ct = default)
+    {
+        if (context.Config.NuGetPackages.Count == 0 &&
+            !context.Config.References.Any(IsLocalReferencePath))
+            return;
+
+        var packageDto = new ScriptPackage
+        {
+            Config = context.Config,
+            Manifest = context.Manifest,
+            RootPath = context.EffectiveRootPath,
+            Code = context.Code,
+            Output = context.Output
+        };
+
+        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct);
+
+        context.Manifest = packageDto.Manifest!;
+        HydratePaths(context);
+        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+    }
+
+    private static bool IsLocalReferencePath(string reference) =>
+        reference.Contains(Path.DirectorySeparatorChar) ||
+        reference.Contains('/') ||
+        reference.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
 
     public async Task ApplySavedProjectStateAsync(string tabId, ProjectContext context, ScriptConfig config,
         PackageManifest manifest, CancellationToken ct = default)
