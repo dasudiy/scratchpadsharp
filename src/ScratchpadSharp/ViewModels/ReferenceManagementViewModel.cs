@@ -12,6 +12,7 @@ using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
 using ReactiveUI;
 using ScratchpadSharp.Shared.Models;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.PackageManagement;
 
@@ -43,11 +44,32 @@ public class ReferenceManagementViewModel : ReactiveObject
     private List<IPackageSearchMetadata> allLocalPackages = new();
 
     private string statusText = string.Empty;
+    private decimal timeoutSeconds;
+    private string connectionString = string.Empty;
+    private string scriptSettingsStatus = string.Empty;
 
     public string StatusText
     {
         get => statusText;
         set => this.RaiseAndSetIfChanged(ref statusText, value);
+    }
+
+    public decimal TimeoutSeconds
+    {
+        get => timeoutSeconds;
+        set => this.RaiseAndSetIfChanged(ref timeoutSeconds, value);
+    }
+
+    public string ConnectionString
+    {
+        get => connectionString;
+        set => this.RaiseAndSetIfChanged(ref connectionString, value);
+    }
+
+    public string ScriptSettingsStatus
+    {
+        get => scriptSettingsStatus;
+        set => this.RaiseAndSetIfChanged(ref scriptSettingsStatus, value);
     }
 
     private bool showRestoreButton;
@@ -140,11 +162,17 @@ public class ReferenceManagementViewModel : ReactiveObject
     public ReactiveCommand<AssemblyReferenceItem, Unit> RemoveAssemblyReferenceCommand { get; }
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
     public ReactiveCommand<Uri?, Unit> OpenUrlCommand { get; }
+    public ReactiveCommand<Unit, Unit> ApplyScriptSettingsCommand { get; }
 
     public ReferenceManagementViewModel(string tabId, ProjectContext projectContext)
     {
         this.tabId = tabId;
         this.projectContext = projectContext;
+
+        TimeoutSeconds = projectContext.Config.TimeoutSeconds > 0
+            ? projectContext.Config.TimeoutSeconds
+            : ApplicationSettings.DefaultTimeoutSeconds;
+        ConnectionString = projectContext.Config.ConnectionString ?? string.Empty;
 
         RefreshReferences();
 
@@ -185,6 +213,7 @@ public class ReferenceManagementViewModel : ReactiveObject
         });
 
         CloseCommand = ReactiveCommand.Create(() => { });
+        ApplyScriptSettingsCommand = ReactiveCommand.Create(ApplyScriptSettings);
 
         InstallPackageCommand.ThrownExceptions
             .ObserveOn(RxApp.MainThreadScheduler)
@@ -224,6 +253,13 @@ public class ReferenceManagementViewModel : ReactiveObject
     {
         await LoadPackageSourcesAsync();
         await LoadLocalPackagesAsync();
+    }
+
+    private void ApplyScriptSettings()
+    {
+        projectContext.Config.TimeoutSeconds = (int)TimeoutSeconds;
+        projectContext.Config.ConnectionString = ConnectionString ?? string.Empty;
+        ScriptSettingsStatus = "Applied to in-memory config. Save the query to persist config.json.";
     }
 
     private void RefreshReferences()

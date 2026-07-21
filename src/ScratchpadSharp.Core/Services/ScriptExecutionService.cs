@@ -28,23 +28,18 @@ public class ScriptExecutionService : IScriptExecutionService
         {
             return await Task.Run(async () =>
             {
-                // Compile the script into an in-memory assembly
+                ct.ThrowIfCancellationRequested();
+
                 var compilation = CompileScriptAsync(code, context);
                 if (compilation.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
                 {
-                    // ... (error handling omitted for brevity, logic remains same but needs careful replacement if I replace the whole method block or just signature)
-                    // Better to just replace the signature and the ExecuteInIsolationAsync call.
-                    // But I need to extract native paths here OR inside ExecuteInIsolationAsync.
-                    // I'll extract them here and pass to ExecuteInIsolationAsync.
-
                     var errors = compilation.Diagnostics
                         .Where(d => d.Severity == DiagnosticSeverity.Error)
                         .ToList();
 
                     var errorText = string.Join(Environment.NewLine, errors.Select(d => d.ToString()));
 
-                    // Filter out errors that point to the wrapper code (empty path or not Script.cs)
-                    // unless we have no errors mapped to user code, in which case we show everything.
+                    // Prefer diagnostics mapped to user Script.cs; fall back to all errors.
                     var userDiagnostics = errors
                         .Where(d => d.Location.GetMappedLineSpan().Path == "Script.cs")
                         .ToList();
@@ -71,16 +66,21 @@ public class ScriptExecutionService : IScriptExecutionService
                         Output = errorText
                     };
                 }
-                
-                // Execute in isolated ALC
+
+                ct.ThrowIfCancellationRequested();
+
                 return await ExecuteInIsolationAsync(
                     compilation.Assembly,
-                    compilation.EntryPoint,
                     context.Config,
                     sink,
+                    ct,
                     context.AbsoluteNativeAssets,
                     context.AbsoluteCompileReferences);
-            });
+            }, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return FailExecution(sink, "Script execution was cancelled", output: "Execution cancelled");
         }
         catch (Exception ex)
         {
@@ -122,9 +122,9 @@ public class ScriptExecutionService : IScriptExecutionService
 
     private async Task<ScriptExecutionResult> ExecuteInIsolationAsync(
         MemoryStream assemblyStream,
-        string entryPoint,
         ScriptConfig config,
         IDumpSink sink,
+        CancellationToken ct,
         List<string>? nativePaths = null,
         List<string>? compileReferences = null)
     {
@@ -135,48 +135,33 @@ public class ScriptExecutionService : IScriptExecutionService
         {
             DumpExtension.UseSink(sink);
 
-            // Create isolated ALC with additional probing paths if needed
             var additionalPaths = new List<string>();
 
-            // Add Manifest native paths
             if (nativePaths != null)
-            {
                 additionalPaths.AddRange(nativePaths);
-            }
 
-            // Add NuGet package paths if available
             var nugetPackagesPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".nuget", "packages");
             if (Directory.Exists(nugetPackagesPath))
-            {
                 additionalPaths.Add(nugetPackagesPath);
-            }
 
             alc = new ScriptAssemblyLoadContext(null, additionalPaths, compileReferences);
             alcWeakRef = new WeakReference(alc);
 
-            // Load assembly from memory
             var assembly = alc.LoadFromStream(assemblyStream);
 
-            // Find the entry point
             var type = assembly.GetType("__ScriptRunner");
             if (type == null)
-            {
                 return FailExecution(sink, "Could not find script runner type");
-            }
 
             var method = type.GetMethod("__Execute", BindingFlags.Public | BindingFlags.Static);
             if (method == null)
-            {
                 return FailExecution(sink, "Could not find script entry point");
-            }
 
-            // Set connection string
             var connectionStringProp = type.GetProperty("__ConnectionString", BindingFlags.Public | BindingFlags.Static);
             connectionStringProp?.SetValue(null, config.ConnectionString);
 
-            // Redirect console output to capture Console.WriteLine
             using var outputWriter = new StringWriter();
             var originalOut = Console.Out;
             var originalError = Console.Error;
@@ -192,16 +177,14 @@ public class ScriptExecutionService : IScriptExecutionService
                 Console.SetOut(realTimeWriter);
                 Console.SetError(realTimeWriter);
 
-                // Execute with timeout
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(config.TimeoutSeconds));
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(config.TimeoutSeconds));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
                 var executeTask = method.Invoke(null, null) as Task<object?>;
-
                 if (executeTask == null)
-                {
                     return FailExecution(sink, "Method invocation failed");
-                }
 
-                await executeTask.WaitAsync(cts.Token);
+                await executeTask.WaitAsync(linkedCts.Token);
                 var returnValue = await executeTask;
 
                 return new ScriptExecutionResult
@@ -219,6 +202,11 @@ public class ScriptExecutionService : IScriptExecutionService
         }
         catch (OperationCanceledException)
         {
+            if (ct.IsCancellationRequested)
+            {
+                return FailExecution(sink, "Script execution was cancelled", output: "Execution cancelled");
+            }
+
             return FailExecution(
                 sink,
                 $"Script execution timed out after {config.TimeoutSeconds} seconds",

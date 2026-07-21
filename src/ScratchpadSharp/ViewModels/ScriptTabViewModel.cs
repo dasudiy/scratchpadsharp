@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reactive;
+using System.Threading;
 using System.Threading.Tasks;
 using ReactiveUI;
 using ScratchpadSharp.Core.Configuration;
@@ -29,6 +30,7 @@ public class ScriptTabViewModel : ReactiveObject
 
     private readonly IScriptExecutionService scriptService;
     private readonly HtmlDumpService htmlDumpService;
+    private CancellationTokenSource? executeCts;
 
     public ScriptTabViewModel(IScriptExecutionService scriptService, bool deferInitialization = false)
     {
@@ -289,7 +291,17 @@ public class ScriptTabViewModel : ReactiveObject
 
     public void Cleanup()
     {
+        CancelExecution();
         RoslynWorkspaceService.Instance.RemoveProject(TabId);
+    }
+
+    public void CancelExecution()
+    {
+        if (executeCts == null)
+            return;
+
+        executeCts.Cancel();
+        StatusText = "Cancellation requested";
     }
 
     public Task RunExecuteAsync() => ExecuteAsync();
@@ -311,6 +323,10 @@ public class ScriptTabViewModel : ReactiveObject
 
     private async Task ExecuteAsync()
     {
+        executeCts?.Dispose();
+        executeCts = new CancellationTokenSource();
+        var token = executeCts.Token;
+
         IsExecuting = true;
         try
         {
@@ -318,9 +334,14 @@ public class ScriptTabViewModel : ReactiveObject
             Output = string.Empty;
             htmlDumpService.Clear();
 
-            var result = await scriptService.ExecuteAsync(CodeText, projectContext, htmlDumpService.DumpSink);
+            var result = await scriptService.ExecuteAsync(CodeText, projectContext, htmlDumpService.DumpSink, token);
 
-            if (result.Success)
+            if (token.IsCancellationRequested)
+            {
+                Output = CombineOutput(result.Output, htmlDumpService.TextOutput);
+                StatusText = "Execution cancelled";
+            }
+            else if (result.Success)
             {
                 Output = CombineOutput(result.Output, htmlDumpService.TextOutput);
                 projectContext.Output = Output;
@@ -334,6 +355,11 @@ public class ScriptTabViewModel : ReactiveObject
                 StatusText = "Execution failed";
             }
         }
+        catch (OperationCanceledException)
+        {
+            Output = CombineOutput("Execution cancelled", htmlDumpService.TextOutput);
+            StatusText = "Execution cancelled";
+        }
         catch (Exception ex)
         {
             Output = $"Fatal error: {ex.Message}\n\n{ex.StackTrace}";
@@ -342,6 +368,8 @@ public class ScriptTabViewModel : ReactiveObject
         finally
         {
             IsExecuting = false;
+            executeCts?.Dispose();
+            executeCts = null;
         }
     }
 

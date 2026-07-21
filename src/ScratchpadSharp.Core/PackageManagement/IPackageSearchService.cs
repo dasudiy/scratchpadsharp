@@ -23,8 +23,25 @@ public class PackageInstallResult
     public string ErrorMessage { get; set; } = string.Empty;
 }
 
-public class PackageSearchResult(IPackageSearchMetadata packageSearchMetadata)
+public class PackageSearchResult
 {
+    public PackageSearchResult(IPackageSearchMetadata? packageSearchMetadata = null)
+    {
+        if (packageSearchMetadata == null)
+            return;
+
+        Id = packageSearchMetadata.Identity.Id;
+        Version = packageSearchMetadata.Identity.Version.ToString();
+        Description = packageSearchMetadata.Description ?? string.Empty;
+        IconUrl = packageSearchMetadata.IconUrl?.ToString();
+        Authors = packageSearchMetadata.Authors;
+        DownloadCount = packageSearchMetadata.DownloadCount;
+        ProjectUrl = packageSearchMetadata.ProjectUrl?.ToString();
+        LicenseUrl = packageSearchMetadata.LicenseUrl?.ToString();
+        Published = packageSearchMetadata.Published;
+        Tags = packageSearchMetadata.Tags?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
+    }
+
     public string Id { get; set; } = string.Empty;
     public string Version { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;

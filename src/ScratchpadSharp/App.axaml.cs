@@ -7,7 +7,6 @@ using ScratchpadSharp.Views;
 using ScratchpadSharp.ViewModels;
 using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
-using Microsoft.Extensions.Configuration;
 
 namespace ScratchpadSharp;
 
@@ -20,16 +19,7 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        var builder = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-            .AddEnvironmentVariables("SCRATCHPAD_");
-
-        IConfiguration config = builder.Build();
-
-        ConfigurationLoader.Initialize(config);
-        ApplicationSettings.Initialize(config);
-        BclXmlResolver.Initialize(config);
+        AppConfiguration.Initialize();
 
         _ = RoslynWorkspaceService.Instance.EnsureInitializedAsync();
 

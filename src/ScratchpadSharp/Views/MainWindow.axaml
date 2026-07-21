@@ -82,6 +82,14 @@
                         <TextBlock Text="References" />
                     </StackPanel>
                 </Button>
+                <Button Classes="rider-toolbar-btn"
+                        Command="{Binding OpenSettingsCommand}"
+                        ToolTip.Tip="Settings">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="☰" FontSize="12" />
+                        <TextBlock Text="Settings" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Border>
 

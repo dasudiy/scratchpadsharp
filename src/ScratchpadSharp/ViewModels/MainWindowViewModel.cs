@@ -34,9 +34,13 @@ public class MainWindowViewModel : ReactiveObject
         SaveAsCommand = ReactiveCommand.CreateFromTask(SaveAsAsync, SelectedTabReady);
         ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync, SelectedTabReady);
         CancelCommand = ReactiveCommand.Create(Cancel,
-            this.WhenAnyValue(x => x.SelectedTab).Select(tab => tab != null));
+            this.WhenAnyValue(x => x.SelectedTab)
+                .SelectMany(tab => tab != null
+                    ? tab.WhenAnyValue(t => t.IsExecuting)
+                    : Observable.Return(false)));
         FormatCommand = ReactiveCommand.CreateFromTask(FormatAsync, SelectedTabReady);
         ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager, SelectedTabReady);
+        OpenSettingsCommand = ReactiveCommand.Create(OpenSettings);
         ExitCommand = ReactiveCommand.Create(Exit);
 
         _ = RestoreSessionAsync();
@@ -87,6 +91,7 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
     public ReactiveCommand<Unit, Unit> ManageReferencesCommand { get; }
+    public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
 
     private IObservable<bool> SelectedTabReady =>
@@ -277,8 +282,7 @@ public class MainWindowViewModel : ReactiveObject
     private void Cancel()
     {
         if (SelectedTab == null) return;
-        SelectedTab.StatusText = "Cancellation requested";
-        SelectedTab.IsExecuting = false;
+        SelectedTab.CancelExecution();
         this.RaisePropertyChanged(nameof(StatusText));
     }
 
@@ -295,6 +299,14 @@ public class MainWindowViewModel : ReactiveObject
 
         var vm = new ReferenceManagementViewModel(SelectedTab.TabId, SelectedTab.ProjectContext);
         var window = new Views.ReferenceManagementWindow { DataContext = vm };
+        window.ShowDialog(MainWindow);
+    }
+
+    private void OpenSettings()
+    {
+        if (MainWindow == null) return;
+
+        var window = new Views.SettingsWindow { DataContext = new SettingsViewModel() };
         window.ShowDialog(MainWindow);
     }
 

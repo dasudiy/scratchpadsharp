@@ -42,7 +42,7 @@ public partial class ReferenceManagementWindow : Window
 
         foreach (var file in files)
         {
-            vm.AddReferenceFromFile(file.Path.LocalPath);
+            await vm.AddReferenceFromFile(file.Path.LocalPath);
         }
     }
 }

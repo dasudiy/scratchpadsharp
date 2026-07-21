@@ -1,0 +1,115 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ScratchpadSharp.ViewModels"
+        x:Class="ScratchpadSharp.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="Settings"
+        Width="520"
+        Height="480"
+        Background="#FBFCFD"
+        WindowStartupLocation="CenterOwner">
+
+  <Grid RowDefinitions="*, Auto" Margin="0">
+    <ScrollViewer Grid.Row="0" Padding="20,16">
+      <StackPanel Spacing="18">
+        <StackPanel Spacing="4">
+          <TextBlock Text="User settings"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource TextPrimaryBrush}" />
+          <TextBlock Text="{Binding UserSettingsPath}"
+                     TextWrapping="Wrap"
+                     FontSize="11.5"
+                     Foreground="{StaticResource TextMutedBrush}" />
+        </StackPanel>
+
+        <StackPanel Spacing="10">
+          <TextBlock Text="Application" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+          <CheckBox Content="Restore session on startup"
+                    IsChecked="{Binding RestoreSessionOnStartup}" />
+        </StackPanel>
+
+        <StackPanel Spacing="10">
+          <TextBlock Text="Editor" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+          <StackPanel Spacing="8">
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Font family" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextSecondaryBrush}" />
+              <TextBox Margin="12,0,0,0" Text="{Binding EditorFontFamily}" />
+            </DockPanel>
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Font size" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextSecondaryBrush}" />
+              <NumericUpDown Margin="12,0,0,0"
+                             Minimum="8" Maximum="48" Increment="1"
+                             Value="{Binding EditorFontSize}" />
+            </DockPanel>
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Tab size" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextSecondaryBrush}" />
+              <NumericUpDown Margin="12,0,0,0"
+                             Minimum="1" Maximum="8" Increment="1"
+                             Value="{Binding TabSize}" />
+            </DockPanel>
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Line numbers" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextSecondaryBrush}" />
+              <CheckBox Margin="12,0,0,0" IsChecked="{Binding ShowLineNumbers}" />
+            </DockPanel>
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="10">
+          <TextBlock Text="Execution" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+          <Grid ColumnDefinitions="140,*">
+            <TextBlock Grid.Column="0" Text="Default timeout (s)" VerticalAlignment="Center"
+                       Foreground="{StaticResource TextSecondaryBrush}" />
+            <NumericUpDown Grid.Column="1"
+                           Margin="12,0,0,0"
+                           Minimum="1" Maximum="3600" Increment="1"
+                           Value="{Binding DefaultTimeoutSeconds}" />
+          </Grid>
+        </StackPanel>
+
+        <TextBlock Text="{Binding StatusText}"
+                   TextWrapping="Wrap"
+                   FontSize="11.5"
+                   Foreground="{StaticResource SuccessBrush}" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="1"
+            Background="{StaticResource HeaderBgBrush}"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="12,8">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="Reload"
+                Command="{Binding ResetToDefaultsCommand}"
+                Background="Transparent"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                Foreground="{StaticResource TextSecondaryBrush}"
+                Padding="14,6"
+                CornerRadius="6"
+                Cursor="Hand" />
+        <Button Content="Save"
+                Command="{Binding SaveCommand}"
+                Background="{StaticResource AccentBrush}"
+                Foreground="White"
+                BorderThickness="0"
+                Padding="16,6"
+                CornerRadius="6"
+                Cursor="Hand" />
+        <Button Content="Close"
+                Click="OnCloseClick"
+                Background="Transparent"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                Foreground="{StaticResource TextSecondaryBrush}"
+                Padding="14,6"
+                CornerRadius="6"
+                Cursor="Hand" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

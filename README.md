@@ -92,15 +92,16 @@ To point at a specific binary:
 - [ ] EF Core integration
 - [ ] Editor error highlighting (gutter/squiggles)
 - [ ] ANSI color support
-- [ ] True execution cancellation (Stop currently only resets UI state)
+- [x] True execution cancellation (CancellationToken linked with timeout; Stop cancels wait)
 
-### Phase 4.5: Layered Configuration (planned)
+### Phase 4.5: Layered Configuration ✓ Complete (core)
 
 Config resolves as **base → user → query**:
 
-- [ ] User settings layer `appsettings.user.json` in `{LocalApplicationData}/ScratchpadSharp/` (shipped `appsettings.json` stays read-only factory defaults; must live outside `bin`)
-- [ ] Global Settings UI editing the user layer, with hot-reload re-init of `ApplicationSettings` / `ConfigurationLoader` on `reloadOnChange`
-- [ ] Per-query settings UI: extend Reference Manager (F4) with timeout / connection string, showing inherited-vs-overridden values; persist to the **existing** `config.json` (`ScriptConfig`) — no new per-query file
+- [x] User settings layer `appsettings.user.json` in `{LocalApplicationData}/ScratchpadSharp/` (shipped `appsettings.json` stays read-only factory defaults; must live outside `bin`)
+- [x] Global Settings UI editing the user layer, with hot-reload re-init of `ApplicationSettings` / `ConfigurationLoader` on `reloadOnChange`
+- [x] Per-query Script settings in Reference Manager (F4): timeout / connection string → existing `config.json`
+- [ ] Inherited-vs-overridden value cues in the Script settings UI
 
 ## Documentation
 

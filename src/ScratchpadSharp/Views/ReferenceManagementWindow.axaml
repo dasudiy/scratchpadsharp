@@ -480,6 +480,62 @@
           </Grid>
         </Grid>
       </TabItem>
+
+      <TabItem Header="Script">
+        <ScrollViewer Padding="20,16">
+          <StackPanel Spacing="16" MaxWidth="560" HorizontalAlignment="Left">
+            <TextBlock Text="Per-query settings"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Text="Saved into this query's config.json (Usings / References / NuGet live on other tabs)."
+                       TextWrapping="Wrap"
+                       FontSize="11.5"
+                       Foreground="{StaticResource TextMutedBrush}" />
+
+            <StackPanel Spacing="12">
+              <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left"
+                           Width="160"
+                           Text="Timeout (seconds)"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+                <NumericUpDown Minimum="1" Maximum="3600" Increment="1"
+                               Margin="12,0,0,0"
+                               Value="{Binding TimeoutSeconds}" />
+              </DockPanel>
+
+              <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left"
+                           Width="160"
+                           Text="Connection string"
+                           VerticalAlignment="Top"
+                           Margin="0,6,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+                <TextBox AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="80"
+                         Margin="12,0,0,0"
+                         Text="{Binding ConnectionString}" />
+              </DockPanel>
+            </StackPanel>
+
+            <Button Content="Apply to query"
+                    Command="{Binding ApplyScriptSettingsCommand}"
+                    HorizontalAlignment="Left"
+                    Background="{StaticResource AccentBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="14,6"
+                    CornerRadius="6"
+                    Cursor="Hand" />
+
+            <TextBlock Text="{Binding ScriptSettingsStatus}"
+                       FontSize="11.5"
+                       Foreground="{StaticResource SuccessBrush}"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
     </TabControl>
 
     <!-- Footer -->

@@ -6,12 +6,14 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using AvaloniaEdit;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Highlighting.Xshd;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Editor;
 using ScratchpadSharp.ViewModels;
@@ -34,10 +36,20 @@ public partial class ScriptTabView : UserControl
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
         AttachedToVisualTree += OnAttachedToVisualTree;
+        DetachedFromVisualTree += OnDetachedFromVisualTree;
     }
 
-    private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e) =>
+    private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        ApplicationSettings.Changed += OnApplicationSettingsChanged;
         TryInitializeEditor();
+    }
+
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e) =>
+        ApplicationSettings.Changed -= OnApplicationSettingsChanged;
+
+    private void OnApplicationSettingsChanged() =>
+        Dispatcher.UIThread.Post(ApplyEditorSettings);
 
     private void OnLoaded(object? sender, RoutedEventArgs e) =>
         TryInitializeEditor();
@@ -99,6 +111,7 @@ public partial class ScriptTabView : UserControl
         InitializeSyntaxHighlighting();
         InitializeCodeCompletion();
         ApplyEditorChrome();
+        ApplyEditorSettings();
 
         CodeEditor.Document ??= new TextDocument();
         CodeEditor.TextChanged += OnCodeEditorTextChanged;
@@ -198,9 +211,19 @@ public partial class ScriptTabView : UserControl
     {
         if (CodeEditor?.TextArea == null) return;
 
-        CodeEditor.TextArea.Caret.CaretBrush = Avalonia.Media.Brush.Parse("#307FFF");
+        CodeEditor.TextArea.Caret.CaretBrush = Brush.Parse("#307FFF");
         CodeEditor.Options.HighlightCurrentLine = true;
-        CodeEditor.TextArea.SelectionBrush = Avalonia.Media.Brush.Parse("#A6D2FF");
+        CodeEditor.TextArea.SelectionBrush = Brush.Parse("#A6D2FF");
+    }
+
+    private void ApplyEditorSettings()
+    {
+        if (CodeEditor == null) return;
+
+        CodeEditor.FontFamily = new FontFamily(ApplicationSettings.EditorFontFamily);
+        CodeEditor.FontSize = ApplicationSettings.EditorFontSize;
+        CodeEditor.ShowLineNumbers = ApplicationSettings.ShowLineNumbers;
+        CodeEditor.Options.IndentationSize = ApplicationSettings.TabSize;
     }
 
     private void InitializeSyntaxHighlighting()
