@@ -4,7 +4,7 @@ ScratchpadSharp ships EF Core + a selectable database provider in `ScriptDefault
 
 ## Defaults
 
-From `appsettings.json` → `ScriptDefaults` (overridable via `appsettings.user.json` or per-query `config.json`):
+From `appsettings.json` → `ScriptDefaults` (overridable via **Settings → Script defaults** / `appsettings.user.json` or per-query `config.json`):
 
 | Setting | Default |
 |---------|---------|
@@ -21,28 +21,27 @@ From `appsettings.json` → `ScriptDefaults` (overridable via `appsettings.user.
 | `Sqlite` | `Microsoft.EntityFrameworkCore` + `.Sqlite` | `UseSqlite` |
 | `SqlServer` | `Microsoft.EntityFrameworkCore` + `.SqlServer` | `UseSqlServer` |
 
-Change provider per query in **References (F4) → Script → Database provider**, then **Apply**, or use the **Database (F6)** window. To change the global default, edit `ScriptDefaults` in `appsettings.user.json` — the Settings window does not edit `ScriptDefaults` yet.
+Change provider per query in **References (F4) → Script**, **Database (F6)**, or set globals under **Settings → Script defaults**.
 
-**Inheritance:** if the per-query connection string is empty/whitespace, execution injects `ScriptDefaults.ConnectionString` (`ConfigurationLoader.ResolveConnectionString`). Switching provider replaces the connection string when it was empty or still equal to the previous provider's template.
+**Inheritance:** empty per-query connection string inherits `ScriptDefaults.ConnectionString` at run time.
 
 ## Database window (F6)
 
-Toolbar **Database** / **F6** opens a host-side explorer (ADO.NET, not the script's EF ALC):
+Toolbar **Database** / **F6** — host ADO.NET explorer (`Microsoft.Data.Sqlite` / `Microsoft.Data.SqlClient`):
 
-- Choose **SQLite** or **SQL Server**, edit the connection string
-- **Test Connection** — reports success/failure, elapsed ms, and server version
-- **Refresh Schema** — tree of tables/views and columns (type, nullability, PK)
-- **Apply to query** — writes provider + connection string into the tab `ScriptConfig` and resolves matching EF NuGet packages
-
-Host packages: `Microsoft.Data.Sqlite` and `Microsoft.Data.SqlClient` on `ScratchpadSharp.Core`.
+| Action | Behavior |
+|--------|----------|
+| Test Connection | Success/failure, elapsed ms, server version |
+| Refresh Schema | Tables/views → columns (type, nullability, PK) |
+| Scaffold selected / all | Inserts EF entity classes + `AppDbContext` + sample query into the active script |
+| SQL tab | Ad-hoc SQL on the host; TSV result grid as text |
+| Apply to query | Writes provider + connection string into tab `ScriptConfig` and resolves EF NuGet packages |
 
 ## Package loading
 
-New tabs become editable immediately (BCL-only shell). Configured NuGet packages resolve in the background (`Loading packages...`). **Run (F5)** awaits any in-flight resolve before compiling. Re-resolve via **References (F4) → Restore Packages**.
+New tabs are editable immediately; NuGet resolves in the background. **Run (F5)** awaits in-flight resolve. **References (F4) → Restore Packages** re-resolves manually.
 
 ## Script API
-
-Inside a script, `ConnectionString` is a local string injected from the effective connection string (query config, or ScriptDefaults when empty).
 
 ```csharp
 public class Blog
@@ -70,10 +69,6 @@ db.Blogs.ToList().Dump("Blogs");
 
 ## Notes
 
-- After switching provider, update `Use*` in your `DbContext` to match.
+- After switching provider, update `Use*` in your `DbContext` (scaffold does this automatically).
 - SQLite `Data Source=...` paths are relative to the process working directory unless absolute.
-- Native SQLite assets for scripts still resolve through the NuGet / ALC probing path.
-
-## Roadmap
-
-- **Phase D:** typed entity/`DbContext` scaffold from schema, ad-hoc SQL tab, Settings UI for ScriptDefaults.
+- Script EF native assets still resolve through NuGet / ALC probing; schema/SQL tools use host drivers.

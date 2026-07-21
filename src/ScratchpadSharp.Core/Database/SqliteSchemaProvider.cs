@@ -62,6 +62,21 @@ public sealed class SqliteSchemaProvider : IDbSchemaProvider
         return new DbSchemaSnapshot(tables, connection.DataSource);
     }
 
+    public async Task<DbQueryResult> ExecuteQueryAsync(string connectionString, string sql,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            throw new ArgumentException("SQL is empty.", nameof(sql));
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        return await ReadResultAsync(reader, ct);
+    }
+
     private static async Task<IReadOnlyList<DbColumnInfo>> LoadColumnsAsync(SqliteConnection connection,
         string tableName, CancellationToken ct)
     {
@@ -72,7 +87,6 @@ public sealed class SqliteSchemaProvider : IDbSchemaProvider
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            // cid, name, type, notnull, dflt_value, pk
             var ordinal = reader.GetInt32(0);
             var name = reader.GetString(1);
             var type = reader.IsDBNull(2) ? "" : reader.GetString(2);
@@ -82,6 +96,24 @@ public sealed class SqliteSchemaProvider : IDbSchemaProvider
         }
 
         return columns;
+    }
+
+    private static async Task<DbQueryResult> ReadResultAsync(SqliteDataReader reader, CancellationToken ct)
+    {
+        var columns = new List<string>();
+        for (var i = 0; i < reader.FieldCount; i++)
+            columns.Add(reader.GetName(i));
+
+        var rows = new List<IReadOnlyList<string?>>();
+        while (await reader.ReadAsync(ct))
+        {
+            var row = new string?[reader.FieldCount];
+            for (var i = 0; i < reader.FieldCount; i++)
+                row[i] = reader.IsDBNull(i) ? null : Convert.ToString(reader.GetValue(i));
+            rows.Add(row);
+        }
+
+        return new DbQueryResult(columns, rows);
     }
 
     private static string QuoteIdent(string name) =>

@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reactive;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using ReactiveUI;
 using ScratchpadSharp.Core.Configuration;
+using ScratchpadSharp.Core.Database;
+using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.ViewModels;
 
@@ -15,11 +19,14 @@ public class SettingsViewModel : ReactiveObject
     private bool showLineNumbers;
     private decimal tabSize;
     private decimal defaultTimeoutSeconds;
+    private DatabaseProviderInfo? scriptDefaultProvider;
+    private string scriptDefaultConnectionString = string.Empty;
     private string statusText = string.Empty;
     private bool isSaving;
 
     public SettingsViewModel()
     {
+        ScriptDefaultProviders = DatabaseProviderCatalog.All.ToList();
         LoadFromEffectiveSettings();
 
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync,
@@ -63,6 +70,32 @@ public class SettingsViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref defaultTimeoutSeconds, value);
     }
 
+    public IReadOnlyList<DatabaseProviderInfo> ScriptDefaultProviders { get; }
+
+    public DatabaseProviderInfo? ScriptDefaultProvider
+    {
+        get => scriptDefaultProvider;
+        set
+        {
+            var previous = scriptDefaultProvider;
+            this.RaiseAndSetIfChanged(ref scriptDefaultProvider, value);
+            if (value != null && previous != null &&
+                !string.Equals(previous.Id, value.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                var cs = ScriptDefaultConnectionString ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(cs) ||
+                    string.Equals(cs, previous.ConnectionStringTemplate, StringComparison.Ordinal))
+                    ScriptDefaultConnectionString = value.ConnectionStringTemplate;
+            }
+        }
+    }
+
+    public string ScriptDefaultConnectionString
+    {
+        get => scriptDefaultConnectionString;
+        set => this.RaiseAndSetIfChanged(ref scriptDefaultConnectionString, value);
+    }
+
     public string StatusText
     {
         get => statusText;
@@ -88,6 +121,11 @@ public class SettingsViewModel : ReactiveObject
         ShowLineNumbers = ApplicationSettings.ShowLineNumbers;
         TabSize = ApplicationSettings.TabSize;
         DefaultTimeoutSeconds = ApplicationSettings.DefaultTimeoutSeconds;
+
+        var defaults = ConfigurationLoader.CreateDefaultConfig();
+        ScriptDefaultProvider = DatabaseProviderCatalog.Get(
+            DatabaseProviderCatalog.InferProviderId(defaults));
+        ScriptDefaultConnectionString = defaults.ConnectionString ?? string.Empty;
         StatusText = string.Empty;
     }
 
@@ -96,6 +134,14 @@ public class SettingsViewModel : ReactiveObject
         IsSaving = true;
         try
         {
+            var providerId = ScriptDefaultProvider?.Id ?? DatabaseProviderIds.Sqlite;
+            var packages = new JsonObject();
+            var temp = new ScriptConfig { DatabaseProvider = providerId };
+            DatabaseProviderCatalog.ApplyToConfig(temp, providerId);
+            temp.ConnectionString = ScriptDefaultConnectionString ?? string.Empty;
+            foreach (var (id, version) in temp.NuGetPackages)
+                packages[id] = version;
+
             var patch = new JsonObject
             {
                 ["Application"] = new JsonObject
@@ -112,11 +158,18 @@ public class SettingsViewModel : ReactiveObject
                 ["Execution"] = new JsonObject
                 {
                     ["DefaultTimeoutSeconds"] = (int)DefaultTimeoutSeconds
+                },
+                ["ScriptDefaults"] = new JsonObject
+                {
+                    ["DatabaseProvider"] = providerId,
+                    ["ConnectionString"] = ScriptDefaultConnectionString ?? string.Empty,
+                    ["NuGetPackages"] = packages,
+                    ["TimeoutSeconds"] = (int)DefaultTimeoutSeconds
                 }
             };
 
             await UserSettingsStore.SaveOverridesAsync(patch);
-            StatusText = $"Saved to {AppPaths.UserSettingsPath}";
+            StatusText = $"Saved to {AppPaths.UserSettingsPath} (new tabs pick up ScriptDefaults after reload).";
         }
         catch (Exception ex)
         {

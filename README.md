@@ -104,14 +104,14 @@ Config resolves as **base → user → query**:
 - [x] Per-query Script settings in Reference Manager (F4): timeout / connection string → existing `config.json`
 - [x] Inherited-vs-overridden value cues in the Script settings UI
 
-### Phase 5: Database Explorer — In progress
+### Phase 5: Database Explorer ✓ Complete
 
 - [x] Await NuGet resolve on Run (non-blocking tab open; no missing-ref race)
 - [x] Empty per-query connection string inherits ScriptDefaults at execution
 - [x] Restore Packages in Reference Manager (F4)
 - [x] Provider selection + automatic NuGet packages (`DatabaseProvider` / F4 Script)
 - [x] Database window (F6): test connection + schema browser (SQLite + SQL Server via host ADO.NET)
-- [ ] Typed DbContext scaffold / ad-hoc SQL / Settings ScriptDefaults UI
+- [x] Typed DbContext scaffold, ad-hoc SQL tab, Settings ScriptDefaults UI
 
 ## Documentation
 
@@ -121,8 +121,7 @@ Config resolves as **base → user → query**:
 - [docs/dump-workflow.md](docs/dump-workflow.md) — `.Dump()` HTML output flow
 - [docs/intellisense-workflow.md](docs/intellisense-workflow.md) — Code completion pipeline
 - [docs/method-signature-help-workflow.md](docs/method-signature-help-workflow.md) — Signature help pipeline
-- [docs/ef-core.md](docs/ef-core.md) — EF Core + SQLite defaults and usage
-
+- [docs/ef-core.md](docs/ef-core.md) — EF Core providers, Database window (F6), connection string
 ## Acknowledgements
 
 Special thanks to [NetPad](https://github.com/tareqimbasher/NetPad) by Tareq Imbasher for the excellent HTML dumping implementation that ScratchpadSharp leverages.

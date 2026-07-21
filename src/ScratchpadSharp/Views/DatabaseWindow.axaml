@@ -4,8 +4,8 @@
         x:Class="ScratchpadSharp.Views.DatabaseWindow"
         x:DataType="vm:DatabaseViewModel"
         Title="Database"
-        Width="780"
-        Height="560"
+        Width="860"
+        Height="640"
         Background="#FBFCFD"
         WindowStartupLocation="CenterOwner">
 
@@ -46,7 +46,7 @@
           <TextBox Margin="12,0,0,0"
                    AcceptsReturn="True"
                    TextWrapping="Wrap"
-                   MinHeight="64"
+                   MinHeight="56"
                    Text="{Binding ConnectionString}" />
         </DockPanel>
         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -55,15 +55,6 @@
                   Background="{StaticResource AccentBrush}"
                   Foreground="White"
                   BorderThickness="0"
-                  Padding="14,6"
-                  CornerRadius="6"
-                  Cursor="Hand" />
-          <Button Content="Refresh Schema"
-                  Command="{Binding RefreshSchemaCommand}"
-                  Background="Transparent"
-                  BorderBrush="{StaticResource BorderBrush}"
-                  BorderThickness="1"
-                  Foreground="{StaticResource TextSecondaryBrush}"
                   Padding="14,6"
                   CornerRadius="6"
                   Cursor="Hand" />
@@ -84,33 +75,91 @@
       </StackPanel>
     </Border>
 
-    <Grid Grid.Row="1" Margin="16,12">
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto" />
-        <RowDefinition Height="*" />
-      </Grid.RowDefinitions>
-      <TextBlock Text="Schema"
-                 FontWeight="SemiBold"
-                 Foreground="{StaticResource TextPrimaryBrush}"
-                 Margin="0,0,0,8" />
-      <Border Grid.Row="1"
-              BorderBrush="{StaticResource BorderBrush}"
-              BorderThickness="1"
-              CornerRadius="6"
-              Background="White"
-              Padding="4">
-        <TreeView ItemsSource="{Binding SchemaRoots}"
-                  SelectedItem="{Binding SelectedNode}">
-          <TreeView.ItemTemplate>
-            <TreeDataTemplate ItemsSource="{Binding Children}">
-              <TextBlock Text="{Binding DisplayText}"
-                         FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
-                         FontSize="12.5" />
-            </TreeDataTemplate>
-          </TreeView.ItemTemplate>
-        </TreeView>
-      </Border>
-    </Grid>
+    <TabControl Grid.Row="1" Margin="12,8">
+      <TabItem Header="Schema">
+        <Grid RowDefinitions="Auto,*" Margin="4">
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <Button Content="Refresh Schema"
+                    Command="{Binding RefreshSchemaCommand}"
+                    Background="Transparent"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    Foreground="{StaticResource TextSecondaryBrush}"
+                    Padding="12,5"
+                    CornerRadius="6"
+                    Cursor="Hand" />
+            <Button Content="Scaffold selected"
+                    Command="{Binding ScaffoldSelectedCommand}"
+                    Background="Transparent"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    Foreground="{StaticResource TextSecondaryBrush}"
+                    Padding="12,5"
+                    CornerRadius="6"
+                    Cursor="Hand" />
+            <Button Content="Scaffold all"
+                    Command="{Binding ScaffoldAllCommand}"
+                    Background="Transparent"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    Foreground="{StaticResource TextSecondaryBrush}"
+                    Padding="12,5"
+                    CornerRadius="6"
+                    Cursor="Hand" />
+          </StackPanel>
+          <Border Grid.Row="1"
+                  BorderBrush="{StaticResource BorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  Background="White"
+                  Padding="4">
+            <TreeView ItemsSource="{Binding SchemaRoots}"
+                      SelectedItem="{Binding SelectedNode}">
+              <TreeView.ItemTemplate>
+                <TreeDataTemplate ItemsSource="{Binding Children}">
+                  <TextBlock Text="{Binding DisplayText}"
+                             FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
+                             FontSize="12.5" />
+                </TreeDataTemplate>
+              </TreeView.ItemTemplate>
+            </TreeView>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="SQL">
+        <Grid RowDefinitions="Auto,*,Auto,*" Margin="4">
+          <TextBlock Text="Ad-hoc SQL (host ADO.NET)"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     Margin="0,0,0,6" />
+          <TextBox Grid.Row="1"
+                   AcceptsReturn="True"
+                   TextWrapping="Wrap"
+                   FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
+                   FontSize="12.5"
+                   Text="{Binding SqlText}"
+                   MinHeight="100" />
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,8">
+            <Button Content="Execute"
+                    Command="{Binding ExecuteSqlCommand}"
+                    Background="{StaticResource AccentBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="14,6"
+                    CornerRadius="6"
+                    Cursor="Hand" />
+          </StackPanel>
+          <TextBox Grid.Row="3"
+                   IsReadOnly="True"
+                   AcceptsReturn="True"
+                   TextWrapping="NoWrap"
+                   FontFamily="JetBrains Mono, Cascadia Code, Consolas, monospace"
+                   FontSize="12"
+                   Text="{Binding SqlResultText}" />
+        </Grid>
+      </TabItem>
+    </TabControl>
 
     <Border Grid.Row="2"
             BorderBrush="{StaticResource BorderBrush}"
@@ -119,7 +168,6 @@
       <DockPanel>
         <Button DockPanel.Dock="Right"
                 Content="Close"
-                Command="{Binding CloseCommand}"
                 Click="OnCloseClick"
                 Background="Transparent"
                 BorderBrush="{StaticResource BorderBrush}"
@@ -129,7 +177,7 @@
                 CornerRadius="6"
                 Cursor="Hand"
                 HorizontalAlignment="Right" />
-        <TextBlock Text="Host uses ADO.NET (Microsoft.Data.Sqlite / SqlClient), independent of script EF packages."
+        <TextBlock Text="Scaffold inserts EF entity/DbContext code into the active script. SQL runs on the host, not inside the script ALC."
                    VerticalAlignment="Center"
                    FontSize="11.5"
                    TextWrapping="Wrap"

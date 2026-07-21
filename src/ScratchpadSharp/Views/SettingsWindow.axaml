@@ -4,8 +4,8 @@
         x:Class="ScratchpadSharp.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
         Title="Settings"
-        Width="520"
-        Height="480"
+        Width="560"
+        Height="620"
         Background="#FBFCFD"
         WindowStartupLocation="CenterOwner">
 
@@ -68,6 +68,39 @@
                            Minimum="1" Maximum="3600" Increment="1"
                            Value="{Binding DefaultTimeoutSeconds}" />
           </Grid>
+        </StackPanel>
+
+        <StackPanel Spacing="10">
+          <TextBlock Text="Script defaults" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+          <TextBlock Text="Applies to new tabs. Existing queries keep their own config.json until you change them."
+                     TextWrapping="Wrap"
+                     FontSize="11.5"
+                     Foreground="{StaticResource TextMutedBrush}" />
+          <DockPanel LastChildFill="True">
+            <TextBlock DockPanel.Dock="Left" Width="140" Text="Database provider" VerticalAlignment="Center"
+                       Foreground="{StaticResource TextSecondaryBrush}" />
+            <ComboBox Margin="12,0,0,0"
+                      ItemsSource="{Binding ScriptDefaultProviders}"
+                      SelectedItem="{Binding ScriptDefaultProvider}"
+                      MinWidth="200"
+                      HorizontalAlignment="Left">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </DockPanel>
+          <DockPanel LastChildFill="True">
+            <TextBlock DockPanel.Dock="Left" Width="140" Text="Connection string" VerticalAlignment="Top"
+                       Margin="0,6,0,0"
+                       Foreground="{StaticResource TextSecondaryBrush}" />
+            <TextBox Margin="12,0,0,0"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     MinHeight="64"
+                     Text="{Binding ScriptDefaultConnectionString}" />
+          </DockPanel>
         </StackPanel>
 
         <TextBlock Text="{Binding StatusText}"

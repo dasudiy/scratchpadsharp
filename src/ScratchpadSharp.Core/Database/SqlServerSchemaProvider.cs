@@ -72,6 +72,34 @@ public sealed class SqlServerSchemaProvider : IDbSchemaProvider
         return new DbSchemaSnapshot(tables, connection.Database);
     }
 
+    public async Task<DbQueryResult> ExecuteQueryAsync(string connectionString, string sql,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            throw new ArgumentException("SQL is empty.", nameof(sql));
+
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var columns = new List<string>();
+        for (var i = 0; i < reader.FieldCount; i++)
+            columns.Add(reader.GetName(i));
+
+        var rows = new List<IReadOnlyList<string?>>();
+        while (await reader.ReadAsync(ct))
+        {
+            var row = new string?[reader.FieldCount];
+            for (var i = 0; i < reader.FieldCount; i++)
+                row[i] = reader.IsDBNull(i) ? null : Convert.ToString(reader.GetValue(i));
+            rows.Add(row);
+        }
+
+        return new DbQueryResult(columns, rows);
+    }
+
     private static async Task<HashSet<string>> LoadPrimaryKeysAsync(SqlConnection connection,
         CancellationToken ct)
     {

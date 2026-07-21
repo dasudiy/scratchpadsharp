@@ -432,9 +432,15 @@ public class MainWindowViewModel : ReactiveObject
 
     private void OpenDatabase()
     {
-        if (MainWindow == null || SelectedTab is not { IsProjectReady: true }) return;
+        if (MainWindow == null || SelectedTab is not { IsProjectReady: true } tab) return;
 
-        var vm = new DatabaseViewModel(SelectedTab.TabId, SelectedTab.ProjectContext);
+        var vm = new DatabaseViewModel(tab.TabId, tab.ProjectContext, code =>
+        {
+            if (string.IsNullOrWhiteSpace(tab.CodeText))
+                tab.CodeText = code;
+            else
+                tab.CodeText = tab.CodeText.TrimEnd() + "\n\n" + code;
+        });
         var window = new Views.DatabaseWindow { DataContext = vm };
         window.ShowDialog(MainWindow);
     }

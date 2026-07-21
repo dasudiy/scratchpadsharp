@@ -10,4 +10,6 @@ public interface IDbSchemaProvider
     Task<ConnectionTestResult> TestConnectionAsync(string connectionString, CancellationToken ct = default);
 
     Task<DbSchemaSnapshot> GetSchemaAsync(string connectionString, CancellationToken ct = default);
+
+    Task<DbQueryResult> ExecuteQueryAsync(string connectionString, string sql, CancellationToken ct = default);
 }
