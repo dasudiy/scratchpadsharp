@@ -10,7 +10,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 - **Multi-Tab Editing**: Independent Roslyn project per tab
 - **Rich Object Visualization**: HTML-based dumping (NetPad/O2Html)
 - **NuGet Support**: Dynamic package resolution
-- **EF Core Ready**: selectable DB provider (SQLite / SQL Server) with matching NuGet packages; `ConnectionString` injected into scripts
+- **EF Core Ready**: Database explorer (F6), provider selection, scaffold, host SQL; `ConnectionString` injected into scripts
 - **Git-Friendly Storage**: .lqpkg zip format with Developer Mode folder layout
 - **Session Restore**: Reopen tabs, unsaved code, and references after restart (configurable)
 
