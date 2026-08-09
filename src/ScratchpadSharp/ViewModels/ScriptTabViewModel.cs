@@ -401,6 +401,34 @@ public class ScriptTabViewModel : ReactiveObject
 
     public Task RunFormatAsync() => FormatCodeAsync();
 
+    public async Task OpenModuleQueryAsync(string instanceId, string title, string code)
+    {
+        await InitializationTask;
+
+        await ProjectService.Instance.AddModuleRefAsync(TabId, projectContext, instanceId);
+
+        CodeText = code;
+        projectContext.Code = code;
+        Title = title;
+        Output = string.Empty;
+        htmlDumpService.Clear();
+        this.RaisePropertyChanged(nameof(ProjectContext));
+
+        ArePackagesLoading = true;
+        StatusText = "Loading module packages...";
+        try
+        {
+            packageResolveTask = ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
+            await packageResolveTask;
+        }
+        finally
+        {
+            ArePackagesLoading = false;
+        }
+
+        await RunExecuteAsync();
+    }
+
     private async Task FormatCodeAsync()
     {
         try

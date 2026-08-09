@@ -1,17 +1,11 @@
 using System;
-using System.IO;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
-using System.Threading;
 using System.Threading.Tasks;
 using ReactiveUI;
-using ScratchpadSharp.Core.Configuration;
-using ScratchpadSharp.Core.Database;
 using ScratchpadSharp.Core.Modules;
 using ScratchpadSharp.Core.PackageManagement;
-using ScratchpadSharp.Core.Services;
-using ScratchpadSharp.Services;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.ViewModels;
@@ -44,17 +38,17 @@ public class ModuleTreeNode : ReactiveObject
 public class ModulesSidebarViewModel : ReactiveObject
 {
     private readonly Func<ScriptTabViewModel?> getSelectedTab;
-    private readonly IScriptExecutionService scriptService;
+    private readonly Func<string, string, string, Task> openModuleQueryAsync;
     private string statusText = string.Empty;
     private bool isBusy;
     private ModuleTreeNode? selectedNode;
 
     public ModulesSidebarViewModel(
         Func<ScriptTabViewModel?> getSelectedTab,
-        IScriptExecutionService scriptService)
+        Func<string, string, string, Task> openModuleQueryAsync)
     {
         this.getSelectedTab = getSelectedTab;
-        this.scriptService = scriptService;
+        this.openModuleQueryAsync = openModuleQueryAsync;
         RootNodes = new ObservableCollection<ModuleTreeNode>();
 
         RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
@@ -404,62 +398,25 @@ public class ModulesSidebarViewModel : ReactiveObject
         if (config == null)
             return;
 
+        var tableName = SelectedNode.TableName;
         var script = countOnly
-            ? EfCoreModuleFactory.Instance.BuildCountScript(config, SelectedNode.TableName)
-            : EfCoreModuleFactory.Instance.BuildTakeScript(config, SelectedNode.TableName, take);
+            ? EfCoreModuleFactory.Instance.BuildCountScript(config, tableName)
+            : EfCoreModuleFactory.Instance.BuildTakeScript(config, tableName, take);
 
-        IsBusy = true;
-        StatusText = "Running...";
+        var title = countOnly
+            ? $"{tableName} — Count"
+            : $"{tableName} — Take({take})";
+
+        StatusText = countOnly ? "Opening count query..." : $"Opening take({take}) query...";
         try
         {
-            await RunEphemeralScriptAsync(config.Id, script);
+            await openModuleQueryAsync(config.Id, title, script);
+            StatusText = countOnly ? "Count query executed" : $"Take({take}) query executed";
         }
         catch (Exception ex)
         {
-            StatusText = $"Run failed: {ex.Message}";
+            StatusText = $"Query failed: {ex.Message}";
         }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    private async Task RunEphemeralScriptAsync(string instanceId, string code)
-    {
-        var tab = getSelectedTab();
-        var ephemeralId = Guid.NewGuid().ToString("N");
-        var context = new ProjectContext
-        {
-            EffectiveRootPath = Path.GetTempPath(),
-            Config = new ScriptConfig
-            {
-                ModuleRefs = [instanceId],
-                TimeoutSeconds = ApplicationSettings.DefaultTimeoutSeconds
-            },
-            Manifest = new PackageManifest()
-        };
-
-        await ProjectService.Instance.RefreshMergedEnvironmentAsync(ephemeralId, context);
-
-        if (tab != null)
-        {
-            tab.StatusText = "Running module script...";
-            var htmlDump = new HtmlDumpService();
-            var result = await scriptService.ExecuteAsync(code, context, htmlDump.DumpSink);
-            tab.Output = result.Success
-                ? $"{result.Output}\n{htmlDump.TextOutput}".Trim()
-                : $"Error: {result.ErrorMessage}\n{result.Output}";
-            tab.StatusText = result.Success ? "Module script completed" : "Module script failed";
-            StatusText = tab.StatusText;
-        }
-        else
-        {
-            var htmlDump = new HtmlDumpService();
-            var result = await scriptService.ExecuteAsync(code, context, htmlDump.DumpSink);
-            StatusText = result.Success ? "Completed (no query tab — see dump in status)" : $"Failed: {result.ErrorMessage}";
-        }
-
-        RoslynWorkspaceService.Instance.RemoveProject(ephemeralId);
     }
 
     private async Task<DatabaseConnectionViewModel?> ShowConnectionDialogAsync(ModuleInstanceConfig? existing)

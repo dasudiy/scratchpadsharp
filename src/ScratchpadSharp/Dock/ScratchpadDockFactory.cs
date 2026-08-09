@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Dock.Avalonia.Controls;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.ReactiveUI;
 using Dock.Model.ReactiveUI.Controls;
 using Dock.Settings;
-using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.ViewModels;
 
 namespace ScratchpadSharp.Dock;
@@ -22,14 +22,14 @@ public sealed class ScratchpadDockFactory : Factory
     private ModulesTool? modulesTool;
 
     public ScratchpadDockFactory(
-        IScriptExecutionService scriptService,
         Func<ScriptTabViewModel?> getSelectedTab,
+        Func<string, string, string, Task> openModuleQueryAsync,
         Func<ScriptTabViewModel> createTab,
         Action<ScriptTabViewModel, ScriptDocument> onDocumentCreated)
     {
         this.createTab = createTab;
         this.onDocumentCreated = onDocumentCreated;
-        ModulesSidebar = new ModulesSidebarViewModel(getSelectedTab, scriptService);
+        ModulesSidebar = new ModulesSidebarViewModel(getSelectedTab, openModuleQueryAsync);
     }
 
     public ModulesSidebarViewModel ModulesSidebar { get; }

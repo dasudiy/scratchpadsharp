@@ -34,8 +34,8 @@ public class MainWindowViewModel : ReactiveObject
         Tabs = new ObservableCollection<ScriptTabViewModel>();
 
         dockFactory = new ScratchpadDockFactory(
-            scriptService,
             () => SelectedTab,
+            OpenModuleQueryAsync,
             () => CreateTab(),
             OnDocumentCreated);
 
@@ -208,6 +208,15 @@ public class MainWindowViewModel : ReactiveObject
         var tab = CreateTab();
         dockFactory.AddScriptDocument(tab);
         SelectedTab = tab;
+    }
+
+    public async Task OpenModuleQueryAsync(string instanceId, string title, string code)
+    {
+        AddTab();
+        if (SelectedTab == null)
+            return;
+
+        await SelectedTab.OpenModuleQueryAsync(instanceId, title, code);
     }
 
     private ScriptTabViewModel CreateTab(bool deferInitialization = false)
