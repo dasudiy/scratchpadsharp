@@ -18,11 +18,26 @@ namespace ScratchpadSharp.ViewModels;
 
 public class ModuleTreeNode : ReactiveObject
 {
+    private bool isExpanded;
+    private bool isLoading;
+
     public string Name { get; set; } = string.Empty;
     public string NodeKind { get; set; } = string.Empty;
     public string? InstanceId { get; set; }
     public string? TableName { get; set; }
-    public bool IsExpanded { get; set; }
+
+    public bool IsExpanded
+    {
+        get => isExpanded;
+        set => this.RaiseAndSetIfChanged(ref isExpanded, value);
+    }
+
+    public bool IsLoading
+    {
+        get => isLoading;
+        set => this.RaiseAndSetIfChanged(ref isLoading, value);
+    }
+
     public ObservableCollection<ModuleTreeNode> Children { get; } = new();
 }
 
@@ -53,7 +68,7 @@ public class ModulesSidebarViewModel : ReactiveObject
                 (node, busy) => !busy && node?.NodeKind == "Instance"));
         RegenerateModelCommand = ReactiveCommand.CreateFromTask(RegenerateModelAsync,
             this.WhenAnyValue(x => x.SelectedNode, x => x.IsBusy,
-                (node, busy) => !busy && node?.NodeKind == "Instance"));
+                (node, busy) => !busy && node?.NodeKind == "Instance" && node is { IsLoading: false }));
         AddRefCommand = ReactiveCommand.CreateFromTask(AddRefAsync,
             this.WhenAnyValue(x => x.SelectedNode, x => x.IsBusy,
                 (node, busy) => !busy && node?.NodeKind == "Instance"));
@@ -103,10 +118,27 @@ public class ModulesSidebarViewModel : ReactiveObject
     public async Task RefreshAsync()
     {
         IsBusy = true;
+
+        var efSection = RootNodes.FirstOrDefault(n => n.NodeKind == "Type");
+        if (efSection == null)
+        {
+            efSection = new ModuleTreeNode
+            {
+                Name = "EF Core",
+                NodeKind = "Type",
+                IsExpanded = true
+            };
+            RootNodes.Add(efSection);
+        }
+
+        efSection.IsLoading = true;
+        efSection.Children.Clear();
+        efSection.Children.Add(CreateLoadingNode("Loading modules..."));
+
         try
         {
-            RootNodes.Clear();
-            var efSection = new ModuleTreeNode { Name = "EF Core", NodeKind = "Type" };
+            efSection.Children.Clear();
+
             foreach (var instance in ModuleCatalog.Instance.ListInstances(ModuleTypeIds.EfCore))
             {
                 var instanceNode = new ModuleTreeNode
@@ -117,52 +149,102 @@ public class ModulesSidebarViewModel : ReactiveObject
                     IsExpanded = false
                 };
 
-                try
-                {
-                    var snapshot = await EfCoreModuleFactory.Instance.GetSchemaAsync(instance.Id);
-                    foreach (var table in snapshot.Tables)
-                    {
-                        var tableNode = new ModuleTreeNode
-                        {
-                            Name = table.IsView ? $"{table.Name} (view)" : table.Name,
-                            NodeKind = "Table",
-                            InstanceId = instance.Id,
-                            TableName = table.Name
-                        };
-                        foreach (var col in table.Columns)
-                        {
-                            tableNode.Children.Add(new ModuleTreeNode
-                            {
-                                Name = $"{col.Name} ({col.DataType})",
-                                NodeKind = "Column"
-                            });
-                        }
-                        instanceNode.Children.Add(tableNode);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    instanceNode.Children.Add(new ModuleTreeNode
-                    {
-                        Name = $"Schema error: {ex.Message}",
-                        NodeKind = "Error"
-                    });
-                }
-
+                await PopulateInstanceChildrenAsync(instanceNode, instance.Id);
                 efSection.Children.Add(instanceNode);
             }
 
-            RootNodes.Add(efSection);
             StatusText = $"{efSection.Children.Count} database(s)";
         }
         catch (Exception ex)
         {
+            efSection.Children.Clear();
+            efSection.Children.Add(new ModuleTreeNode
+            {
+                Name = $"Refresh failed: {ex.Message}",
+                NodeKind = "Error"
+            });
             StatusText = $"Refresh failed: {ex.Message}";
         }
         finally
         {
+            efSection.IsLoading = false;
             IsBusy = false;
         }
+    }
+
+    private static ModuleTreeNode CreateLoadingNode(string message) =>
+        new()
+        {
+            Name = message,
+            NodeKind = "Loading",
+            IsLoading = true
+        };
+
+    private async Task PopulateInstanceChildrenAsync(ModuleTreeNode instanceNode, string instanceId)
+    {
+        instanceNode.Children.Clear();
+
+        try
+        {
+            var snapshot = await EfCoreModuleFactory.Instance.GetSchemaAsync(instanceId);
+            foreach (var table in snapshot.Tables)
+            {
+                var tableNode = new ModuleTreeNode
+                {
+                    Name = table.IsView ? $"{table.Name} (view)" : table.Name,
+                    NodeKind = "Table",
+                    InstanceId = instanceId,
+                    TableName = table.Name
+                };
+
+                foreach (var col in table.Columns)
+                {
+                    tableNode.Children.Add(new ModuleTreeNode
+                    {
+                        Name = $"{col.Name} ({col.DataType})",
+                        NodeKind = "Column"
+                    });
+                }
+
+                instanceNode.Children.Add(tableNode);
+            }
+        }
+        catch (Exception ex)
+        {
+            instanceNode.Children.Add(new ModuleTreeNode
+            {
+                Name = $"Schema error: {ex.Message}",
+                NodeKind = "Error"
+            });
+        }
+    }
+
+    private ModuleTreeNode? FindInstanceNode(string? instanceId)
+    {
+        if (instanceId == null)
+            return null;
+
+        foreach (var root in RootNodes)
+        {
+            foreach (var child in root.Children)
+            {
+                if (child.NodeKind == "Instance" && child.InstanceId == instanceId)
+                    return child;
+            }
+        }
+
+        return null;
+    }
+
+    private void SetInstanceLoadingState(ModuleTreeNode instanceNode, bool loading)
+    {
+        instanceNode.IsLoading = loading;
+        if (!loading)
+            return;
+
+        instanceNode.IsExpanded = true;
+        instanceNode.Children.Clear();
+        instanceNode.Children.Add(CreateLoadingNode("Loading schema..."));
     }
 
     private async Task AddDatabaseAsync()
@@ -228,15 +310,24 @@ public class ModulesSidebarViewModel : ReactiveObject
         }
     }
 
-    private async Task DeleteInstanceAsync()
+    private Task DeleteInstanceAsync()
     {
         var instanceId = SelectedNode?.InstanceId;
         if (instanceId == null)
-            return;
+            return Task.CompletedTask;
 
         ModuleCatalog.Instance.Delete(instanceId);
-        await RefreshAsync();
-        StatusText = "Module deleted";
+
+        var efSection = RootNodes.FirstOrDefault(n => n.NodeKind == "Type");
+        var instanceNode = FindInstanceNode(instanceId);
+        if (instanceNode != null)
+            efSection?.Children.Remove(instanceNode);
+
+        StatusText = efSection != null
+            ? $"{efSection.Children.Count} database(s)"
+            : "Module deleted";
+
+        return Task.CompletedTask;
     }
 
     private async Task RegenerateModelAsync()
@@ -245,21 +336,31 @@ public class ModulesSidebarViewModel : ReactiveObject
         if (instanceId == null)
             return;
 
-        IsBusy = true;
+        var instanceNode = FindInstanceNode(instanceId);
+        if (instanceNode == null)
+            return;
+
+        SetInstanceLoadingState(instanceNode, loading: true);
         StatusText = "Regenerating model...";
         try
         {
             await EfCoreModuleFactory.Instance.RegenerateModelAsync(instanceId);
-            await RefreshAsync();
+            await PopulateInstanceChildrenAsync(instanceNode, instanceId);
             StatusText = "Model regenerated";
         }
         catch (Exception ex)
         {
+            instanceNode.Children.Clear();
+            instanceNode.Children.Add(new ModuleTreeNode
+            {
+                Name = $"Regenerate failed: {ex.Message}",
+                NodeKind = "Error"
+            });
             StatusText = $"Regenerate failed: {ex.Message}";
         }
         finally
         {
-            IsBusy = false;
+            instanceNode.IsLoading = false;
         }
     }
 
