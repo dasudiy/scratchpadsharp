@@ -1,10 +1,76 @@
 <Application xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    x:Class="ScratchpadSharp.App">
+    xmlns:sys="clr-namespace:System;assembly=netstandard"
+    xmlns:local="using:ScratchpadSharp"
+    xmlns:dockTheme="using:Dock.Avalonia.Themes.Fluent"
+    x:Class="ScratchpadSharp.App"
+    RequestedThemeVariant="Light">
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary>
+                    <ControlRecycling x:Key="ControlRecyclingKey" />
+                </ResourceDictionary>
+            </ResourceDictionary.MergedDictionaries>
+
+            <Color x:Key="RegionColor">#FFFBFCFD</Color>
+            <Color x:Key="AcrylicFallbackColor">#FFFBFCFD</Color>
+
+            <!-- Dock metrics aligned with RiderTheme -->
+            <sys:Double x:Key="DockFontSizeNormal">12</sys:Double>
+            <sys:Double x:Key="DockHeaderHeight">28</sys:Double>
+            <sys:Double x:Key="DockTabHeight">28</sys:Double>
+            <sys:Double x:Key="DockTabItemMinHeight">28</sys:Double>
+            <sys:Double x:Key="DockDocumentTabItemMinHeight">28</sys:Double>
+            <sys:Double x:Key="DockToolTabItemMinHeight">28</sys:Double>
+            <sys:Double x:Key="DockCreateButtonWidth">28</sys:Double>
+            <sys:Double x:Key="DockCreateButtonHeight">28</sys:Double>
+            <sys:Double x:Key="DockCloseButtonSize">14</sys:Double>
+            <sys:Double x:Key="DockChromeButtonWidth">22</sys:Double>
+            <sys:Double x:Key="DockChromeButtonHeight">22</sys:Double>
+            <Thickness x:Key="DockDocumentTabItemPadding">10,0,10,0</Thickness>
+            <Thickness x:Key="DockToolTabItemPadding">8,4,8,4</Thickness>
+            <Thickness x:Key="DockToolChromeHeaderMargin">4,0</Thickness>
+            <Thickness x:Key="DockToolChromeTitleMargin">0,4,6,4</Thickness>
+
+            <!-- Dock colors aligned with RiderTheme palette -->
+            <SolidColorBrush x:Key="DockSurfaceWorkbenchBrush" Color="#FFFBFCFD" />
+            <SolidColorBrush x:Key="DockSurfaceSidebarBrush" Color="#FFF6F8FA" />
+            <SolidColorBrush x:Key="DockSurfaceEditorBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="DockSurfacePanelBrush" Color="#FFF6F8FA" />
+            <SolidColorBrush x:Key="DockSurfaceHeaderBrush" Color="#FFF6F8FA" />
+            <SolidColorBrush x:Key="DockSurfaceHeaderActiveBrush" Color="#FFDDF4FF" />
+            <SolidColorBrush x:Key="DockBorderSubtleBrush" Color="#FFDFE2E6" />
+            <SolidColorBrush x:Key="DockBorderStrongBrush" Color="#FFDFE2E6" />
+            <SolidColorBrush x:Key="DockSeparatorBrush" Color="#FFEDEFF2" />
+            <SolidColorBrush x:Key="DockSplitterIdleBrush" Color="#FFDFE2E6" />
+            <SolidColorBrush x:Key="DockSplitterHoverBrush" Color="#FF2F81F7" />
+            <SolidColorBrush x:Key="DockSplitterDragBrush" Color="#FF1F6FEB" />
+            <SolidColorBrush x:Key="DockTabBackgroundBrush" Color="#00000000" />
+            <SolidColorBrush x:Key="DockTabHoverBackgroundBrush" Color="#FFEEF0F3" />
+            <SolidColorBrush x:Key="DockTabActiveBackgroundBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="DockTabActiveIndicatorBrush" Color="#FF2F81F7" />
+            <SolidColorBrush x:Key="DockTabForegroundBrush" Color="#FF586069" />
+            <SolidColorBrush x:Key="DockTabSelectedForegroundBrush" Color="#FF1B1F23" />
+            <SolidColorBrush x:Key="DockTabActiveForegroundBrush" Color="#FF1B1F23" />
+            <SolidColorBrush x:Key="DockTabCloseHoverBackgroundBrush" Color="#FFE8E8EC" />
+            <SolidColorBrush x:Key="DockChromeButtonForegroundBrush" Color="#FF586069" />
+            <SolidColorBrush x:Key="DockChromeButtonHoverBackgroundBrush" Color="#FFF0F2F5" />
+            <SolidColorBrush x:Key="DockChromeButtonPressedBackgroundBrush" Color="#FFE5E8EC" />
+            <sys:Double x:Key="DockCornerRadiusSmall">0</sys:Double>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
+        <dockTheme:DockFluentTheme DensityStyle="Compact" />
         <StyleInclude Source="avares://ScratchpadSharp/Assets/Styles/RiderTheme.axaml" />
         <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
-        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
     </Application.Styles>
 </Application>

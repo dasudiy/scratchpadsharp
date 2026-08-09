@@ -72,8 +72,6 @@ public class ModulesSidebarViewModel : ReactiveObject
 
     public ObservableCollection<ModuleTreeNode> RootNodes { get; }
 
-    public ReactiveCommand<Unit, Unit>? ToggleSidebarCommand { get; set; }
-
     public ModuleTreeNode? SelectedNode
     {
         get => selectedNode;

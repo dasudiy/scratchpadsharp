@@ -4,21 +4,16 @@
              x:Class="ScratchpadSharp.Views.ModulesSidebarView"
              x:DataType="vm:ModulesSidebarViewModel">
   <DockPanel LastChildFill="True">
-    <Border DockPanel.Dock="Top" Classes="rider-side-panel-header" Padding="4,0,4,0">
+    <Border DockPanel.Dock="Top" Padding="8,6,8,4">
       <DockPanel>
         <Button DockPanel.Dock="Right"
                 Classes="rider-side-panel-btn"
                 Content="+"
                 Command="{Binding AddDatabaseCommand}"
                 ToolTip.Tip="Add database" />
-        <Button DockPanel.Dock="Right"
-                Classes="rider-side-panel-btn"
-                Content="◂"
-                Command="{Binding ToggleSidebarCommand}"
-                ToolTip.Tip="Collapse modules panel" />
-        <TextBlock Text="MODULES"
+        <TextBlock Text="Database modules"
                    Classes="rider-side-panel-title"
-                   Margin="8,0,0,0" />
+                   VerticalAlignment="Center" />
       </DockPanel>
     </Border>
 

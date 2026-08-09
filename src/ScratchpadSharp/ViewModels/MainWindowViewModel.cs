@@ -7,10 +7,14 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Dock.Model.Controls;
+using Dock.Model.Core;
+using Dock.Model.Core.Events;
 using ReactiveUI;
 using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.Storage;
+using ScratchpadSharp.Dock;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.ViewModels;
@@ -19,13 +23,30 @@ public class MainWindowViewModel : ReactiveObject
 {
     private ScriptTabViewModel? selectedTab;
     private Window? mainWindow;
+    private IRootDock? layout;
 
     private readonly IScriptExecutionService scriptService;
+    private readonly ScratchpadDockFactory dockFactory;
 
     public MainWindowViewModel(IScriptExecutionService scriptService)
     {
         this.scriptService = scriptService;
         Tabs = new ObservableCollection<ScriptTabViewModel>();
+
+        dockFactory = new ScratchpadDockFactory(
+            scriptService,
+            () => SelectedTab,
+            () => CreateTab(),
+            OnDocumentCreated);
+
+        dockFactory.ActiveDockableChanged += OnActiveDockableChanged;
+        dockFactory.DockableClosed += OnDockableClosed;
+
+        var dockLayout = dockFactory.CreateLayout();
+        dockFactory.InitLayout(dockLayout);
+        Layout = dockLayout;
+
+        ModulesSidebar = dockFactory.ModulesSidebar;
 
         NewTabCommand = ReactiveCommand.Create(AddTab);
         CloseTabCommand = ReactiveCommand.Create(CloseSelectedTab,
@@ -47,29 +68,17 @@ public class MainWindowViewModel : ReactiveObject
         ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager, SelectedTabReady);
         OpenSettingsCommand = ReactiveCommand.Create(OpenSettings);
         ExitCommand = ReactiveCommand.Create(Exit);
-        ToggleModulesSidebarCommand = ReactiveCommand.Create(ToggleModulesSidebar);
-
-        ModulesSidebar = new ModulesSidebarViewModel(() => SelectedTab, scriptService);
-        ModulesSidebar.ToggleSidebarCommand = ToggleModulesSidebarCommand;
 
         _ = RestoreSessionAsync();
     }
 
-    private bool isModulesSidebarExpanded = true;
-
-    public bool IsModulesSidebarExpanded
-    {
-        get => isModulesSidebarExpanded;
-        set
-        {
-            this.RaiseAndSetIfChanged(ref isModulesSidebarExpanded, value);
-            this.RaisePropertyChanged(nameof(ModulesSidebarToggleGlyph));
-        }
-    }
-
-    public string ModulesSidebarToggleGlyph => IsModulesSidebarExpanded ? "◂" : "▸";
-
     public ModulesSidebarViewModel ModulesSidebar { get; }
+
+    public IRootDock? Layout
+    {
+        get => layout;
+        private set => this.RaiseAndSetIfChanged(ref layout, value);
+    }
 
     public ObservableCollection<ScriptTabViewModel> Tabs { get; }
 
@@ -84,9 +93,10 @@ public class MainWindowViewModel : ReactiveObject
             this.RaiseAndSetIfChanged(ref selectedTab, value);
 
             if (selectedTab != null)
+            {
                 selectedTab.PropertyChanged += OnSelectedTabPropertyChanged;
-
-            UpdateTabSelectionStates();
+                dockFactory.ActivateScriptDocument(selectedTab);
+            }
 
             this.RaisePropertyChanged(nameof(StatusText));
             this.RaisePropertyChanged(nameof(StatusBarPath));
@@ -121,16 +131,67 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
     public ReactiveCommand<Unit, Unit> ManageReferencesCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }
-    public ReactiveCommand<Unit, Unit> ToggleModulesSidebarCommand { get; }
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
-
-    private void ToggleModulesSidebar() => IsModulesSidebarExpanded = !IsModulesSidebarExpanded;
 
     private IObservable<bool> SelectedTabReady =>
         this.WhenAnyValue(x => x.SelectedTab)
             .SelectMany(tab => tab != null
                 ? tab.WhenAnyValue(t => t.IsProjectReady)
                 : Observable.Return(false));
+
+    private void OnDocumentCreated(ScriptTabViewModel tab, ScriptDocument document)
+    {
+        tab.BindCloseHandler(() => CloseTab(tab));
+        Tabs.Add(tab);
+    }
+
+    private void OnActiveDockableChanged(object? sender, ActiveDockableChangedEventArgs e)
+    {
+        if (e.Dockable is ScriptDocument document && selectedTab != document.Tab)
+            SetSelectedTab(document.Tab);
+    }
+
+    private void OnDockableClosed(object? sender, DockableClosedEventArgs e)
+    {
+        if (e.Dockable is not ScriptDocument document)
+            return;
+
+        var wasSelected = selectedTab == document.Tab;
+        document.Tab.Cleanup();
+        Tabs.Remove(document.Tab);
+
+        if (Tabs.Count == 0)
+        {
+            AddTab();
+            return;
+        }
+
+        if (wasSelected)
+            SyncSelectedTabFromDock();
+    }
+
+    private void SyncSelectedTabFromDock()
+    {
+        var activeTab = dockFactory.GetActiveScriptTab();
+        if (activeTab is not null && activeTab != selectedTab)
+            SetSelectedTab(activeTab);
+    }
+
+    private void SetSelectedTab(ScriptTabViewModel? tab)
+    {
+        if (selectedTab != null)
+            selectedTab.PropertyChanged -= OnSelectedTabPropertyChanged;
+
+        selectedTab = tab;
+        this.RaisePropertyChanged(nameof(SelectedTab));
+
+        if (selectedTab != null)
+            selectedTab.PropertyChanged += OnSelectedTabPropertyChanged;
+
+        this.RaisePropertyChanged(nameof(StatusText));
+        this.RaisePropertyChanged(nameof(StatusBarPath));
+        this.RaisePropertyChanged(nameof(CursorPosition));
+    }
 
     private void OnSelectedTabPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -142,24 +203,16 @@ public class MainWindowViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(CursorPosition));
     }
 
-    private void UpdateTabSelectionStates()
-    {
-        foreach (var tab in Tabs)
-            tab.IsSelected = tab == selectedTab;
-    }
-
     public void AddTab()
     {
         var tab = CreateTab();
-        Tabs.Add(tab);
+        dockFactory.AddScriptDocument(tab);
         SelectedTab = tab;
     }
 
     private ScriptTabViewModel CreateTab(bool deferInitialization = false)
     {
-        var tab = new ScriptTabViewModel(scriptService, deferInitialization);
-        tab.BindCloseHandler(() => CloseTab(tab));
-        return tab;
+        return new ScriptTabViewModel(scriptService, deferInitialization);
     }
 
     private async Task RestoreSessionAsync()
@@ -177,19 +230,19 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        ScriptTabViewModel? selectedTab = null;
+        ScriptTabViewModel? restoredSelection = null;
 
         for (var i = 0; i < session.Tabs.Count; i++)
         {
             var tab = CreateTab(deferInitialization: true);
-            Tabs.Add(tab);
+            dockFactory.AddScriptDocument(tab);
             await tab.RestoreFromSessionAsync(session.Tabs[i]);
 
             if (i == session.SelectedTabIndex)
-                selectedTab = tab;
+                restoredSelection = tab;
         }
 
-        SelectedTab = selectedTab ?? Tabs.Last();
+        SelectedTab = restoredSelection ?? Tabs.Last();
     }
 
     public void SaveSession()
@@ -221,13 +274,10 @@ public class MainWindowViewModel : ReactiveObject
 
     public void CloseTab(ScriptTabViewModel tab)
     {
-        tab.Cleanup();
-        Tabs.Remove(tab);
+        if (!dockFactory.TryGetDocument(tab, out var document))
+            return;
 
-        if (Tabs.Count == 0)
-            AddTab();
-        else if (SelectedTab == tab || SelectedTab == null)
-            SelectedTab = Tabs.Last();
+        dockFactory.CloseDockable(document);
     }
 
     private void CloseSelectedTab()

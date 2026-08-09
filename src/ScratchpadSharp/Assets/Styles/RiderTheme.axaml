@@ -421,4 +421,49 @@
         <Setter Property="MaxWidth" Value="300" />
     </Style>
 
+    <!-- Dock layout -->
+    <Style Selector="DockControl">
+        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+        <Setter Property="(ControlRecyclingDataTemplate.ControlRecycling)" Value="{StaticResource ControlRecyclingKey}" />
+    </Style>
+
+    <Style Selector="DocumentTabStripItem">
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Padding" Value="10,0" />
+    </Style>
+
+    <Style Selector="ToolTabStripItem">
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
+    <Style Selector="DocumentTabStrip">
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="Background" Value="{StaticResource TabInactiveBgBrush}" />
+    </Style>
+
+    <Style Selector="ToolChromeControl">
+        <Setter Property="Background" Value="{StaticResource HeaderBgBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="MinHeight" Value="30" />
+    </Style>
+
+    <Style Selector="ToolChromeControl TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+
+    <Style Selector="GridSplitter">
+        <Setter Property="Width" Value="4" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="GridSplitter:pointerover">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    </Style>
+
 </Styles>

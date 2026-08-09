@@ -21,13 +21,6 @@ internal class Program
             return;
         }
 
-        // 强制设置缩放因子为 1.5。
-        // AVALONIA_SCREEN_SCALE_FACTOR 是最通用的环境变量，影响逻辑像素计算。
-        Environment.SetEnvironmentVariable("AVALONIA_SCREEN_SCALE_FACTOR", "2");
-
-        // 针对某些 Wayland/GNOME 环境，这个变量可以进一步强制全局缩放。
-        Environment.SetEnvironmentVariable("AVALONIA_GLOBAL_SCALE_FACTOR", "2");
-
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -39,8 +32,6 @@ internal class Program
             .With(new X11PlatformOptions 
             { 
                 EnableMultiTouch = true
-                // 注意：X11PlatformOptions 中没有 SystemScaleFactor 属性。
-                // 缩放完全通过 Main 中的环境变量来控制。
             })
             .LogToTrace()
             .UseReactiveUI();
