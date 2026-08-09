@@ -1,0 +1,149 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ScratchpadSharp.ViewModels"
+        xmlns:modules="using:ScratchpadSharp.Core.Modules"
+        x:Class="ScratchpadSharp.Views.DatabaseConnectionWindow"
+        x:DataType="vm:DatabaseConnectionViewModel"
+        Title="Database connection"
+        Width="560"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Opened="OnOpened">
+  <Border Padding="20" Background="#FBFCFD">
+    <StackPanel Spacing="14" MaxWidth="520">
+      <TextBlock Text="Add database connection"
+                 FontWeight="SemiBold"
+                 FontSize="16"
+                 IsVisible="{Binding !IsEdit}" />
+      <TextBlock Text="Edit database connection"
+                 FontWeight="SemiBold"
+                 FontSize="16"
+                 IsVisible="{Binding IsEdit}" />
+
+      <DockPanel LastChildFill="True">
+        <TextBlock DockPanel.Dock="Left" Width="120" Text="Display name" VerticalAlignment="Center" />
+        <TextBox Margin="12,0,0,0" Text="{Binding DisplayName}" />
+      </DockPanel>
+
+      <DockPanel LastChildFill="True">
+        <TextBlock DockPanel.Dock="Left" Width="120" Text="Provider" VerticalAlignment="Center" />
+        <ComboBox Margin="12,0,0,0"
+                  ItemsSource="{Binding Providers}"
+                  SelectedItem="{Binding SelectedProvider}"
+                  MinWidth="200"
+                  HorizontalAlignment="Left">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding DisplayName}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </DockPanel>
+
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <RadioButton Content="Form" IsChecked="{Binding UseFormMode}" GroupName="ConnMode" />
+        <RadioButton Content="Connection string" IsChecked="{Binding UseConnectionStringMode}" GroupName="ConnMode" />
+      </StackPanel>
+
+      <StackPanel IsVisible="{Binding UseFormMode}" Spacing="8">
+        <TextBlock Text="Common" FontWeight="SemiBold" />
+        <ItemsControl ItemsSource="{Binding CommonFields}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="modules:ConnectionStringFieldDescriptor">
+              <DockPanel Margin="0,4" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                <CheckBox Margin="8,0,0,0"
+                          IsVisible="{Binding IsBoolean}"
+                          IsChecked="{Binding Value}"
+                          Content=""
+                          Click="OnFieldCheckChanged" />
+                <ComboBox Margin="8,0,0,0"
+                          IsVisible="{Binding IsEnum}"
+                          ItemsSource="{Binding EnumOptions}"
+                          SelectedItem="{Binding Value}"
+                          SelectionChanged="OnFieldSelectionChanged" />
+                <TextBox Margin="8,0,0,0"
+                         IsVisible="{Binding IsPassword}"
+                         PasswordChar="•"
+                         Text="{Binding Value}"
+                         LostFocus="OnFieldLostFocus" />
+                <DockPanel Margin="8,0,0,0" IsVisible="{Binding IsFileBrowse}">
+                  <Button DockPanel.Dock="Right"
+                          Content="Browse..."
+                          Margin="8,0,0,0"
+                          Click="OnBrowseFileClick"
+                          Tag="{Binding}" />
+                  <TextBox Text="{Binding Value}" LostFocus="OnFieldLostFocus" />
+                </DockPanel>
+                <TextBox Margin="8,0,0,0"
+                         IsVisible="{Binding UseTextBoxEditor}"
+                         Text="{Binding Value}"
+                         LostFocus="OnFieldLostFocus" />
+              </DockPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Expander Header="Advanced" IsExpanded="False">
+          <ItemsControl ItemsSource="{Binding AdvancedFields}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="modules:ConnectionStringFieldDescriptor">
+                <DockPanel Margin="0,4" LastChildFill="True">
+                  <TextBlock DockPanel.Dock="Left" Width="140" Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                  <CheckBox Margin="8,0,0,0"
+                            IsVisible="{Binding IsBoolean}"
+                            IsChecked="{Binding Value}"
+                            Content=""
+                            Click="OnFieldCheckChanged" />
+                  <ComboBox Margin="8,0,0,0"
+                            IsVisible="{Binding IsEnum}"
+                            ItemsSource="{Binding EnumOptions}"
+                            SelectedItem="{Binding Value}"
+                            SelectionChanged="OnFieldSelectionChanged" />
+                  <TextBox Margin="8,0,0,0"
+                           IsVisible="{Binding IsPassword}"
+                           PasswordChar="•"
+                           Text="{Binding Value}"
+                           LostFocus="OnFieldLostFocus" />
+                  <DockPanel Margin="8,0,0,0" IsVisible="{Binding IsFileBrowse}">
+                    <Button DockPanel.Dock="Right"
+                            Content="Browse..."
+                            Margin="8,0,0,0"
+                            Click="OnBrowseFileClick"
+                            Tag="{Binding}" />
+                    <TextBox Text="{Binding Value}" LostFocus="OnFieldLostFocus" />
+                  </DockPanel>
+                  <TextBox Margin="8,0,0,0"
+                           IsVisible="{Binding UseTextBoxEditor}"
+                           Text="{Binding Value}"
+                           LostFocus="OnFieldLostFocus" />
+                </DockPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Expander>
+      </StackPanel>
+
+      <StackPanel IsVisible="{Binding UseConnectionStringMode}" Spacing="6">
+        <TextBox AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 MinHeight="80"
+                 Text="{Binding ConnectionStringText}" />
+        <TextBlock Text="{Binding ParseError}"
+                   Foreground="#C62828"
+                   FontSize="11.5"
+                   IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+
+      <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap" />
+
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="Test connection" Command="{Binding TestConnectionCommand}" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" Click="OnCancelClick" />
+        <Button Content="Save" Command="{Binding SaveCommand}" Click="OnSaveClick"
+                Background="#4C6EF5" Foreground="White" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

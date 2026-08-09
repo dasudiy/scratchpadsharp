@@ -45,12 +45,31 @@ public class MainWindowViewModel : ReactiveObject
                     : Observable.Return(false)));
         FormatCommand = ReactiveCommand.CreateFromTask(FormatAsync, SelectedTabReady);
         ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager, SelectedTabReady);
-        OpenDatabaseCommand = ReactiveCommand.Create(OpenDatabase, SelectedTabReady);
         OpenSettingsCommand = ReactiveCommand.Create(OpenSettings);
         ExitCommand = ReactiveCommand.Create(Exit);
+        ToggleModulesSidebarCommand = ReactiveCommand.Create(ToggleModulesSidebar);
+
+        ModulesSidebar = new ModulesSidebarViewModel(() => SelectedTab, scriptService);
+        ModulesSidebar.ToggleSidebarCommand = ToggleModulesSidebarCommand;
 
         _ = RestoreSessionAsync();
     }
+
+    private bool isModulesSidebarExpanded = true;
+
+    public bool IsModulesSidebarExpanded
+    {
+        get => isModulesSidebarExpanded;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref isModulesSidebarExpanded, value);
+            this.RaisePropertyChanged(nameof(ModulesSidebarToggleGlyph));
+        }
+    }
+
+    public string ModulesSidebarToggleGlyph => IsModulesSidebarExpanded ? "◂" : "▸";
+
+    public ModulesSidebarViewModel ModulesSidebar { get; }
 
     public ObservableCollection<ScriptTabViewModel> Tabs { get; }
 
@@ -101,9 +120,11 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
     public ReactiveCommand<Unit, Unit> ManageReferencesCommand { get; }
-    public ReactiveCommand<Unit, Unit> OpenDatabaseCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }
+    public ReactiveCommand<Unit, Unit> ToggleModulesSidebarCommand { get; }
     public ReactiveCommand<Unit, Unit> ExitCommand { get; }
+
+    private void ToggleModulesSidebar() => IsModulesSidebarExpanded = !IsModulesSidebarExpanded;
 
     private IObservable<bool> SelectedTabReady =>
         this.WhenAnyValue(x => x.SelectedTab)
@@ -427,21 +448,6 @@ public class MainWindowViewModel : ReactiveObject
 
         var vm = new ReferenceManagementViewModel(SelectedTab.TabId, SelectedTab.ProjectContext);
         var window = new Views.ReferenceManagementWindow { DataContext = vm };
-        window.ShowDialog(MainWindow);
-    }
-
-    private void OpenDatabase()
-    {
-        if (MainWindow == null || SelectedTab is not { IsProjectReady: true } tab) return;
-
-        var vm = new DatabaseViewModel(tab.TabId, tab.ProjectContext, code =>
-        {
-            if (string.IsNullOrWhiteSpace(tab.CodeText))
-                tab.CodeText = code;
-            else
-                tab.CodeText = tab.CodeText.TrimEnd() + "\n\n" + code;
-        });
-        var window = new Views.DatabaseWindow { DataContext = vm };
         window.ShowDialog(MainWindow);
     }
 

@@ -48,11 +48,8 @@ public static class ScriptDocumentBuilder
         var wrapperBefore = configUsingsBlock + editorLeading + @"
 public class __ScriptRunner
 {
-    public static string __ConnectionString { get; set; } = string.Empty;
-
     public static async Task<object?> __Execute()
     {
-        var ConnectionString = __ConnectionString;
     " + lineDirective + @"
         ";
 

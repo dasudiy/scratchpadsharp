@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ScratchpadSharp.ViewModels"
+             x:Class="ScratchpadSharp.Views.ModulesSidebarView"
+             x:DataType="vm:ModulesSidebarViewModel">
+  <DockPanel LastChildFill="True">
+    <Border DockPanel.Dock="Top" Classes="rider-side-panel-header" Padding="4,0,4,0">
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Classes="rider-side-panel-btn"
+                Content="+"
+                Command="{Binding AddDatabaseCommand}"
+                ToolTip.Tip="Add database" />
+        <Button DockPanel.Dock="Right"
+                Classes="rider-side-panel-btn"
+                Content="◂"
+                Command="{Binding ToggleSidebarCommand}"
+                ToolTip.Tip="Collapse modules panel" />
+        <TextBlock Text="MODULES"
+                   Classes="rider-side-panel-title"
+                   Margin="8,0,0,0" />
+      </DockPanel>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom"
+            Padding="8,6"
+            Background="{StaticResource HeaderBgBrush}"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="0,1,0,0">
+      <TextBlock Text="{Binding StatusText}"
+                 FontSize="11"
+                 TextWrapping="Wrap"
+                 Foreground="{StaticResource TextMutedBrush}" />
+    </Border>
+
+    <ScrollViewer Padding="2,4">
+      <TreeView ItemsSource="{Binding RootNodes}"
+                SelectedItem="{Binding SelectedNode}"
+                SelectionMode="Single"
+                Background="Transparent">
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate ItemsSource="{Binding Children}">
+            <TextBlock Text="{Binding Name}" FontSize="12.5" />
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+        <TreeView.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="Edit connection" Command="{Binding EditConnectionCommand}" />
+            <MenuItem Header="Regenerate model" Command="{Binding RegenerateModelCommand}" />
+            <MenuItem Header="Add ref to query" Command="{Binding AddRefCommand}" />
+            <MenuItem Header="Remove ref from query" Command="{Binding RemoveRefCommand}" />
+            <MenuItem Header="Delete" Command="{Binding DeleteInstanceCommand}" />
+            <Separator />
+            <MenuItem Header="Take (100)" Command="{Binding Take100Command}" />
+            <MenuItem Header="Count" Command="{Binding CountCommand}" />
+            <Separator />
+            <MenuItem Header="Refresh" Command="{Binding RefreshCommand}" />
+          </ContextMenu>
+        </TreeView.ContextMenu>
+      </TreeView>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

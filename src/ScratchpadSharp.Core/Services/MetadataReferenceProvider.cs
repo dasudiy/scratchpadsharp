@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using ScratchpadSharp.Shared.Models;
 
@@ -29,99 +27,67 @@ public static class MetadataReferenceProvider
         return File.Exists(siblingXml) ? XmlDocumentationProvider.CreateFromFile(siblingXml) : null;
     }
 
+    /// <summary>
+    /// Baseline references for script compilation: shared framework (TPA) + ScratchpadSharp.Core.
+    /// NuGet compile assets are added separately via <see cref="GetReferencesWithPackages"/>.
+    /// </summary>
     public static IEnumerable<MetadataReference> GetDefaultReferences()
     {
         if (cachedReferences != null)
             return cachedReferences;
 
-        var references = new List<MetadataReference>
-        {
-            CreateReferenceWithXmlDocs(typeof(object).Assembly.Location),
-            CreateReferenceWithXmlDocs(typeof(Console).Assembly.Location),
-            CreateReferenceWithXmlDocs(typeof(Enumerable).Assembly.Location),
-            CreateReferenceWithXmlDocs(typeof(List<>).Assembly.Location),
-            CreateReferenceWithXmlDocs(typeof(Task).Assembly.Location),
-            CreateReferenceWithXmlDocs(Assembly.Load("System.Runtime").Location),
-            CreateReferenceWithXmlDocs(Assembly.Load("System.Collections").Location),
-            CreateReferenceWithXmlDocs(Assembly.Load("System.Linq").Location),
-            CreateReferenceWithXmlDocs(Assembly.Load("System.Linq.Expressions").Location),
-            CreateReferenceWithXmlDocs(Assembly.Load("netstandard").Location),
-            CreateReferenceWithXmlDocs(typeof(ScriptExecutionService).Assembly.Location),
-        };
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in GetFrameworkAssemblyPaths())
+            paths.Add(path);
 
-        // Add System.Private.CoreLib
-        try
-        {
-            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Private.CoreLib").Location));
-        }
-        catch
-        {
-        }
+        paths.Add(typeof(ScriptExecutionService).Assembly.Location);
 
-        // Add common assemblies for better IntelliSense
-        try
-        {
-            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Text.RegularExpressions").Location));
-            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.IO.FileSystem").Location));
-            references.Add(CreateReferenceWithXmlDocs(Assembly.Load("System.Net.Http").Location));
-        }
-        catch
-        {
-        }
+        cachedReferences = paths
+            .Where(File.Exists)
+            .Select(CreateReferenceWithXmlDocs)
+            .ToList();
 
-        cachedReferences = references;
-        return references;
+        return cachedReferences;
     }
 
-    public static IEnumerable<MetadataReference> GetReferencesFromAssemblyNames(List<string> assemblyNames)
+    /// <summary>
+    /// All trusted platform assemblies for the current .NET runtime (includes facades like
+    /// System.ComponentModel.TypeConverter). Falls back to the shared framework directory or a
+    /// minimal type set when TPA is unavailable.
+    /// </summary>
+    private static IEnumerable<string> GetFrameworkAssemblyPaths()
     {
-        var references = new List<MetadataReference>();
-
-        foreach (var assemblyName in assemblyNames)
+        var tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+        if (!string.IsNullOrWhiteSpace(tpa))
         {
-            try
+            foreach (var path in tpa.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
             {
-                var assembly = Assembly.Load(assemblyName);
-                references.Add(MetadataReference.CreateFromFile(assembly.Location));
+                if (path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                    yield return path;
             }
-            catch
-            {
-                // Skip assemblies that fail to load
-            }
+
+            yield break;
         }
 
-        return references;
+        var coreDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+        if (!string.IsNullOrEmpty(coreDir) && Directory.Exists(coreDir))
+        {
+            foreach (var path in Directory.EnumerateFiles(coreDir, "*.dll", SearchOption.TopDirectoryOnly))
+                yield return path;
+
+            yield break;
+        }
+
+        yield return typeof(object).Assembly.Location;
+        yield return typeof(Console).Assembly.Location;
+        yield return typeof(Enumerable).Assembly.Location;
+        yield return typeof(List<>).Assembly.Location;
+        yield return typeof(Task).Assembly.Location;
     }
 
-    public static IEnumerable<MetadataReference> GetReferencesFromConfig(ScriptConfig config)
-    {
-        var references = new List<MetadataReference>();
-
-        // Add core type references
-        references.Add(MetadataReference.CreateFromFile(typeof(object).Assembly.Location));
-        references.Add(MetadataReference.CreateFromFile(typeof(Console).Assembly.Location));
-        references.Add(MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location));
-        references.Add(MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location));
-        references.Add(MetadataReference.CreateFromFile(typeof(Task).Assembly.Location));
-
-        // Add reference to ScratchpadSharp.Core to support DumpDispatcher
-        references.Add(MetadataReference.CreateFromFile(typeof(ScriptExecutionService).Assembly.Location));
-
-        // Add references from config
-        if (config.References?.Count > 0)
-        {
-            references.AddRange(GetReferencesFromAssemblyNames(config.References));
-        }
-
-        // Add NuGet packages
-        if (config.NuGetPackages?.Count > 0)
-        {
-            references.AddRange(GetPackageReferences(config.NuGetPackages));
-        }
-
-        return references;
-    }
-
+    /// <summary>
+    /// Default framework refs + NuGet compile assets from <see cref="DependencyResolver"/> / manifest hydrate.
+    /// </summary>
     public static IEnumerable<MetadataReference> GetReferencesWithPackages(List<string>? nugetPackages)
     {
         var references = GetDefaultReferences().ToList();
@@ -130,51 +96,6 @@ public static class MetadataReferenceProvider
             return references;
 
         references.AddRange(nugetPackages.Select(CreateReferenceWithXmlDocs));
-        return references;
-    }
-
-    private static IEnumerable<MetadataReference> GetPackageReferences(Dictionary<string, string> nugetPackages)
-    {
-        var references = new List<MetadataReference>();
-        var nugetPackagesPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".nuget", "packages");
-
-        foreach (var package in nugetPackages)
-        {
-            try
-            {
-                var packageName = package.Key.ToLowerInvariant();
-                var version = package.Value;
-                var packagePath = Path.Combine(nugetPackagesPath, packageName, version);
-
-                if (Directory.Exists(packagePath))
-                {
-                    var libPath = Path.Combine(packagePath, "lib");
-                    if (Directory.Exists(libPath))
-                    {
-                        var dllFiles = Directory.GetFiles(libPath, "*.dll", SearchOption.AllDirectories)
-                            .Where(f => !f.Contains("\\ref\\"))
-                            .ToList();
-
-                        foreach (var dll in dllFiles)
-                        {
-                            try
-                            {
-                                references.Add(MetadataReference.CreateFromFile(dll));
-                            }
-                            catch
-                            {
-                            }
-                        }
-                    }
-                }
-            }
-            catch
-            {
-            }
-        }
-
         return references;
     }
 }

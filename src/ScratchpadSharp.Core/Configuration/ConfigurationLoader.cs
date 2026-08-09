@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using ScratchpadSharp.Core.Database;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Configuration;
@@ -23,18 +22,8 @@ public static class ConfigurationLoader
                 defaults.TimeoutSeconds = executionTimeout.Value;
         }
 
-        defaults.DatabaseProvider = DatabaseProviderCatalog.InferProviderId(defaults);
         _defaults = defaults;
     }
 
     public static ScriptConfig CreateDefaultConfig() => _defaults.Clone();
-
-    /// <summary>Per-query empty connection string inherits ScriptDefaults at run time.</summary>
-    public static string ResolveConnectionString(ScriptConfig config)
-    {
-        if (!string.IsNullOrWhiteSpace(config.ConnectionString))
-            return config.ConnectionString;
-
-        return _defaults.ConnectionString ?? string.Empty;
-    }
 }

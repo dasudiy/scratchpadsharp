@@ -11,7 +11,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using ScratchpadSharp.Core.External.NetPad.Presentation;
 using ScratchpadSharp.Core.Isolation;
-using ScratchpadSharp.Core.Configuration;
+using ScratchpadSharp.Core.PackageManagement;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Services;
@@ -73,13 +73,19 @@ public class ScriptExecutionService : IScriptExecutionService
 
                 ct.ThrowIfCancellationRequested();
 
+                var runtimeReferences = context.AbsoluteRuntimeReferences.Count > 0
+                    ? context.AbsoluteRuntimeReferences
+                    : context.AbsoluteCompileReferences
+                        .Select(NuGetPackageAssetResolver.ResolveRuntimeAssemblyPath)
+                        .ToList();
+
                 return await ExecuteInIsolationAsync(
                     compilation.Assembly,
                     context.Config,
                     sink,
                     ct,
                     context.AbsoluteNativeAssets,
-                    context.AbsoluteCompileReferences);
+                    runtimeReferences);
             }, ct);
         }
         catch (OperationCanceledException)
@@ -97,15 +103,23 @@ public class ScriptExecutionService : IScriptExecutionService
     private static (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
         string code, ProjectContext context)
     {
-        var scriptDocument = ScriptDocumentBuilder.Build(code, context.Config.Usings);
-        var syntaxTree = CSharpSyntaxTree.ParseText(scriptDocument.FullText);
+        var merged = context.MergedEnvironment;
+        var usings = merged.Usings.Count > 0 ? merged.Usings : context.Config.Usings;
+        var scriptDocument = ScriptDocumentBuilder.Build(code, usings);
+
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);
+        var syntaxTrees = new List<SyntaxTree>();
+        foreach (var module in merged.ModuleSources)
+            syntaxTrees.Add(CSharpSyntaxTree.ParseText(module.SourceText, parseOptions, path: module.FileName));
+
+        syntaxTrees.Add(CSharpSyntaxTree.ParseText(scriptDocument.FullText, parseOptions, path: "Script.cs"));
 
         // Get reference assemblies from config and NuGet packages
         var references = MetadataReferenceProvider.GetReferencesWithPackages(context.AbsoluteCompileReferences).ToList();
 
         var compilation = CSharpCompilation.Create(
             $"__ScriptAssembly_{Guid.NewGuid():N}",
-            [syntaxTree],
+            syntaxTrees,
             references,
             new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
@@ -130,7 +144,7 @@ public class ScriptExecutionService : IScriptExecutionService
         IDumpSink sink,
         CancellationToken ct,
         List<string>? nativePaths = null,
-        List<string>? compileReferences = null)
+        List<string>? runtimeReferences = null)
     {
         ScriptAssemblyLoadContext? alc = null;
         WeakReference? alcWeakRef = null;
@@ -144,13 +158,23 @@ public class ScriptExecutionService : IScriptExecutionService
             if (nativePaths != null)
                 additionalPaths.AddRange(nativePaths);
 
+            if (runtimeReferences != null)
+            {
+                foreach (var reference in runtimeReferences)
+                {
+                    var packageRoot = NuGetPackageAssetResolver.InferPackageRoot(reference);
+                    if (packageRoot != null && !additionalPaths.Contains(packageRoot))
+                        additionalPaths.Add(packageRoot);
+                }
+            }
+
             var nugetPackagesPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".nuget", "packages");
             if (Directory.Exists(nugetPackagesPath))
                 additionalPaths.Add(nugetPackagesPath);
 
-            alc = new ScriptAssemblyLoadContext(null, additionalPaths, compileReferences);
+            alc = new ScriptAssemblyLoadContext(null, additionalPaths, runtimeReferences);
             alcWeakRef = new WeakReference(alc);
 
             var assembly = alc.LoadFromStream(assemblyStream);
@@ -162,9 +186,6 @@ public class ScriptExecutionService : IScriptExecutionService
             var method = type.GetMethod("__Execute", BindingFlags.Public | BindingFlags.Static);
             if (method == null)
                 return FailExecution(sink, "Could not find script entry point");
-
-            var connectionStringProp = type.GetProperty("__ConnectionString", BindingFlags.Public | BindingFlags.Static);
-            connectionStringProp?.SetValue(null, ConfigurationLoader.ResolveConnectionString(config));
 
             using var outputWriter = new StringWriter();
             var originalOut = Console.Out;
@@ -311,9 +332,4 @@ public class ScriptExecutionService : IScriptExecutionService
 
         public override Encoding Encoding => _backingWriter.Encoding;
     }
-}
-
-public class ScriptGlobals
-{
-    public string ConnectionString { get; set; } = string.Empty;
 }

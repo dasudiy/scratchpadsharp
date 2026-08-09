@@ -348,18 +348,16 @@ public class NuGetService
         return Task.Run(() => 
         {
             var compileRefs = new List<string>();
+            var runtimeAssemblyRefs = new List<string>();
             var nativePaths = new Dictionary<string, List<string>>();
 
             using var packageReader = new PackageFolderReader(packageRootPath);
             var frameworkReducer = new FrameworkReducer();
 
-            // --- 1. 提取编译引用 (Compile References) ---
-            // 优先查找 ref 文件夹 (Metadata Only, 编译速度快)，如果没有则降级到 lib
+            // --- 1. Compile references (ref/ preferred for Roslyn) ---
             var referenceItems = packageReader.GetReferenceItems().ToList();
             if (!referenceItems.Any())
-            {
                 referenceItems = packageReader.GetLibItems().ToList();
-            }
 
             var nearestRef = frameworkReducer.GetNearest(targetFramework, referenceItems.Select(x => x.TargetFramework));
             
@@ -369,36 +367,72 @@ public class NuGetService
                 foreach (var item in group.Items)
                 {
                     if (IsValidDll(item))
-                    {
                         compileRefs.Add(Path.Combine(packageRootPath, item));
-                    }
                 }
             }
 
-            // --- 2. 提取 Native 资源 (Runtime Native Assets) ---
-            // 扫描 runtimes 文件夹。这里简单提取所有 runtimes，或者可以根据当前 RID 过滤
-            // 为了生成跨平台的 manifest，我们这里可以提取所有，或者由调用方决定
-            // 这里演示提取当前运行环境的 Native 库 (更实用)
-            
-            var runtimeItems = packageReader.GetItems("runtimes").ToList(); // 获取 runtimes 下的所有组
-        
-            foreach (var rid in runtimeItems)
+            // --- 2. Runtime managed assemblies (lib/ + runtimes/{os}/lib/) ---
+            var libItems = packageReader.GetLibItems().ToList();
+            var nearestLib = frameworkReducer.GetNearest(targetFramework, libItems.Select(x => x.TargetFramework));
+            if (nearestLib != null)
             {
-                nativePaths[rid.TargetFramework.ToString()] = new List<string>();
-                // 通常 native 库在 runtimes/{rid}/native/ 下
-                foreach (var item in rid.Items)
+                var group = libItems.First(x => x.TargetFramework.Equals(nearestLib));
+                foreach (var item in group.Items)
                 {
-                    if (item.Contains("/native/") && (item.EndsWith(".dll") || item.EndsWith(".so") || item.EndsWith(".dylib")))
+                    if (IsValidDll(item))
+                        runtimeAssemblyRefs.Add(Path.Combine(packageRootPath, item));
+                }
+            }
+
+            foreach (var osFolder in NuGetPackageAssetResolver.GetRuntimeOsFolders())
+            {
+                foreach (var tfm in new[] { "net8.0", "net6.0", "netstandard2.1", "netstandard2.0" })
+                {
+                    var libDir = Path.Combine(packageRootPath, "runtimes", osFolder, "lib", tfm);
+                    if (!Directory.Exists(libDir))
+                        continue;
+
+                    foreach (var dll in Directory.EnumerateFiles(libDir, "*.dll"))
                     {
-                        nativePaths[rid.TargetFramework.ToString()].Add(Path.Combine(packageRootPath, item));
+                        var rel = Path.GetRelativePath(packageRootPath, dll).Replace('\\', '/');
+                        if (IsValidDll(rel))
+                            runtimeAssemblyRefs.Add(dll);
                     }
                 }
             }
-            
-            // 如果包根目录直接有 native (较少见，但也可能)
-            // ...
 
-            return new PackageAssets(compileRefs, nativePaths);
+            runtimeAssemblyRefs = NuGetPackageAssetResolver.SelectPreferredRuntimeAssemblies(runtimeAssemblyRefs);
+
+            // --- 3. Native assets (runtimes/{rid}/native) ---
+            var runtimeItems = packageReader.GetItems("runtimes").ToList();
+
+            foreach (var group in runtimeItems)
+            {
+                foreach (var item in group.Items)
+                {
+                    if (!item.Contains("/native/", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (!item.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+                        !item.EndsWith(".so", StringComparison.OrdinalIgnoreCase) &&
+                        !item.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var rid = ExtractRuntimeIdentifier(item);
+                    if (rid == null)
+                        continue;
+
+                    if (!nativePaths.TryGetValue(rid, out var list))
+                    {
+                        list = new List<string>();
+                        nativePaths[rid] = list;
+                    }
+
+                    list.Add(Path.Combine(packageRootPath, item));
+                }
+            }
+
+            return new PackageAssets(compileRefs, runtimeAssemblyRefs, nativePaths);
         });
     }
 
@@ -408,5 +442,16 @@ public class NuGetService
                !path.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string? ExtractRuntimeIdentifier(string runtimeItemPath)
+    {
+        var normalized = runtimeItemPath.Replace('\\', '/');
+        const string prefix = "runtimes/";
+        var start = normalized.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+            return null;
 
+        var after = normalized[(start + prefix.Length)..];
+        var slash = after.IndexOf('/');
+        return slash > 0 ? after[..slash] : null;
+    }
 }

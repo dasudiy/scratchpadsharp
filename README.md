@@ -10,7 +10,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 - **Multi-Tab Editing**: Independent Roslyn project per tab
 - **Rich Object Visualization**: HTML-based dumping (NetPad/O2Html)
 - **NuGet Support**: Dynamic package resolution
-- **EF Core Ready**: Database explorer (F6), provider selection, scaffold, host SQL; `ConnectionString` injected into scripts
+- **Module System**: EF Core database modules with sidebar, query refs, and merged compile
 - **Git-Friendly Storage**: .lqpkg zip format with Developer Mode folder layout
 - **Session Restore**: Reopen tabs, unsaved code, and references after restart (configurable)
 
@@ -19,7 +19,7 @@ A lightweight, high-performance C# script runner built with Avalonia UI and Rosl
 ```
 src/
 ├── ScratchpadSharp/          # Avalonia UI application
-├── ScratchpadSharp.Core/     # Script execution and storage
+├── ScratchpadSharp.Core/     # Script execution, modules, storage
 └── ScratchpadSharp.Shared/   # Shared models and exceptions
 ```
 
@@ -40,88 +40,25 @@ chmod +x scripts/install-desktop-entry.sh
 ./scripts/install-desktop-entry.sh
 ```
 
-This installs `~/.local/share/applications/scratchpad-sharp.desktop` and hicolor icons. Re-log or search "ScratchpadSharp" in Activities.
-
-To point at a specific binary:
+### Headless script run (debug / CI)
 
 ```bash
-./scripts/install-desktop-entry.sh /path/to/ScratchpadSharp
+dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj -- --headless run \
+  --module <moduleInstanceId> \
+  --code 'await using var db = new Modules.MyDb.AppDbContext(); db.Orders.Take(1).Dump();'
 ```
 
-## Development
-
-### Phase 1: MVP ✓ Complete
-- [x] Project structure and dependencies
-- [x] Basic Avalonia UI with AvaloniaEdit
-- [x] Simple script execution (no isolation)
-- [x] Console output redirection
-- [x] Save/load .lqpkg files
-
-### Phase 2: Isolation & Storage ✓ Complete
-- [x] AssemblyLoadContext implementation with isCollectible
-- [x] ALC unloading with WeakReference monitoring
-- [x] Native library resolver (Linux .so support)
-- [x] In-memory compilation using CSharpCompilation
-- [x] Isolated script execution with timeout support
-- [x] Developer Mode folder layout (Open Folder / Save Folder UI + `PackageService`)
-- [x] Pack/unpack (toolbar Pack / Unpack wired to `PackAsync`/`UnpackAsync`)
-
-### Phase 2.5: Roslyn IntelliSense ✓ Complete
-- [x] Shared workspace architecture (single AdhocWorkspace)
-- [x] Code completion (Ctrl+Space, auto-trigger)
-- [x] Signature help with XML documentation
-- [x] Code formatting (Ctrl+Alt+F)
-- [x] Multi-tab ready design (per-tab projects)
-- [x] Thread-safe document updates
-- [x] Async initialization with JIT warmup
-
-### Phase 3: NuGet & Object Visualization ✓ Complete
-- [x] MetadataReference management with XML docs
-- [x] NuGet package resolution (via config.json)
-- [x] Rich Object Dumping (NetPad/O2Html integration)
-- [x] Memory leak prevention for Dumps
-- [x] config.json support
-
-### Phase 3.5: Multi-Tab & Session ✓ Complete
-- [x] Multi-tab editing with per-tab Roslyn projects
-- [x] Reference Management window (F4)
-- [x] Session restore (tabs, unsaved code, references)
-
-### Phase 4: EF Core & Polish ✓ Complete (core)
-- [x] Connection string injection (via ScriptConfig → script-local `ConnectionString`)
-- [x] Compilation error reporting (mapped to `Script.cs` line/column)
-- [x] EF Core scaffolding (EF + SQLite defaults, [docs/ef-core.md](docs/ef-core.md))
-- [x] Editor error highlighting (wavy underlines from compilation diagnostics)
-- [x] ANSI color support (console Text view renders SGR / Spectre sequences)
-- [x] True execution cancellation (CancellationToken linked with timeout; Stop cancels wait)
-
-### Phase 4.5: Layered Configuration ✓ Complete
-
-Config resolves as **base → user → query**:
-
-- [x] User settings layer `appsettings.user.json` in `{LocalApplicationData}/ScratchpadSharp/` (shipped `appsettings.json` stays read-only factory defaults; must live outside `bin`)
-- [x] Global Settings UI editing the user layer, with hot-reload re-init of `ApplicationSettings` / `ConfigurationLoader` on `reloadOnChange`
-- [x] Per-query Script settings in Reference Manager (F4): timeout / connection string → existing `config.json`
-- [x] Inherited-vs-overridden value cues in the Script settings UI
-
-### Phase 5: Database Explorer ✓ Complete
-
-- [x] Await NuGet resolve on Run (non-blocking tab open; no missing-ref race)
-- [x] Empty per-query connection string inherits ScriptDefaults at execution
-- [x] Restore Packages in Reference Manager (F4)
-- [x] Provider selection + automatic NuGet packages (`DatabaseProvider` / F4 Script)
-- [x] Database window (F6): test connection + schema browser (SQLite + SQL Server via host ADO.NET)
-- [x] Typed DbContext scaffold, ad-hoc SQL tab, Settings ScriptDefaults UI
+Use `--file path/to/script.cs` instead of `--code`. Module id is the folder name under `{LocalApplicationData}/ScratchpadSharp/modules/`.
 
 ## Documentation
 
 - [SPECIFICATION.md](SPECIFICATION.md) — Technical design and architecture
+- [docs/ef-core.md](docs/ef-core.md) — EF Core modules and database sidebar
 - [docs/reference-management.md](docs/reference-management.md) — NuGet and assembly reference pipeline
-- [docs/session-restore.md](docs/session-restore.md) — Session persistence (unsaved files, references, tabs)
+- [docs/session-restore.md](docs/session-restore.md) — Session persistence
 - [docs/dump-workflow.md](docs/dump-workflow.md) — `.Dump()` HTML output flow
 - [docs/intellisense-workflow.md](docs/intellisense-workflow.md) — Code completion pipeline
-- [docs/method-signature-help-workflow.md](docs/method-signature-help-workflow.md) — Signature help pipeline
-- [docs/ef-core.md](docs/ef-core.md) — EF Core providers, Database window (F6), connection string
+
 ## Acknowledgements
 
 Special thanks to [NetPad](https://github.com/tareqimbasher/NetPad) by Tareq Imbasher for the excellent HTML dumping implementation that ScratchpadSharp leverages.

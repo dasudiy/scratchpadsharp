@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Avalonia;
 using Avalonia.ReactiveUI;
 
@@ -9,6 +10,17 @@ internal class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && string.Equals(args[0], "--headless", StringComparison.OrdinalIgnoreCase))
+        {
+            var headlessArgs = args.Skip(1).ToArray();
+            var exitCode = ScratchpadSharp.Core.Headless.HeadlessScriptRunner
+                .RunAsync(headlessArgs)
+                .GetAwaiter()
+                .GetResult();
+            Environment.Exit(exitCode);
+            return;
+        }
+
         // 强制设置缩放因子为 1.5。
         // AVALONIA_SCREEN_SCALE_FACTOR 是最通用的环境变量，影响逻辑像素计算。
         Environment.SetEnvironmentVariable("AVALONIA_SCREEN_SCALE_FACTOR", "2");

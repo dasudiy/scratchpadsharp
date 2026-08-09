@@ -1,74 +1,57 @@
-# EF Core in ScratchpadSharp
+# EF Core Modules
 
-ScratchpadSharp ships EF Core + a selectable database provider in `ScriptDefaults` so new scripts can query a database without manually adding packages.
+ScratchpadSharp uses **EF Core modules** — reusable database connections with generated `DbContext` / entity models. Queries reference modules instead of embedding connection strings or scaffolded code.
 
-## Defaults
+## Create a database module
 
-From `appsettings.json` → `ScriptDefaults` (overridable via **Settings → Script defaults** / `appsettings.user.json` or per-query `config.json`):
+1. Open the **Modules** sidebar (left pane).
+2. Click **+** or use **Add database** in the context menu.
+3. Enter display name, provider, and connection (form or raw connection string).
+4. **Test connection**, then **Save** — schema is scaffolded into `model.cs` under the module instance.
 
-| Setting | Default |
-|---------|---------|
-| `DatabaseProvider` | `Sqlite` (`None` / `Sqlite` / `SqlServer`) |
-| NuGet | `Microsoft.EntityFrameworkCore` 8.0.11 + provider package (see below) |
-| Using | `Microsoft.EntityFrameworkCore` |
-| Connection string | `Data Source=scratchpad.db` |
+Modules are stored at:
 
-### Provider → NuGet mapping
+```
+{LocalApplicationData}/ScratchpadSharp/modules/{instanceId}/
+  module.json
+  model.cs
+```
 
-| Provider | Packages | `OnConfiguring` helper |
-|----------|----------|------------------------|
-| `None` | (removes EF packages) | — |
-| `Sqlite` | `Microsoft.EntityFrameworkCore` + `.Sqlite` | `UseSqlite` |
-| `SqlServer` | `Microsoft.EntityFrameworkCore` + `.SqlServer` | `UseSqlServer` |
+## Reference a module from a query
 
-Change provider per query in **References (F4) → Script**, **Database (F6)**, or set globals under **Settings → Script defaults**.
+1. Select a query tab.
+2. In the Modules sidebar, right-click an EF Core instance → **Add ref to query**.
 
-**Inheritance:** empty per-query connection string inherits `ScriptDefaults.ConnectionString` at run time.
-
-## Database window (F6)
-
-Toolbar **Database** / **F6** — host ADO.NET explorer (`Microsoft.Data.Sqlite` / `Microsoft.Data.SqlClient`):
-
-| Action | Behavior |
-|--------|----------|
-| Test Connection | Success/failure, elapsed ms, server version |
-| Refresh Schema | Tables/views → columns (type, nullability, PK) |
-| Scaffold selected / all | Inserts EF entity classes + `AppDbContext` + sample query into the active script |
-| SQL tab | Ad-hoc SQL on the host; TSV result grid as text |
-| Apply to query | Writes provider + connection string into tab `ScriptConfig` and resolves EF NuGet packages |
-
-## Package loading
-
-New tabs are editable immediately; NuGet resolves in the background. **Run (F5)** awaits in-flight resolve. **References (F4) → Restore Packages** re-resolves manually.
+The query `config.json` stores `moduleRefs` (instance ids). At compile/run, ScratchpadSharp merges module NuGet packages, usings, and `model.cs` into the query.
 
 ## Script API
 
+Each module uses namespace `Modules.{NamespaceSegment}` from the instance display name:
+
 ```csharp
-public class Blog
-{
-    public int BlogId { get; set; }
-    public string Url { get; set; } = "";
-}
-
-public class BloggingContext : DbContext
-{
-    public DbSet<Blog> Blogs => Set<Blog>();
-
-    protected override void OnConfiguring(DbContextOptionsBuilder options)
-        => options.UseSqlite(ConnectionString); // UseSqlServer(...) after switching provider
-}
-
-await using var db = new BloggingContext();
-await db.Database.EnsureCreatedAsync();
-
-db.Blogs.Add(new Blog { Url = "https://example.com" });
-await db.SaveChangesAsync();
-
-db.Blogs.ToList().Dump("Blogs");
+await using var db = new Modules.LocalSqlite.AppDbContext();
+db.Blogs.Take(100).Dump();
 ```
 
-## Notes
+Connection strings are baked into the generated `OnConfiguring` — there is no ambient `ConnectionString` in scripts.
 
-- After switching provider, update `Use*` in your `DbContext` (scaffold does this automatically).
-- SQLite `Data Source=...` paths are relative to the process working directory unless absolute.
-- Script EF native assets still resolve through NuGet / ALC probing; schema/SQL tools use host drivers.
+Scaffolded models map each entity with `.ToTable("ExactTableName", "schema")` so pluralized `DbSet` names (e.g. `SalesTicketOrders`) still query the real SQL table (`SalesTicketOrder`). After upgrading ScratchpadSharp, use **Regenerate model** on existing modules so `model.cs` picks up this mapping.
+
+## Sidebar actions
+
+| Action | Description |
+|--------|-------------|
+| Refresh | Reload schema tree |
+| Edit connection | Change provider / connection string |
+| Regenerate model | Re-scaffold `model.cs` from live schema |
+| Add / Remove ref | Toggle module on active query |
+| Take (100) / Count | Run ephemeral LINQ against the module |
+| Delete | Remove module instance |
+
+## Providers
+
+SQLite and SQL Server are supported (same as before). Provider packages are pinned on the module instance, not on the query.
+
+## References window (F4)
+
+The **Script** tab shows referenced modules (read-only) and per-query timeout. Add or remove module refs from the Modules sidebar.

@@ -487,35 +487,21 @@
             <TextBlock Text="Per-query settings"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource TextPrimaryBrush}" />
-            <TextBlock Text="Saved into this query's config.json (Usings / References / NuGet live on other tabs)."
+            <TextBlock Text="Module references are managed in the Modules sidebar. NuGet from modules is merged at compile time."
                        TextWrapping="Wrap"
                        FontSize="11.5"
                        Foreground="{StaticResource TextMutedBrush}" />
 
             <StackPanel Spacing="12">
-              <DockPanel LastChildFill="True">
-                <TextBlock DockPanel.Dock="Left"
-                           Width="160"
-                           Text="Database provider"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}" />
-                <ComboBox Margin="12,0,0,0"
-                          ItemsSource="{Binding DatabaseProviders}"
-                          SelectedItem="{Binding SelectedDatabaseProvider}"
-                          MinWidth="220"
-                          HorizontalAlignment="Left">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate>
-                      <TextBlock Text="{Binding DisplayName}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </DockPanel>
-              <TextBlock Text="{Binding DatabaseProviderHint}"
-                         FontSize="11.5"
-                         TextWrapping="Wrap"
-                         Margin="172,0,0,0"
-                         Foreground="{StaticResource TextMutedBrush}" />
+              <TextBlock Text="Referenced modules" FontWeight="SemiBold" />
+
+              <ItemsControl ItemsSource="{Binding ModuleReferences}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding DisplayName}" FontSize="12.5" Margin="0,2" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
 
               <DockPanel LastChildFill="True">
                 <TextBlock DockPanel.Dock="Left"
@@ -528,25 +514,6 @@
                                Value="{Binding TimeoutSeconds}" />
               </DockPanel>
               <TextBlock Text="{Binding TimeoutInheritanceHint}"
-                         FontSize="11.5"
-                         TextWrapping="Wrap"
-                         Margin="172,0,0,0"
-                         Foreground="{StaticResource TextMutedBrush}" />
-
-              <DockPanel LastChildFill="True">
-                <TextBlock DockPanel.Dock="Left"
-                           Width="160"
-                           Text="Connection string"
-                           VerticalAlignment="Top"
-                           Margin="0,6,0,0"
-                           Foreground="{StaticResource TextSecondaryBrush}" />
-                <TextBox AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         MinHeight="80"
-                         Margin="12,0,0,0"
-                         Text="{Binding ConnectionString}" />
-              </DockPanel>
-              <TextBlock Text="{Binding ConnectionStringInheritanceHint}"
                          FontSize="11.5"
                          TextWrapping="Wrap"
                          Margin="172,0,0,0"

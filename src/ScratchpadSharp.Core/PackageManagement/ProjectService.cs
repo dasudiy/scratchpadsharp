@@ -4,7 +4,7 @@ using NuGet.Frameworks;
 using NuGet.Packaging.Core;
 using NuGet.Versioning;
 using ScratchpadSharp.Core.Configuration;
-using ScratchpadSharp.Core.Database;
+using ScratchpadSharp.Core.Modules;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.Storage;
 using ScratchpadSharp.Shared.Models;
@@ -45,73 +45,83 @@ public class ProjectService
             Manifest = new PackageManifest(),
             Config = ConfigurationLoader.CreateDefaultConfig()
         };
+        context.MergedEnvironment = ModuleMergeService.BuildFromQuery(context.Config);
 
         await ActivateRoslynProjectAsync(tabId, context);
         return context;
     }
 
     /// <summary>
-    /// Resolves <see cref="ScriptConfig.NuGetPackages"/> / local references into the
-    /// manifest, hydrates absolute paths, and refreshes Roslyn references.
+    /// Resolves <see cref="ScriptConfig.NuGetPackages"/> / local references plus merged module packages
+    /// into the manifest, hydrates absolute paths, and refreshes Roslyn.
     /// </summary>
     public async Task ResolveConfiguredPackagesAsync(string tabId, ProjectContext context,
         CancellationToken ct = default)
     {
-        if (context.Config.NuGetPackages.Count == 0 &&
-            !context.Config.References.Any(IsLocalReferencePath))
-            return;
-
-        var packageDto = new ScriptPackage
-        {
-            Config = context.Config,
-            Manifest = context.Manifest,
-            RootPath = context.EffectiveRootPath,
-            Code = context.Code,
-            Output = context.Output
-        };
-
-        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct);
-
-        context.Manifest = packageDto.Manifest!;
-        HydratePaths(context);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await RefreshMergedEnvironmentAsync(tabId, context, ct);
     }
 
     /// <summary>
-    /// Sets <see cref="ScriptConfig.DatabaseProvider"/>, swaps EF NuGet packages, and resolves.
+    /// Merges module refs, resolves NuGet graph, hydrates paths, and updates Roslyn workspace.
     /// </summary>
-    public async Task SetDatabaseProviderAsync(string tabId, ProjectContext context, string providerId,
+    public async Task RefreshMergedEnvironmentAsync(string tabId, ProjectContext context,
         CancellationToken ct = default, IProgress<PackageInstallProgress>? progress = null)
     {
-        DatabaseProviderCatalog.ApplyToConfig(context.Config, providerId);
+        context.MergedEnvironment = ModuleMergeService.BuildFromQuery(context.Config);
+        var merged = context.MergedEnvironment;
 
-        if (context.Config.NuGetPackages.Count == 0 &&
-            !context.Config.References.Any(IsLocalReferencePath))
+        var resolveConfig = context.Config.Clone();
+        resolveConfig.NuGetPackages = new Dictionary<string, string>(merged.NuGetPackages);
+        resolveConfig.Usings = merged.Usings;
+
+        if (resolveConfig.NuGetPackages.Count == 0 &&
+            !resolveConfig.References.Any(IsLocalReferencePath))
         {
             context.Manifest = new PackageManifest();
             HydratePaths(context);
-            await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+            await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
             return;
         }
 
-        progress?.Report(new PackageInstallProgress("Resolving provider packages...", 5, providerId));
+        progress?.Report(new PackageInstallProgress("Resolving packages...", 5, ""));
 
         var packageDto = new ScriptPackage
         {
-            Config = context.Config,
+            Config = resolveConfig,
             Manifest = context.Manifest,
             RootPath = context.EffectiveRootPath,
             Code = context.Code,
             Output = context.Output
         };
 
-        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct, progress);
+        await ResolveGraphIntoPackageAsync(packageDto, ct, progress);
 
         context.Manifest = packageDto.Manifest!;
         HydratePaths(context);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
 
-        progress?.Report(new PackageInstallProgress("Provider packages ready", 100, providerId));
+        if (!string.IsNullOrEmpty(context.SourcePath))
+        {
+            packageDto.Config = context.Config;
+            await PackageService.Instance.SaveAsync(packageDto, context.SourcePath);
+        }
+
+        await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
+        progress?.Report(new PackageInstallProgress("Packages ready", 100, ""));
+    }
+
+    public async Task AddModuleRefAsync(string tabId, ProjectContext context, string instanceId,
+        CancellationToken ct = default)
+    {
+        if (!context.Config.ModuleRefs.Contains(instanceId))
+            context.Config.ModuleRefs.Add(instanceId);
+        await RefreshMergedEnvironmentAsync(tabId, context, ct);
+    }
+
+    public async Task RemoveModuleRefAsync(string tabId, ProjectContext context, string instanceId,
+        CancellationToken ct = default)
+    {
+        context.Config.ModuleRefs.Remove(instanceId);
+        await RefreshMergedEnvironmentAsync(tabId, context, ct);
     }
 
     private static bool IsLocalReferencePath(string reference) =>
@@ -125,6 +135,7 @@ public class ProjectService
         context.Config = config.Clone();
         context.Manifest = manifest;
         HydratePaths(context);
+        context.MergedEnvironment = ModuleMergeService.BuildFromQuery(context.Config);
         await ActivateRoslynProjectAsync(tabId, context);
     }
 
@@ -156,8 +167,8 @@ public class ProjectService
         // 如果 Manifest 为空，或者与 Config 不匹配（这里简单判断是否有 Manifest），则触发 Resolve
         if (!packageDto.Manifest.IsProvided || !packageDto.Manifest.ResolvedState.Assemblies.Any())
         {
-            // 记录日志：Manifest 缺失，正在重建依赖图...
-            await ResolveAndSaveAsync(packageDto, path, ct);
+            await ResolveGraphIntoPackageAsync(packageDto, ct);
+            await PackageService.Instance.SaveAsync(packageDto, path);
         }
 
         // 4. 补水 (Hydration): 将相对路径转为绝对路径
@@ -171,9 +182,9 @@ public class ProjectService
         };
 
         HydratePaths(context);
+        context.MergedEnvironment = ModuleMergeService.BuildFromQuery(context.Config);
 
         await ActivateRoslynProjectAsync(tabId, context);
-        // TODO: 如果需要，在这里注入 Compiler Options (AllowUnsafe, Nullable 等)
 
 
         return context;
@@ -184,7 +195,7 @@ public class ProjectService
         await RoslynWorkspaceService.Instance.EnsureInitializedAsync();
         RoslynWorkspaceService.Instance.RemoveProject(tabId);
         RoslynWorkspaceService.Instance.CreateProject(tabId);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
     }
 
     public async Task SaveProjectAsync(ProjectContext projectContext)
@@ -205,49 +216,18 @@ public class ProjectService
         CancellationToken ct = default)
     {
         context.Config = config.Clone();
-
-        var packageDto = new ScriptPackage
-        {
-            Config = context.Config,
-            Manifest = context.Manifest,
-            RootPath = context.EffectiveRootPath
-        };
-
-        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct);
-
-        context.Manifest = packageDto.Manifest!;
-        HydratePaths(context);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await RefreshMergedEnvironmentAsync(tabId, context, ct);
     }
 
     /// <summary>
     /// 添加 NuGet 包引用。
-    /// 更新 Config -> 重新 Resolve -> 更新 Manifest -> 刷新环境。
     /// </summary>
     public async Task AddPackageAsync(string tabId, ProjectContext context, PackageIdentity package,
         CancellationToken ct = default, IProgress<PackageInstallProgress>? progress = null)
     {
-        // 1. 更新意图 (Config)
         context.Config.NuGetPackages[package.Id] = package.Version.ToString();
-
         progress?.Report(new PackageInstallProgress("Resolving dependencies...", 5, package.Id));
-
-        // 2. 重新计算并保存 (Logic + IO)
-        var packageDto = new ScriptPackage
-        {
-            Config = context.Config,
-            Manifest = context.Manifest,
-            RootPath = context.EffectiveRootPath
-        };
-
-        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct, progress);
-
-        progress?.Report(new PackageInstallProgress("Updating references...", 98, package.Id));
-
-        // 3. 重新补水并刷新
-        HydratePaths(context);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
-
+        await RefreshMergedEnvironmentAsync(tabId, context, ct, progress);
         progress?.Report(new PackageInstallProgress($"Installed {package.Id} {package.Version}", 100, package.Id));
     }
 
@@ -313,7 +293,7 @@ public class ProjectService
 
         // 5. 刷新
         HydratePaths(context);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
     }
     
     /// <summary>
@@ -322,25 +302,7 @@ public class ProjectService
     public async Task RemovePackageAsync(string tabId, ProjectContext context, string packageId, CancellationToken ct = default)
     {
         if (!context.Config.NuGetPackages.Remove(packageId)) return;
-        
-        // 触发全量解析与保存 (自动移除未使用的依赖)
-        // 因为这是一个全量计算过程，Resolver 会发现该包不在 Root 列表中了，
-        // 自然也就不会把它（以及它的专属依赖）包含在生成的 Graph 中。
-        var packageDto = new ScriptPackage 
-        { 
-            Config = context.Config, 
-            Manifest = context.Manifest, 
-            RootPath = context.EffectiveRootPath 
-        };
-
-        await ResolveAndSaveAsync(packageDto, context.SourcePath ?? context.EffectiveRootPath, ct);
-
-        // 更新 Context
-        context.Manifest = packageDto.Manifest;
-
-        // 刷新环境
-        HydratePaths(context);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await RefreshMergedEnvironmentAsync(tabId, context, ct);
     }
 
     public async Task RemoveReferenceAsync(string tabId, ProjectContext context, string referenceNameOrPath, CancellationToken ct = default)
@@ -369,17 +331,11 @@ public class ProjectService
 
         // 3. 保存
         await SaveProjectAsync(context);
-
-        // 4. 刷新
         HydratePaths(context);
-        await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
     }
-    // --- 核心私有逻辑 ---
 
-    /// <summary>
-    /// 执行全量解析、下载、提取，并将结果保存到磁盘。
-    /// </summary>
-    private async Task ResolveAndSaveAsync(ScriptPackage package, string originalPath, CancellationToken ct,
+    private async Task ResolveGraphIntoPackageAsync(ScriptPackage package, CancellationToken ct,
         IProgress<PackageInstallProgress>? progress = null)
     {
         // A. 准备意图
@@ -466,8 +422,12 @@ public class ProjectService
                 RelativePath = localRef
             });
         }
+    }
 
-        // E. [管家] 保存到磁盘
+    private async Task ResolveAndSaveAsync(ScriptPackage package, string originalPath, CancellationToken ct,
+        IProgress<PackageInstallProgress>? progress = null)
+    {
+        await ResolveGraphIntoPackageAsync(package, ct, progress);
         await PackageService.Instance.SaveAsync(package, originalPath);
     }
 
@@ -477,30 +437,61 @@ public class ProjectService
     private void HydratePaths(ProjectContext context)
     {
         context.AbsoluteCompileReferences.Clear();
+        context.AbsoluteRuntimeReferences.Clear();
         context.AbsoluteNativeAssets.Clear();
+
+        var hydratedPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var asset in context.Manifest.ResolvedState.Assemblies)
         {
-            string absPath;
             if (asset.Origin == AssetOrigin.NuGet)
             {
-                absPath = Path.Combine(globalPackagesFolder, asset.Id.ToLower(), asset.Version!.ToLower(),
+                var packageKey = $"{asset.Id}|{asset.Version}";
+                if (hydratedPackages.Add(packageKey))
+                {
+                    var packageRoot = Path.Combine(
+                        globalPackagesFolder,
+                        asset.Id.ToLowerInvariant(),
+                        asset.Version!.ToLowerInvariant());
+
+                    if (Directory.Exists(packageRoot))
+                    {
+                        var assets = NuGetService.Instance
+                            .GetPackageAssetsAsync(packageRoot, NuGetFramework.Parse("net8.0"))
+                            .GetAwaiter()
+                            .GetResult();
+
+                        foreach (var runtimePath in assets.RuntimeAssemblyReferences)
+                            AddRuntimeReference(context, runtimePath);
+                    }
+                }
+
+                var absPath = NuGetPackageAssetResolver.CombinePackageRelativePath(
+                    Path.Combine(globalPackagesFolder, asset.Id.ToLowerInvariant(), asset.Version!.ToLowerInvariant()),
                     asset.RelativePath);
+
+                if (File.Exists(absPath))
+                    context.AbsoluteCompileReferences.Add(absPath);
+                else
+                    Console.WriteLine($"[Warning] Missing compile asset: {absPath}");
             }
             else // Local
             {
-                absPath = Path.IsPathRooted(asset.RelativePath)
+                var absPath = Path.IsPathRooted(asset.RelativePath)
                     ? asset.RelativePath
                     : Path.Combine(context.EffectiveRootPath, asset.RelativePath);
-            }
 
-            if (File.Exists(absPath))
-                context.AbsoluteCompileReferences.Add(absPath);
-            else
-                Console.WriteLine($"[Warning] Missing compile asset: {absPath}");
+                if (File.Exists(absPath))
+                {
+                    context.AbsoluteCompileReferences.Add(absPath);
+                    AddRuntimeReference(context, absPath);
+                }
+                else
+                    Console.WriteLine($"[Warning] Missing compile asset: {absPath}");
+            }
         }
 
-        // Native Assets：按当前平台 RID 过滤
+        // Native assets: keyed by RID (linux-x64, win-x64, …)
         var currentRid = GetCurrentRuntimeIdentifier();
         if (context.Manifest.ResolvedState.NativeAssets.TryGetValue(currentRid, out var nativeAssets))
         {
@@ -509,7 +500,8 @@ public class ProjectService
                 string absPath;
                 if (asset.Origin == AssetOrigin.NuGet)
                 {
-                    absPath = Path.Combine(globalPackagesFolder, asset.Id.ToLower(), asset.Version!.ToLower(),
+                    absPath = NuGetPackageAssetResolver.CombinePackageRelativePath(
+                        Path.Combine(globalPackagesFolder, asset.Id.ToLowerInvariant(), asset.Version!.ToLowerInvariant()),
                         asset.RelativePath);
                 }
                 else
@@ -524,6 +516,24 @@ public class ProjectService
                 else
                     Console.WriteLine($"[Warning] Missing native asset: {absPath}");
             }
+        }
+
+        var preferred = NuGetPackageAssetResolver.SelectPreferredRuntimeAssemblies(context.AbsoluteRuntimeReferences);
+        context.AbsoluteRuntimeReferences.Clear();
+        context.AbsoluteRuntimeReferences.AddRange(preferred);
+    }
+
+    private static void AddRuntimeReference(ProjectContext context, string assemblyPath)
+    {
+        try
+        {
+            var impl = NuGetPackageAssetResolver.EnsureImplementationAssemblyPath(assemblyPath);
+            if (!context.AbsoluteRuntimeReferences.Contains(impl, StringComparer.OrdinalIgnoreCase))
+                context.AbsoluteRuntimeReferences.Add(impl);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Warning] Skipping runtime assembly {assemblyPath}: {ex.Message}");
         }
     }
 

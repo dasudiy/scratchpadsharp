@@ -36,10 +36,21 @@ public class ProjectContext
     public List<string> AbsoluteCompileReferences { get; set; } = new();
 
     /// <summary>
+    /// [绝对路径] 用于脚本运行时加载的实现程序集（<c>lib/</c> / 平台 <c>runtimes/</c>，非 <c>ref/</c> 存根）
+    /// </summary>
+    public List<string> AbsoluteRuntimeReferences { get; set; } = new();
+
+    /// <summary>
     /// [绝对路径] 用于运行时的 Native 库列表
     /// </summary>
     public List<string> AbsoluteNativeAssets { get; set; } = new();
 
     public string Code { get; set; }
     public string Output { get; set; }
+
+    /// <summary>Merged environment (query + module refs) used for compile and IntelliSense.</summary>
+    public MergedScriptEnvironment MergedEnvironment { get; set; } = new();
+
+    public IReadOnlyList<string> EffectiveUsings =>
+        MergedEnvironment.Usings.Count > 0 ? MergedEnvironment.Usings : Config.Usings;
 }

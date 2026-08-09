@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using ScratchpadSharp.Core.PackageManagement;
 
 namespace ScratchpadSharp.Core.Isolation;
 
@@ -14,40 +15,91 @@ namespace ScratchpadSharp.Core.Isolation;
 /// </summary>
 public class ScriptAssemblyLoadContext : AssemblyLoadContext
 {
+    private static readonly string[] PreloadAssemblyOrder =
+    [
+        "Microsoft.Data.SqlClient",
+        "Microsoft.EntityFrameworkCore.Abstractions",
+        "Microsoft.EntityFrameworkCore",
+        "Microsoft.EntityFrameworkCore.Relational",
+        "Microsoft.EntityFrameworkCore.SqlServer"
+    ];
+
     private readonly AssemblyDependencyResolver? resolver;
     private readonly List<string> additionalProbingPaths;
-    private readonly Dictionary<string, string> compileReferencePaths;
+    private readonly Dictionary<string, string> runtimeReferencePaths;
 
+    /// <param name="runtimeReferences">
+    /// Implementation assembly paths for the script ALC (typically
+    /// <c>AbsoluteRuntimeReferences</c>: <c>lib/</c> or <c>runtimes/{os}/lib/</c>, never <c>ref/</c> stubs).
+    /// </param>
     public ScriptAssemblyLoadContext(
         string? assemblyPath = null,
         List<string>? additionalPaths = null,
-        IEnumerable<string>? compileReferences = null)
+        IEnumerable<string>? runtimeReferences = null)
         : base(isCollectible: true)
     {
         resolver = assemblyPath != null ? new AssemblyDependencyResolver(assemblyPath) : null;
         additionalProbingPaths = additionalPaths ?? new List<string>();
-        compileReferencePaths = BuildCompileReferenceMap(compileReferences);
+        runtimeReferencePaths = BuildRuntimeReferenceMap(runtimeReferences);
+        PreloadRuntimeAssemblies(runtimeReferences);
     }
 
-    private static Dictionary<string, string> BuildCompileReferenceMap(IEnumerable<string>? compileReferences)
+    private void PreloadRuntimeAssemblies(IEnumerable<string>? runtimeReferences)
+    {
+        if (runtimeReferences == null)
+            return;
+
+        var paths = NuGetPackageAssetResolver.SelectPreferredRuntimeAssemblies(
+            runtimeReferences.Where(p => !string.IsNullOrWhiteSpace(p)));
+
+        foreach (var assemblyName in PreloadAssemblyOrder)
+        {
+            var path = paths.FirstOrDefault(p =>
+                string.Equals(Path.GetFileNameWithoutExtension(p), assemblyName, StringComparison.OrdinalIgnoreCase));
+            if (path != null)
+                TryLoadAssembly(path);
+        }
+
+        foreach (var path in paths)
+            TryLoadAssembly(path);
+    }
+
+    private void TryLoadAssembly(string path)
+    {
+        if (NuGetPackageAssetResolver.IsReferenceAssemblyPath(path))
+            return;
+
+        try
+        {
+            var assembly = LoadFromAssemblyPath(path);
+            var name = assembly.GetName().Name;
+            if (!string.IsNullOrEmpty(name))
+                runtimeReferencePaths[name] = path;
+        }
+        catch
+        {
+            // skip assemblies that fail to load
+        }
+    }
+
+    private static Dictionary<string, string> BuildRuntimeReferenceMap(IEnumerable<string>? runtimeReferences)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (compileReferences == null)
+        if (runtimeReferences == null)
             return map;
 
-        foreach (var path in compileReferences)
+        foreach (var runtimePath in NuGetPackageAssetResolver.SelectPreferredRuntimeAssemblies(
+                     runtimeReferences.Where(p => !string.IsNullOrWhiteSpace(p))))
         {
-            if (!File.Exists(path))
-                continue;
-
             try
             {
-                var name = AssemblyName.GetAssemblyName(path).Name;
+                var name = AssemblyName.GetAssemblyName(runtimePath).Name;
                 if (!string.IsNullOrEmpty(name))
-                    map[name] = path;
+                    map[name] = runtimePath;
             }
             catch
             {
+                // skip assemblies that fail to load
             }
         }
 
@@ -56,56 +108,70 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        // Try to resolve using the dependency resolver first
         if (resolver != null)
         {
-            string? assemblyPath = resolver.ResolveAssemblyToPath(assemblyName);
+            var assemblyPath = resolver.ResolveAssemblyToPath(assemblyName);
             if (assemblyPath != null)
-            {
                 return LoadFromAssemblyPath(assemblyPath);
+        }
+
+        if (assemblyName.Name != null &&
+            runtimeReferencePaths.TryGetValue(assemblyName.Name, out var mappedPath))
+        {
+            return LoadFromAssemblyPath(mappedPath);
+        }
+
+        foreach (var probingPath in additionalProbingPaths)
+        {
+            if (!Directory.Exists(probingPath))
+                continue;
+
+            foreach (var osFolder in NuGetPackageAssetResolver.GetRuntimeOsFolders())
+            {
+                foreach (var tfm in new[] { "net8.0", "net6.0", "netstandard2.1", "netstandard2.0" })
+                {
+                    var candidatePath = Path.Combine(probingPath, "runtimes", osFolder, "lib", tfm,
+                        $"{assemblyName.Name}.dll");
+                    if (File.Exists(candidatePath))
+                        return LoadFromAssemblyPath(candidatePath);
+                }
             }
         }
 
-        // Resolve from the same compile references used by Roslyn
-        if (assemblyName.Name != null &&
-            compileReferencePaths.TryGetValue(assemblyName.Name, out var compilePath))
-        {
-            return LoadFromAssemblyPath(compilePath);
-        }
-
-        // Try additional probing paths
         foreach (var probingPath in additionalProbingPaths)
         {
             var candidatePath = Path.Combine(probingPath, $"{assemblyName.Name}.dll");
             if (File.Exists(candidatePath))
-            {
                 return LoadFromAssemblyPath(candidatePath);
-            }
         }
 
-        // Let the default context handle it (framework assemblies)
+        // Framework assemblies only — never fall back to Default for NuGet package assemblies
         return null;
     }
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
-        // Handle native library resolution, especially for Linux .so files
         if (resolver != null)
         {
-            string? libraryPath = resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+            var libraryPath = resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
             if (libraryPath != null)
-            {
                 return LoadUnmanagedDllFromPath(libraryPath);
-            }
         }
 
-        // Try to find native libraries in runtimes folders
         var rid = GetRuntimeIdentifier();
         var possibleNames = GetPossibleNativeLibraryNames(unmanagedDllName);
 
         foreach (var probingPath in additionalProbingPaths)
         {
-            // Look in runtimes/{rid}/native/ structure
+            if (File.Exists(probingPath) && IsNativeLibraryFile(probingPath))
+            {
+                foreach (var name in possibleNames)
+                {
+                    if (string.Equals(Path.GetFileName(probingPath), name, StringComparison.OrdinalIgnoreCase))
+                        return LoadUnmanagedDllFromPath(probingPath);
+                }
+            }
+
             var runtimesPath = Path.Combine(probingPath, "runtimes", rid, "native");
             if (Directory.Exists(runtimesPath))
             {
@@ -113,62 +179,28 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
                 {
                     var candidatePath = Path.Combine(runtimesPath, name);
                     if (File.Exists(candidatePath))
-                    {
                         return LoadUnmanagedDllFromPath(candidatePath);
-                    }
                 }
             }
 
-            // Also try direct path
             foreach (var name in possibleNames)
             {
                 var candidatePath = Path.Combine(probingPath, name);
                 if (File.Exists(candidatePath))
-                {
                     return LoadUnmanagedDllFromPath(candidatePath);
-                }
             }
         }
 
-        // Let the default resolution handle it
         return IntPtr.Zero;
     }
 
-    private static string GetRuntimeIdentifier()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            // Common Linux RIDs
-            return RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => "linux-x64",
-                Architecture.Arm64 => "linux-arm64",
-                Architecture.Arm => "linux-arm",
-                _ => "linux-x64"
-            };
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => "win-x64",
-                Architecture.X86 => "win-x86",
-                Architecture.Arm64 => "win-arm64",
-                _ => "win-x64"
-            };
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            return RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => "osx-x64",
-                Architecture.Arm64 => "osx-arm64",
-                _ => "osx-x64"
-            };
-        }
+    private static bool IsNativeLibraryFile(string path) =>
+        path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".so", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase);
 
-        return "linux-x64"; // Default fallback
-    }
+    private static string GetRuntimeIdentifier() =>
+        RuntimeInformation.RuntimeIdentifier;
 
     private static IEnumerable<string> GetPossibleNativeLibraryNames(string unmanagedDllName)
     {
@@ -176,8 +208,7 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            // Try .so variants
-            if (!unmanagedDllName.EndsWith(".so"))
+            if (!unmanagedDllName.EndsWith(".so", StringComparison.OrdinalIgnoreCase))
             {
                 yield return $"lib{unmanagedDllName}.so";
                 yield return $"{unmanagedDllName}.so";
@@ -185,16 +216,12 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Try .dll variants
-            if (!unmanagedDllName.EndsWith(".dll"))
-            {
+            if (!unmanagedDllName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
                 yield return $"{unmanagedDllName}.dll";
-            }
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            // Try .dylib variants
-            if (!unmanagedDllName.EndsWith(".dylib"))
+            if (!unmanagedDllName.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase))
             {
                 yield return $"lib{unmanagedDllName}.dylib";
                 yield return $"{unmanagedDllName}.dylib";

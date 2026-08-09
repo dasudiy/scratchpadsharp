@@ -13,6 +13,7 @@ public class RoslynSession
     public List<string>? LastAppliedPackages { get; set; }
     public string? LastCode { get; set; }
     public List<string>? LastUsings { get; set; }
+    public List<DocumentId> ModuleDocumentIds { get; set; } = new();
 
     public RoslynSession(string tabId, ProjectId projectId, DocumentId documentId)
     {

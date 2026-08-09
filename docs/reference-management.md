@@ -29,7 +29,7 @@ flowchart TD
 | ------------------------------ | -------------------------------------------------------------- |
 | `GetPackageDependenciesAsync`  | 从 NuGet 源查询某个包的直接依赖元数据，供 DependencyResolver 构图                 |
 | `EnsurePackageDownloadedAsync` | 确保包已下载到全局缓存（`~/.nuget/packages`），已存在则直接返回路径                    |
-| `GetPackageAssetsAsync`        | 从包目录智能提取编译用 DLL（优先 `ref/`，降级 `lib/`）及各平台 Native 库（`runtimes/`） |
+| `GetPackageAssetsAsync`        | 从包目录提取：`ref/`（Roslyn 编译）、`lib/` + `runtimes/{os}/lib/`（运行时实现程序集）、`runtimes/{rid}/native`（Native 库） |
 
 
 ### `DependencyResolver`
@@ -62,7 +62,7 @@ flowchart LR
         PM["PackageManifest / ResolvedState<br/>Assemblies[] — 相对路径、全量依赖<br/>NativeAssets {RID → Asset[]} — 全平台"]
     end
     subgraph hydrated ["运行时 (Hydrated)"]
-        PC["ProjectContext<br/>AbsoluteCompileReferences[]（绝对路径）<br/>AbsoluteNativeAssets[]（当前平台）"]
+        PC["ProjectContext<br/>AbsoluteCompileReferences[]（Roslyn，多为 ref/）<br/>AbsoluteRuntimeReferences[]（脚本 ALC，lib/ + runtimes/os/lib）<br/>AbsoluteNativeAssets[]（当前 RID 的 native 文件绝对路径）"]
     end
 
     SC -->|脱水 Dehydrate| PM
@@ -73,10 +73,11 @@ flowchart LR
 
 **补水（Hydrate）**：
 
-- NuGet 资产：`globalPackagesFolder / id.toLower() / version.toLower() / relPath`
+- NuGet 编译资产：`globalPackagesFolder / id.toLower() / version.toLower() / relPath`（Manifest 中多为 `ref/`）
+- NuGet 运行时程序集：对每个包调用 `GetPackageAssetsAsync`，收集 `lib/` 与 `runtimes/{unix|win|osx}/lib/` 到 `AbsoluteRuntimeReferences`（**禁止** `ref/` 存根）
 - Local 资产：`EffectiveRootPath / relPath`；若 `RelativePath` 已是绝对路径则直接使用
 
-Native 资产按当前平台 RID（`RuntimeInformation.RuntimeIdentifier`）从字典中过滤后补水到 `AbsoluteNativeAssets`。
+Native 资产按当前平台 RID（`RuntimeInformation.RuntimeIdentifier`）从 Manifest 的 `NativeAssets` 字典过滤，补水为 **native 文件的绝对路径**（如 `.../runtimes/linux-x64/native/*.so`）。脚本 ALC 同时把这些路径当作直接 native 探针，并从对应 NuGet 包根目录探测 `runtimes/{rid}/native/`。
 
 ---
 
@@ -126,8 +127,9 @@ flowchart TD
 
 只需接收 `code` + `ProjectContext`，直接使用：
 
-- `AbsoluteCompileReferences` → Roslyn 编译引用
-- `AbsoluteNativeAssets` → `ScriptAssemblyLoadContext` 的额外探针路径
+- `AbsoluteCompileReferences` → Roslyn 编译引用（`ref/` 元数据）
+- `AbsoluteRuntimeReferences` → `ScriptAssemblyLoadContext` 预加载与程序集解析（实现 DLL，非 `ref/`；构造参数名为 `runtimeReferences`）
+- `AbsoluteNativeAssets` → native 文件路径 + 包根目录探针（`runtimes/{rid}/native/`）
 
 ### 5. Session 恢复（`RestoreFromSessionAsync`）
 
@@ -205,9 +207,6 @@ project/
 
 ## `ScriptConfig.References` 说明
 
-`References` 字段同时存储两类内容：
+`References` 仅用于 **用户本地 DLL 路径**（如 `"libs/MyLib.dll"`，或包含路径分隔符的相对路径）。条目会写入 Manifest 作为 `Local` 资产。
 
-- **BCL 程序集名**（如 `"System.Runtime"`）：编译时由 `MetadataReferenceProvider` 通过 `Assembly.Load()` 加载，**不会**写入 Manifest
-- **用户本地文件路径**（如 `"libs/MyLib.dll"`）：有文件扩展名或路径分隔符，会写入 Manifest 作为 `Local` 资产
-
-两者在 `ResolveAndSaveAsync` 中通过是否包含路径分隔符或 `.dll` 扩展名进行区分。
+共享框架（BCL）不由此字段配置：`MetadataReferenceProvider.GetDefaultReferences()` 从运行时 `TRUSTED_PLATFORM_ASSEMBLIES` 加载完整 TPA 列表；无 TPA 时回退到共享框架目录或最小类型集。

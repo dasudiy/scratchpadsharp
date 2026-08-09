@@ -124,11 +124,11 @@ public class RoslynCompletionService : IRoslynCompletionService
 
             await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
 
-            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, context.Config.Usings);
+            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, context.EffectiveUsings.ToList());
 
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
 
-            var scriptDocument = RoslynWorkspaceService.Instance.BuildScriptDocument(code, context.Config.Usings);
+            var scriptDocument = RoslynWorkspaceService.Instance.BuildScriptDocument(code, context.EffectiveUsings.ToList());
             var adjustedPosition = ScriptDocumentBuilder.ToDocumentPosition(scriptDocument, position);
 
             // Get completion service

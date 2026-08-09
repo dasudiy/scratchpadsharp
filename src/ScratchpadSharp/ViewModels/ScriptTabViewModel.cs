@@ -234,18 +234,12 @@ public class ScriptTabViewModel : ReactiveObject
 
     private async Task ResolvePackagesInBackgroundAsync()
     {
-        if (projectContext.Config.NuGetPackages.Count == 0)
-        {
-            ArePackagesLoading = false;
-            return;
-        }
-
         ArePackagesLoading = true;
         var previousStatus = StatusText;
         StatusText = "Loading packages...";
         try
         {
-            await ProjectService.Instance.ResolveConfiguredPackagesAsync(TabId, projectContext);
+            await ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
             if (StatusText == "Loading packages...")
             {
                 StatusText = string.IsNullOrEmpty(previousStatus) ||
@@ -333,6 +327,9 @@ public class ScriptTabViewModel : ReactiveObject
             {
                 await ProjectService.Instance.RestoreConfigAsync(TabId, projectContext, state.Config);
             }
+
+            if (state.Config?.ModuleRefs is { Count: > 0 })
+                await ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
 
             if (!string.IsNullOrEmpty(state.Code))
             {
@@ -433,6 +430,8 @@ public class ScriptTabViewModel : ReactiveObject
                 await resolveTask;
                 token.ThrowIfCancellationRequested();
             }
+
+            await ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
 
             StatusText = "Executing...";
             Output = string.Empty;

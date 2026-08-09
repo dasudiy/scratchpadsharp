@@ -17,8 +17,11 @@ public static class AppPaths
     /// </summary>
     public static string UserSettingsPath { get; } = Path.Combine(UserDataDirectory, "appsettings.user.json");
 
+    public static string ModulesDirectory { get; } = Path.Combine(UserDataDirectory, "modules");
+
     public static void EnsureUserDataDirectory()
     {
         Directory.CreateDirectory(UserDataDirectory);
+        Directory.CreateDirectory(ModulesDirectory);
     }
 }

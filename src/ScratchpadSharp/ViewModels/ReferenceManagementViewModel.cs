@@ -13,7 +13,7 @@ using NuGet.Versioning;
 using ReactiveUI;
 using ScratchpadSharp.Shared.Models;
 using ScratchpadSharp.Core.Configuration;
-using ScratchpadSharp.Core.Database;
+using ScratchpadSharp.Core.Modules;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Core.PackageManagement;
 
@@ -41,13 +41,12 @@ public class ReferenceManagementViewModel : ReactiveObject
     public ObservableCollection<IPackageSearchMetadata> LocalPackages { get; } = new();
     public ObservableCollection<IPackageSearchMetadata> OnlinePackages { get; } = new();
     public ObservableCollection<string> PackageSources { get; } = new();
+    public ObservableCollection<ModuleRefItem> ModuleReferences { get; } = new();
 
     private List<IPackageSearchMetadata> allLocalPackages = new();
 
     private string statusText = string.Empty;
     private decimal timeoutSeconds;
-    private string connectionString = string.Empty;
-    private DatabaseProviderInfo? selectedDatabaseProvider;
     private string scriptSettingsStatus = string.Empty;
     private bool isApplyingScriptSettings;
 
@@ -67,31 +66,6 @@ public class ReferenceManagementViewModel : ReactiveObject
         }
     }
 
-    public string ConnectionString
-    {
-        get => connectionString;
-        set
-        {
-            this.RaiseAndSetIfChanged(ref connectionString, value);
-            UpdateInheritanceHints();
-        }
-    }
-
-    public IReadOnlyList<DatabaseProviderInfo> DatabaseProviders => DatabaseProviderCatalog.All;
-
-    public DatabaseProviderInfo? SelectedDatabaseProvider
-    {
-        get => selectedDatabaseProvider;
-        set
-        {
-            this.RaiseAndSetIfChanged(ref selectedDatabaseProvider, value);
-            UpdateInheritanceHints();
-        }
-    }
-
-    public string SelectedDatabaseProviderId =>
-        SelectedDatabaseProvider?.Id ?? DatabaseProviderIds.None;
-
     public string ScriptSettingsStatus
     {
         get => scriptSettingsStatus;
@@ -105,8 +79,6 @@ public class ReferenceManagementViewModel : ReactiveObject
     }
 
     public string TimeoutInheritanceHint { get; private set; } = string.Empty;
-    public string ConnectionStringInheritanceHint { get; private set; } = string.Empty;
-    public string DatabaseProviderHint { get; private set; } = string.Empty;
 
     private bool showRestoreButton;
 
@@ -128,6 +100,12 @@ public class ReferenceManagementViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref onlineSearchQuery, value);
     }
 
+    public bool IsSearching
+    {
+        get => isSearching;
+        set => this.RaiseAndSetIfChanged(ref isSearching, value);
+    }
+
     public bool IncludePreRelease
     {
         get => includePreRelease;
@@ -140,26 +118,10 @@ public class ReferenceManagementViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref includePreReleaseVersions, value);
     }
 
-    public bool IsSearching
-    {
-        get => isSearching;
-        set => this.RaiseAndSetIfChanged(ref isSearching, value);
-    }
-
-    public string? SelectedSource
-    {
-        get => selectedSource;
-        set => this.RaiseAndSetIfChanged(ref selectedSource, value);
-    }
-
     public IPackageSearchMetadata? SelectedPackage
     {
         get => selectedPackage;
-        set
-        {
-            this.RaiseAndSetIfChanged(ref selectedPackage, value);
-            _ = OnSelectedPackageChangedAsync(value);
-        }
+        set => this.RaiseAndSetIfChanged(ref selectedPackage, value);
     }
 
     public IPackageSearchMetadata? SelectedPackageDetails
@@ -171,11 +133,7 @@ public class ReferenceManagementViewModel : ReactiveObject
     public PackageVersionItem? SelectedVersionItem
     {
         get => selectedVersionItem;
-        set
-        {
-            this.RaiseAndSetIfChanged(ref selectedVersionItem, value);
-            _ = LoadVersionDetailsAsync(value);
-        }
+        set => this.RaiseAndSetIfChanged(ref selectedVersionItem, value);
     }
 
     public ObservableCollection<PackageVersionItem> AvailableVersions => availableVersions;
@@ -184,6 +142,12 @@ public class ReferenceManagementViewModel : ReactiveObject
     {
         get => isInstalling;
         set => this.RaiseAndSetIfChanged(ref isInstalling, value);
+    }
+
+    public string? SelectedSource
+    {
+        get => selectedSource;
+        set => this.RaiseAndSetIfChanged(ref selectedSource, value);
     }
 
     public double InstallProgress
@@ -210,13 +174,12 @@ public class ReferenceManagementViewModel : ReactiveObject
         TimeoutSeconds = projectContext.Config.TimeoutSeconds > 0
             ? projectContext.Config.TimeoutSeconds
             : ApplicationSettings.DefaultTimeoutSeconds;
-        ConnectionString = projectContext.Config.ConnectionString ?? string.Empty;
-        SelectedDatabaseProvider = DatabaseProviderCatalog.Get(
-            DatabaseProviderCatalog.InferProviderId(projectContext.Config));
+        RefreshModuleReferences();
         UpdateInheritanceHints();
 
         RefreshReferences();
-        ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
+        ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0 ||
+                            projectContext.Config.ModuleRefs.Count > 0;
 
         LocalSearchCommand = ReactiveCommand.Create(FilterLocalPackages);
         OnlineSearchCommand = ReactiveCommand.CreateFromTask(SearchOnlineAsync);
@@ -295,16 +258,32 @@ public class ReferenceManagementViewModel : ReactiveObject
         this.WhenAnyValue(x => x.IncludePreReleaseVersions)
             .Throttle(TimeSpan.FromMilliseconds(300))
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(includePreRelease =>
-            {
-                _ = ReloadVersionsAsync();
-            });
+            .SelectMany(_ => Observable.FromAsync(ReloadVersionsAsync))
+            .Subscribe(
+                _ => { },
+                ex => StatusText = $"Version load failed: {ex.Message}");
+
+        this.WhenAnyValue(x => x.SelectedPackage)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .SelectMany(p => Observable.FromAsync(() => OnSelectedPackageChangedAsync(p)))
+            .Subscribe(
+                _ => { },
+                ex => StatusText = $"Version load failed: {ex.Message}");
     }
 
-    private async Task LoadDataAsync()
+    private void RefreshModuleReferences()
     {
-        await LoadPackageSourcesAsync();
-        await LoadLocalPackagesAsync();
+        ModuleReferences.Clear();
+        foreach (var refId in projectContext.Config.ModuleRefs)
+        {
+            var instance = ModuleCatalog.Instance.TryGet(refId);
+            ModuleReferences.Add(new ModuleRefItem
+            {
+                Id = refId,
+                DisplayName = instance?.DisplayName ?? refId,
+                TypeId = instance?.TypeId ?? "?"
+            });
+        }
     }
 
     private async Task ApplyScriptSettingsAsync()
@@ -313,27 +292,8 @@ public class ReferenceManagementViewModel : ReactiveObject
         try
         {
             projectContext.Config.TimeoutSeconds = (int)TimeoutSeconds;
-            projectContext.Config.ConnectionString = ConnectionString ?? string.Empty;
-
-            var currentProvider = DatabaseProviderCatalog.InferProviderId(projectContext.Config);
-            var nextProvider = SelectedDatabaseProvider?.Id ?? DatabaseProviderIds.None;
-            var providerChanged = !currentProvider.Equals(nextProvider, StringComparison.OrdinalIgnoreCase);
-
-            if (providerChanged)
-            {
-                ScriptSettingsStatus = "Applying database provider packages...";
-                await ProjectService.Instance.SetDatabaseProviderAsync(tabId, projectContext, nextProvider);
-                ConnectionString = projectContext.Config.ConnectionString ?? string.Empty;
-                RefreshReferences();
-                ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
-            }
-            else
-            {
-                projectContext.Config.DatabaseProvider = DatabaseProviderCatalog.Get(nextProvider).Id;
-            }
-
             UpdateInheritanceHints();
-            ScriptSettingsStatus = "Applied to in-memory config. Save the query to persist config.json.";
+            ScriptSettingsStatus = "Applied timeout. Module refs are managed in the Modules sidebar.";
         }
         catch (Exception ex)
         {
@@ -351,11 +311,8 @@ public class ReferenceManagementViewModel : ReactiveObject
         TimeoutSeconds = defaults.TimeoutSeconds > 0
             ? defaults.TimeoutSeconds
             : ApplicationSettings.DefaultTimeoutSeconds;
-        ConnectionString = defaults.ConnectionString ?? string.Empty;
-        SelectedDatabaseProvider = DatabaseProviderCatalog.Get(
-            DatabaseProviderCatalog.InferProviderId(defaults));
         UpdateInheritanceHints();
-        ScriptSettingsStatus = "UI reset to ScriptDefaults — click Apply to update packages and config.";
+        ScriptSettingsStatus = "UI reset to ScriptDefaults — click Apply to update timeout.";
     }
 
     private async Task RestorePackagesAsync()
@@ -363,9 +320,11 @@ public class ReferenceManagementViewModel : ReactiveObject
         StatusText = "Restoring packages...";
         try
         {
-            await ProjectService.Instance.ResolveConfiguredPackagesAsync(tabId, projectContext);
+            await ProjectService.Instance.RefreshMergedEnvironmentAsync(tabId, projectContext);
             RefreshReferences();
-            ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
+            RefreshModuleReferences();
+            ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0 ||
+                                projectContext.Config.ModuleRefs.Count > 0;
             StatusText = "Packages restored";
         }
         catch (Exception ex)
@@ -382,29 +341,8 @@ public class ReferenceManagementViewModel : ReactiveObject
             ? $"Matches global default ({defaultTimeout}s) — inherited unless you change it."
             : $"Custom for this query (global default is {defaultTimeout}s).";
 
-        var defaultCs = ConfigurationLoader.CreateDefaultConfig().ConnectionString ?? string.Empty;
-        ConnectionStringInheritanceHint = string.IsNullOrWhiteSpace(ConnectionString)
-            ? (string.IsNullOrEmpty(defaultCs)
-                ? "Empty — no ScriptDefaults connection string to inherit."
-                : $"Empty — at run time inherits ScriptDefaults ({defaultCs}).")
-            : string.Equals(ConnectionString, defaultCs, StringComparison.Ordinal)
-                ? "Matches ScriptDefaults."
-                : "Set on this query (overrides ScriptDefaults).";
-
-        var provider = SelectedDatabaseProvider ?? DatabaseProviderCatalog.Get(DatabaseProviderIds.None);
-        DatabaseProviderHint = provider.Id == DatabaseProviderIds.None
-            ? "No EF Core packages. Apply removes EF NuGet packages from this query."
-            : $"Apply installs {EfHint(provider)} and uses options.{provider.UseExtensionMethod}(...).";
-
         this.RaisePropertyChanged(nameof(TimeoutInheritanceHint));
-        this.RaisePropertyChanged(nameof(ConnectionStringInheritanceHint));
-        this.RaisePropertyChanged(nameof(DatabaseProviderHint));
     }
-
-    private static string EfHint(DatabaseProviderInfo provider) =>
-        string.IsNullOrEmpty(provider.EfProviderPackageId)
-            ? DatabaseProviderCatalog.EfCorePackageId
-            : $"{DatabaseProviderCatalog.EfCorePackageId} + {provider.EfProviderPackageId}";
 
     private void RefreshReferences()
     {
@@ -426,6 +364,12 @@ public class ReferenceManagementViewModel : ReactiveObject
             AssemblyReferences.Add(new AssemblyReferenceItem
                 { Name = pkg.Key, Path = pkg.Value, IsDefault = false, Source = "NuGet" });
         }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        await LoadPackageSourcesAsync();
+        await LoadLocalPackagesAsync();
     }
 
     private async Task LoadPackageSourcesAsync()
@@ -602,7 +546,7 @@ public class ReferenceManagementViewModel : ReactiveObject
             StatusText = $"Installed {identity.Id} {identity.Version}";
             InstallProgress = 100;
             RefreshReferences();
-            ShowRestoreButton = projectContext.Config.NuGetPackages.Count > 0;
+            ShowRestoreButton = true;
             await LoadLocalPackagesAsync();
         }
         catch (Exception ex)
@@ -631,6 +575,13 @@ public class ReferenceManagementViewModel : ReactiveObject
             await ProjectService.Instance.AddReferenceAsync(tabId, projectContext, filePath);
         }
     }
+}
+
+public class ModuleRefItem
+{
+    public string Id { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string TypeId { get; set; } = string.Empty;
 }
 
 public class AssemblyReferenceItem

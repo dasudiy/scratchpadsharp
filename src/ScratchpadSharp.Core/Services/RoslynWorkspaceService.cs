@@ -313,6 +313,46 @@ public class RoslynWorkspaceService
         return manifest;
     }
 
+    public async Task UpdateProjectEnvironmentAsync(string tabId, ProjectContext context)
+    {
+        await UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
+        await UpdateModuleSourcesAsync(tabId, context.MergedEnvironment.ModuleSources);
+    }
+
+    public async Task UpdateModuleSourcesAsync(string tabId, IReadOnlyList<ModuleSourceFile> moduleSources)
+    {
+        await semaphore.WaitAsync();
+        try
+        {
+            if (!_sessions.TryGetValue(tabId, out var session))
+                return;
+
+            var solution = workspace!.CurrentSolution;
+            foreach (var docId in session.ModuleDocumentIds)
+                solution = solution.RemoveDocument(docId);
+            session.ModuleDocumentIds.Clear();
+
+            foreach (var module in moduleSources)
+            {
+                var documentId = DocumentId.CreateNewId(session.ProjectId);
+                var documentInfo = DocumentInfo.Create(
+                    documentId,
+                    module.FileName,
+                    loader: TextLoader.From(TextAndVersion.Create(
+                        SourceText.From(module.SourceText),
+                        VersionStamp.Create())));
+                solution = solution.AddDocument(documentInfo);
+                session.ModuleDocumentIds.Add(documentId);
+            }
+
+            workspace.TryApplyChanges(solution);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
     public async Task UpdateReferencesAsync(string tabId, List<string>? nugetPackages)
     {
         await semaphore.WaitAsync();

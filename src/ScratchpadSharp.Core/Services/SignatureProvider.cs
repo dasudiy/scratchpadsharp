@@ -64,11 +64,11 @@ public class SignatureProvider : ISignatureProvider
 
             await RoslynWorkspaceService.Instance.UpdateReferencesAsync(tabId, context.AbsoluteCompileReferences);
 
-            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, context.Config.Usings);
+            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, context.EffectiveUsings.ToList());
 
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
             var adjustedPosition = RoslynWorkspaceService.Instance.CalculateAdjustedPosition(
-                position, code, context.Config.Usings);
+                position, code, context.EffectiveUsings.ToList());
 
             System.Diagnostics.Debug.WriteLine(
                 $"[SignatureProvider] Code length: {code.Length}, Position: {position}, Adjusted: {adjustedPosition}");
