@@ -69,6 +69,13 @@ public class CodeCompletionHandler(
 
     public bool HandleKeyDown(KeyEventArgs e)
     {
+        if (completionWindow is { IsOpen: true })
+        {
+            completionWindow.CompletionList.HandleKey(e);
+            if (e.Handled)
+                return true;
+        }
+
         if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             e.Handled = true;
@@ -218,16 +225,14 @@ public class CodeCompletionHandler(
                     var firstItem = result.Items[0];
                     var span = firstItem.CompletionSpan;
 
+                    var caretOffset = editor.CaretOffset;
                     if (span.Length >= 0)
                     {
-                        var startOffset = span.Start;
-                        completionWindow.StartOffset = startOffset;
+                        completionWindow.StartOffset = span.Start;
                     }
                     else
                     {
                         // Fallback to manual word finding if span is invalid (shouldn't happen)
-                        // Find start of the word being completed to enable correct filtering
-                        var caretOffset = editor.CaretOffset;
                         var startOffset = caretOffset;
                         while (startOffset > 0)
                         {
@@ -239,6 +244,8 @@ public class CodeCompletionHandler(
                         completionWindow.StartOffset = startOffset;
                     }
 
+                    completionWindow.EndOffset = caretOffset;
+                    _ = completionWindow.CompletionList.ListBox;
                     completionWindow.CompletionList.SelectItem(string.Empty);
                     completionWindow.Show();
                     completionWindowChanged?.Invoke();

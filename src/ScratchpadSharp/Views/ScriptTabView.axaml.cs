@@ -215,7 +215,7 @@ public partial class ScriptTabView : UserControl
 
         CodeEditor.TextArea.TextEntered += OnTextEntered;
         CodeEditor.TextArea.TextEntering += OnTextEntering;
-        CodeEditor.TextArea.KeyDown += OnEditorKeyDown;
+        CodeEditor.TextArea.AddHandler(InputElement.KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
         _signatureHelpHandler?.Initialize();
     }
 

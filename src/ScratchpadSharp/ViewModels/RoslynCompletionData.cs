@@ -189,16 +189,16 @@ public class RoslynCompletionData : ICompletionData
 
     public double Priority => enhancedItem.Priority;
 
-    public async void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs)
+    public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs)
     {
         try
         {
-            // Use the service to get the actual change (handles snippets, overrides, etc.)
-            var change = await completionService.GetCompletionChangeAsync(
+            // AvaloniaEdit expects synchronous insertion when the user accepts a completion item.
+            var change = completionService.GetCompletionChangeAsync(
                 tabId,
                 textArea.Document.Text,
                 enhancedItem.RoslynItem,
-                usings);
+                usings).GetAwaiter().GetResult();
 
             var document = textArea.Document;
 
