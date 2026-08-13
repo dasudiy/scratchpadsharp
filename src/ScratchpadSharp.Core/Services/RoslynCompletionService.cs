@@ -198,7 +198,7 @@ public class RoslynCompletionService : IRoslynCompletionService
                 cancellationToken);
 
             var sortedItems = ApplyPrioritySort(enhancedItems, filterPrefix).ToList();
-            var limitedItems = ApplyResultLimit(sortedItems, MaxCompletionItems, filterPrefix)
+            var limitedItems = ApplyResultLimit(sortedItems, MaxCompletionItems, filterPrefix, isMemberAccess)
                 .ToImmutableArray();
 
             System.Diagnostics.Debug.WriteLine($"[Completion] Returning {limitedItems.Length} enhanced items (prefix='{filterPrefix}')");
@@ -619,8 +619,12 @@ public class RoslynCompletionService : IRoslynCompletionService
     private static IEnumerable<EnhancedCompletionItem> ApplyResultLimit(
         List<EnhancedCompletionItem> sortedItems,
         int maxItems,
-        string filterPrefix)
+        string filterPrefix,
+        bool isMemberAccess)
     {
+        if (isMemberAccess)
+            return sortedItems.Take(maxItems);
+
         if (string.IsNullOrEmpty(filterPrefix))
         {
             var namespaces = sortedItems

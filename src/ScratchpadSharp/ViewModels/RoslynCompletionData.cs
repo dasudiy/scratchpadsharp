@@ -8,6 +8,7 @@ using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Editing;
 using ScratchpadSharp.Core.Services;
+using ScratchpadSharp.Shared.Models;
 using ScratchpadSharp.Views;
 using ScratchpadSharp.Editor;
 
@@ -21,21 +22,18 @@ public class RoslynCompletionData : ICompletionData
 
     private readonly IRoslynCompletionService completionService;
     private readonly string tabId;
-    private readonly List<string> documentUsings;
-    private readonly List<string> persistUsings;
+    private readonly ProjectContext projectContext;
 
     public RoslynCompletionData(
         EnhancedCompletionItem item,
         IRoslynCompletionService completionService,
         string tabId,
-        List<string> documentUsings,
-        List<string> persistUsings)
+        ProjectContext projectContext)
     {
         this.enhancedItem = item;
         this.completionService = completionService;
         this.tabId = tabId;
-        this.documentUsings = documentUsings;
-        this.persistUsings = persistUsings;
+        this.projectContext = projectContext;
         Text = item.DisplayText;
     }
 
@@ -201,11 +199,12 @@ public class RoslynCompletionData : ICompletionData
             try
             {
                 var code = textArea.Document.Text;
+                var usings = projectContext.EffectiveUsings.ToList();
                 change = Task.Run(() => completionService.GetCompletionChangeAsync(
                     tabId,
                     code,
                     enhancedItem.RoslynItem,
-                    documentUsings)).GetAwaiter().GetResult();
+                    usings)).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
@@ -243,14 +242,7 @@ public class RoslynCompletionData : ICompletionData
                 if (!applied)
                     ReplaceCompletionSegment(document, completionSegment, Text);
 
-                if (change is { NewUsings.IsDefaultOrEmpty: false })
-                {
-                    foreach (var ns in change.NewUsings)
-                    {
-                        if (!persistUsings.Contains(ns))
-                            persistUsings.Add(ns);
-                    }
-                }
+                PersistImportedNamespaces(change);
             }
 
             if (applied && change?.NewPosition is { } newPosition &&
@@ -265,6 +257,7 @@ public class RoslynCompletionData : ICompletionData
             try
             {
                 ReplaceCompletionSegment(textArea.Document, completionSegment, Text);
+                PersistImportedNamespaces(null);
             }
             catch
             {
@@ -290,6 +283,27 @@ public class RoslynCompletionData : ICompletionData
 
         document.Replace(startOffset, endOffset - startOffset, text);
     }
+
+    private void PersistImportedNamespaces(CompletionChangeInfo? change)
+    {
+        if (change is { NewUsings.IsDefaultOrEmpty: false })
+        {
+            foreach (var ns in change.NewUsings)
+                projectContext.EnsureUsing(ns);
+        }
+
+        if (IsTypeCompletion && LooksLikeNamespace(enhancedItem.InlineDescription))
+            projectContext.EnsureUsing(enhancedItem.InlineDescription!);
+    }
+
+    private bool IsTypeCompletion => enhancedItem.Kind is
+        CompletionItemKind.Class or CompletionItemKind.Struct or CompletionItemKind.Interface
+        or CompletionItemKind.Enum or CompletionItemKind.Delegate;
+
+    private static bool LooksLikeNamespace(string? text) =>
+        !string.IsNullOrEmpty(text) &&
+        text != "<global namespace>" &&
+        text.IndexOfAny([' ', '(', '<']) < 0;
     private class SimpleSegment : ISegment
     {
         public int Offset { get; }

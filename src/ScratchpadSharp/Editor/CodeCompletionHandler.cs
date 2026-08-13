@@ -64,7 +64,7 @@ public class CodeCompletionHandler(
 
         if (shouldTrigger)
         {
-            _ = ShowCompletionWindowAsync(manualInvoke: false);
+            _ = ShowCompletionWindowAsync(manualInvoke: e.Text is "." or "<");
         }
     }
 
@@ -231,13 +231,11 @@ public class CodeCompletionHandler(
                 completionWindow.MinWidth = 280;
                 completionWindow.MinHeight = 160;
 
-                var documentUsings = viewModel.ProjectContext.EffectiveUsings.ToList();
-                var persistUsings = viewModel.ProjectContext.Config.Usings;
                 var data = completionWindow.CompletionList.CompletionData;
                 foreach (var item in result.Items)
                 {
                     data.Add(new RoslynCompletionData(
-                        item, completionService, tabId, documentUsings, persistUsings));
+                        item, completionService, tabId, viewModel.ProjectContext));
                 }
 
                 if (data.Count > 0)
@@ -267,6 +265,12 @@ public class CodeCompletionHandler(
                     }
 
                     completionWindow.EndOffset = caretOffset;
+                    if (result.TriggerCharacter == "." ||
+                        (caretOffset > 0 && code[caretOffset - 1] == '.'))
+                    {
+                        completionWindow.StartOffset = caretOffset;
+                    }
+
                     var typed = caretOffset > completionWindow.StartOffset
                         ? code[completionWindow.StartOffset..caretOffset]
                         : string.Empty;

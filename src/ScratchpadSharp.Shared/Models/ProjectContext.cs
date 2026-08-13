@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace ScratchpadSharp.Shared.Models;
@@ -53,4 +54,25 @@ public class ProjectContext
 
     public IReadOnlyList<string> EffectiveUsings =>
         MergedEnvironment.Usings.Count > 0 ? MergedEnvironment.Usings : Config.Usings;
+
+    public void EnsureUsing(string ns)
+    {
+        if (string.IsNullOrWhiteSpace(ns) || ns == "<global namespace>")
+            return;
+
+        AddUsing(Config.Usings, ns);
+        if (MergedEnvironment.Usings.Count > 0)
+            AddUsing(MergedEnvironment.Usings, ns);
+    }
+
+    private static void AddUsing(List<string> usings, string ns)
+    {
+        foreach (var existing in usings)
+        {
+            if (string.Equals(existing, ns, StringComparison.Ordinal))
+                return;
+        }
+
+        usings.Add(ns);
+    }
 }
