@@ -5,6 +5,8 @@ failures += EfScaffoldGeneratorTests.RunAll();
 failures += NuGetPackageAssetResolverTests.RunAll();
 failures += ScriptIsolationTests.RunAll();
 failures += EfSqlServerScriptTests.RunAll();
+failures += SshTunnelTests.RunAll();
+failures += UserSecretProtectorTests.RunAll();
 if (failures > 0)
 {
     Console.Error.WriteLine($"{failures} test(s) failed.");

@@ -9,11 +9,13 @@ ScratchpadSharp uses **EF Core modules** — reusable database connections with 
 3. Enter display name, provider, and connection (form or raw connection string).
 4. **Test connection**, then **Save** — schema is scaffolded into `model.cs` under the module instance.
 
+SQL Server can use an optional [SSH tunnel](ssh-tunnel.md) (DBeaver-style local port forward). SQLite does not. Database and SSH passwords are encrypted for the current OS user on this machine; see [SSH tunnel — What is stored](ssh-tunnel.md#what-is-stored).
+
 Modules are stored at:
 
 ```
 {LocalApplicationData}/ScratchpadSharp/modules/{instanceId}/
-  module.json
+  module.json    # connection string without Password=; secrets as enc:v1: blobs
   model.cs
 ```
 
@@ -33,7 +35,7 @@ await using var db = new Modules.LocalSqlite.AppDbContext();
 db.Blogs.Take(100).Dump();
 ```
 
-Connection strings are baked into the generated `OnConfiguring` — there is no ambient `ConnectionString` in scripts.
+Connection strings are baked into the generated `OnConfiguring` **without** `Password=`. At run time the live password (and SSH loopback host, if any) is patched into a copy of `model.cs`. There is no ambient `ConnectionString` in scripts.
 
 Scaffolded models map each entity with `.ToTable("ExactTableName", "schema")` so pluralized `DbSet` names (e.g. `SalesTicketOrders`) still query the real SQL table (`SalesTicketOrder`). After upgrading ScratchpadSharp, use **Regenerate model** on existing modules so `model.cs` picks up this mapping.
 
@@ -50,7 +52,7 @@ Scaffolded models map each entity with `.ToTable("ExactTableName", "schema")` so
 
 ## Providers
 
-SQLite and SQL Server are supported (same as before). Provider packages are pinned on the module instance, not on the query.
+SQLite and SQL Server are supported (same as before). Provider packages are pinned on the module instance, not on the query. SQL Server modules can enable an [SSH tunnel](ssh-tunnel.md).
 
 ## References window (F4)
 

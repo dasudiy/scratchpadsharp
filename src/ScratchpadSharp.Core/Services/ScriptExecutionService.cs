@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
+using ScratchpadSharp.Core.Database;
 using ScratchpadSharp.Core.External.NetPad.Presentation;
 using ScratchpadSharp.Core.Isolation;
 using ScratchpadSharp.Core.PackageManagement;
@@ -31,7 +32,13 @@ public class ScriptExecutionService : IScriptExecutionService
             {
                 ct.ThrowIfCancellationRequested();
 
-                var compilation = CompileScriptAsync(code, context);
+                await using var tunnels = await SshTunnelScope.OpenAsync(
+                    context.MergedEnvironment.ResolvedModules, ct);
+                var moduleSources = tunnels.RewriteSources(
+                    context.MergedEnvironment.ResolvedModules,
+                    context.MergedEnvironment.ModuleSources);
+
+                var compilation = CompileScriptAsync(code, context, moduleSources);
                 if (compilation.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
                 {
                     var errors = compilation.Diagnostics
@@ -101,7 +108,7 @@ public class ScriptExecutionService : IScriptExecutionService
 
 
     private static (MemoryStream Assembly, string EntryPoint, List<Diagnostic> Diagnostics) CompileScriptAsync(
-        string code, ProjectContext context)
+        string code, ProjectContext context, IReadOnlyList<ModuleSourceFile>? moduleSources = null)
     {
         var merged = context.MergedEnvironment;
         var usings = merged.Usings.Count > 0 ? merged.Usings : context.Config.Usings;
@@ -109,7 +116,7 @@ public class ScriptExecutionService : IScriptExecutionService
 
         var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);
         var syntaxTrees = new List<SyntaxTree>();
-        foreach (var module in merged.ModuleSources)
+        foreach (var module in moduleSources ?? merged.ModuleSources)
             syntaxTrees.Add(CSharpSyntaxTree.ParseText(module.SourceText, parseOptions, path: module.FileName));
 
         syntaxTrees.Add(CSharpSyntaxTree.ParseText(scriptDocument.FullText, parseOptions, path: "Script.cs"));

@@ -174,6 +174,56 @@ public static class ConnectionStringBuilderFactory
         }
     }
 
+    public static string GetPassword(string providerId, string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return string.Empty;
+
+        return Create(providerId, connectionString) switch
+        {
+            SqlConnectionStringBuilder sql => sql.Password ?? string.Empty,
+            SqliteConnectionStringBuilder sqlite => sqlite.Password ?? string.Empty,
+            _ => string.Empty
+        };
+    }
+
+    public static string WithPassword(string providerId, string connectionString, string password)
+    {
+        var builder = string.IsNullOrWhiteSpace(connectionString)
+            ? CreateEmpty(providerId)
+            : Create(providerId, connectionString);
+        switch (builder)
+        {
+            case SqlConnectionStringBuilder sql:
+                sql.Password = password ?? string.Empty;
+                break;
+            case SqliteConnectionStringBuilder sqlite:
+                sqlite.Password = password ?? string.Empty;
+                break;
+        }
+
+        return builder.ConnectionString;
+    }
+
+    public static bool RequiresSqlAuthPassword(string providerId, string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return false;
+
+        return Create(providerId, connectionString) is SqlConnectionStringBuilder sql &&
+               !sql.IntegratedSecurity &&
+               !string.IsNullOrWhiteSpace(sql.UserID);
+    }
+
+    public static bool UsesIntegratedSecurity(string providerId, string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return false;
+
+        return Create(providerId, connectionString) is SqlConnectionStringBuilder sql &&
+               sql.IntegratedSecurity;
+    }
+
     public static bool TryParseConnectionString(string providerId, string connectionString,
         out DbConnectionStringBuilder? builder, out string? error)
     {

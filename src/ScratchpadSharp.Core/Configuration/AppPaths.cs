@@ -17,6 +17,9 @@ public static class AppPaths
     /// </summary>
     public static string UserSettingsPath { get; } = Path.Combine(UserDataDirectory, "appsettings.user.json");
 
+    /// <summary>Random AES key for Unix secret protection (0600). Unused on Windows (DPAPI).</summary>
+    public static string UserSecretKeyPath { get; } = Path.Combine(UserDataDirectory, "user.key");
+
     public static string ModulesDirectory { get; } = Path.Combine(UserDataDirectory, "modules");
 
     public static void EnsureUserDataDirectory()

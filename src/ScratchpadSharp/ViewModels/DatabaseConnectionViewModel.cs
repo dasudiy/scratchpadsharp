@@ -10,6 +10,7 @@ using Avalonia.Platform.Storage;
 using ReactiveUI;
 using ScratchpadSharp.Core.Database;
 using ScratchpadSharp.Core.Modules;
+using ScratchpadSharp.Core.Security;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.ViewModels;
@@ -25,6 +26,17 @@ public class DatabaseConnectionViewModel : ReactiveObject
     private bool isBusy;
     private bool suppressConnectionStringSideEffects;
     private DbConnectionStringBuilder? builder;
+    private bool sshEnabled;
+    private string sshHost = string.Empty;
+    private decimal sshPort = 22;
+    private string sshUsername = string.Empty;
+    private SshAuthMethodItem? selectedSshAuthMethod;
+    private string sshPassword = string.Empty;
+    private string sshPrivateKeyPath = string.Empty;
+    private string sshPassphrase = string.Empty;
+    private string sshRemoteHost = string.Empty;
+    private decimal sshRemotePort;
+    private decimal sshLocalPort;
 
     public DatabaseConnectionViewModel(ModuleInstanceConfig? existing = null)
     {
@@ -38,12 +50,14 @@ public class DatabaseConnectionViewModel : ReactiveObject
         if (existing != null)
         {
             DisplayName = existing.DisplayName;
-            ConnectionStringText = existing.ConnectionString;
+            ConnectionStringText = RevealConnectionString(existing);
             SelectedProvider = DatabaseProviderCatalog.Get(existing.ProviderId);
+            LoadSshTunnel(existing.SshTunnel);
         }
         else
         {
             SelectedProvider = DatabaseProviderCatalog.Get(DatabaseProviderIds.Sqlite);
+            SelectedSshAuthMethod = SshAuthMethods[0];
         }
 
         TestConnectionCommand = ReactiveCommand.CreateFromTask(TestConnectionAsync,
@@ -80,8 +94,11 @@ public class DatabaseConnectionViewModel : ReactiveObject
             var providerChanged = previousId != null &&
                                   !string.Equals(previousId, value.Id, StringComparison.OrdinalIgnoreCase);
             RebuildBuilderFromProvider(providerChanged);
+            this.RaisePropertyChanged(nameof(SupportsSshTunnel));
         }
     }
+
+    public bool SupportsSshTunnel => selectedProvider?.SupportsSshTunnel == true;
 
     public bool UseFormMode
     {
@@ -157,7 +174,95 @@ public class DatabaseConnectionViewModel : ReactiveObject
     public string? SavedDisplayName { get; private set; }
     public string? SavedProviderId { get; private set; }
     public string? SavedConnectionString { get; private set; }
+    public SshTunnelConfig? SavedSshTunnel { get; private set; }
     public bool WasSaved { get; private set; }
+
+    public IReadOnlyList<SshAuthMethodItem> SshAuthMethods { get; } =
+    [
+        new(SshAuthMethod.Agent, "Agent"),
+        new(SshAuthMethod.Password, "Password"),
+        new(SshAuthMethod.PublicKey, "Public key")
+    ];
+
+    public bool SshEnabled
+    {
+        get => sshEnabled;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref sshEnabled, value);
+            RaiseSshAuthVisibility();
+        }
+    }
+
+    public string SshHost
+    {
+        get => sshHost;
+        set => this.RaiseAndSetIfChanged(ref sshHost, value);
+    }
+
+    public decimal SshPort
+    {
+        get => sshPort;
+        set => this.RaiseAndSetIfChanged(ref sshPort, value);
+    }
+
+    public string SshUsername
+    {
+        get => sshUsername;
+        set => this.RaiseAndSetIfChanged(ref sshUsername, value);
+    }
+
+    public SshAuthMethodItem? SelectedSshAuthMethod
+    {
+        get => selectedSshAuthMethod;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref selectedSshAuthMethod, value);
+            RaiseSshAuthVisibility();
+        }
+    }
+
+    public string SshPassword
+    {
+        get => sshPassword;
+        set => this.RaiseAndSetIfChanged(ref sshPassword, value);
+    }
+
+    public string SshPrivateKeyPath
+    {
+        get => sshPrivateKeyPath;
+        set => this.RaiseAndSetIfChanged(ref sshPrivateKeyPath, value);
+    }
+
+    public string SshPassphrase
+    {
+        get => sshPassphrase;
+        set => this.RaiseAndSetIfChanged(ref sshPassphrase, value);
+    }
+
+    public string SshRemoteHost
+    {
+        get => sshRemoteHost;
+        set => this.RaiseAndSetIfChanged(ref sshRemoteHost, value);
+    }
+
+    public decimal SshRemotePort
+    {
+        get => sshRemotePort;
+        set => this.RaiseAndSetIfChanged(ref sshRemotePort, value);
+    }
+
+    public decimal SshLocalPort
+    {
+        get => sshLocalPort;
+        set => this.RaiseAndSetIfChanged(ref sshLocalPort, value);
+    }
+
+    public bool ShowSshPasswordFields =>
+        SshEnabled && SelectedSshAuthMethod?.Value == SshAuthMethod.Password;
+
+    public bool ShowSshPublicKeyFields =>
+        SshEnabled && SelectedSshAuthMethod?.Value == SshAuthMethod.PublicKey;
 
     public void OnFieldChanged(ConnectionStringFieldDescriptor field)
     {
@@ -214,6 +319,107 @@ public class DatabaseConnectionViewModel : ReactiveObject
 
         SetBuilderFieldValue(field.Key, path);
         return true;
+    }
+
+    public async Task<bool> BrowsePrivateKeyAsync()
+    {
+        if (StorageProvider == null)
+        {
+            StatusText = "File picker is not available.";
+            return false;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select SSH private key",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Private key") { Patterns = ["*.pem", "*.ppk", "*.key", "id_rsa", "id_ed25519", "id_ecdsa"] },
+                new FilePickerFileType("All files") { Patterns = ["*"] }
+            ]
+        });
+
+        var path = files.FirstOrDefault()?.Path.LocalPath;
+        if (string.IsNullOrEmpty(path))
+            return false;
+
+        SshPrivateKeyPath = path;
+        return true;
+    }
+
+    private string RevealConnectionString(ModuleInstanceConfig existing)
+    {
+        var cs = existing.ConnectionString;
+        if (ModuleSecrets.TryRevealDatabasePassword(existing, out var password) && password.Length > 0)
+            return ConnectionStringBuilderFactory.WithPassword(existing.ProviderId, cs, password);
+
+        if (UserSecretProtector.IsProtected(existing.EncryptedDatabasePassword))
+            StatusText = "Saved passwords could not be unlocked for this user on this machine. Re-enter them to continue.";
+        return cs;
+    }
+
+    private void LoadSshTunnel(SshTunnelConfig? ssh)
+    {
+        SshEnabled = ssh?.Enabled == true;
+        SshHost = ssh?.Host ?? string.Empty;
+        SshPort = ssh is { Port: > 0 } ? ssh.Port : 22;
+        SshUsername = ssh?.Username ?? string.Empty;
+        SshPrivateKeyPath = ssh?.PrivateKeyPath ?? string.Empty;
+        SshRemoteHost = ssh?.RemoteHost ?? string.Empty;
+        SshRemotePort = ssh?.RemotePort ?? 0;
+        SshLocalPort = ssh?.LocalPort ?? 0;
+        var method = ssh?.AuthMethod ?? SshAuthMethod.Agent;
+        SelectedSshAuthMethod = SshAuthMethods.FirstOrDefault(m => m.Value == method) ?? SshAuthMethods[0];
+
+        if (ModuleSecrets.TryRevealSshPassword(ssh, out var password))
+            SshPassword = password;
+        else
+        {
+            SshPassword = string.Empty;
+            StatusText = "Saved passwords could not be unlocked for this user on this machine. Re-enter them to continue.";
+        }
+
+        if (ModuleSecrets.TryRevealSshPassphrase(ssh, out var passphrase))
+            SshPassphrase = passphrase;
+        else
+        {
+            SshPassphrase = string.Empty;
+            StatusText = "Saved passwords could not be unlocked for this user on this machine. Re-enter them to continue.";
+        }
+    }
+
+    private SshTunnelConfig? BuildSshTunnelConfig()
+    {
+        if (!SupportsSshTunnel)
+            return null;
+
+        return new SshTunnelConfig
+        {
+            Enabled = SshEnabled,
+            Host = SshHost.Trim(),
+            Port = ToPort(SshPort, 22),
+            Username = SshUsername.Trim(),
+            AuthMethod = SelectedSshAuthMethod?.Value ?? SshAuthMethod.Agent,
+            Password = SshPassword,
+            PrivateKeyPath = SshPrivateKeyPath.Trim(),
+            Passphrase = SshPassphrase,
+            RemoteHost = SshRemoteHost.Trim(),
+            RemotePort = ToPort(SshRemotePort, 0),
+            LocalPort = ToPort(SshLocalPort, 0)
+        };
+    }
+
+    private static int ToPort(decimal value, int fallback)
+    {
+        var port = (int)value;
+        return port < 0 ? fallback : port;
+    }
+
+    private void RaiseSshAuthVisibility()
+    {
+        this.RaisePropertyChanged(nameof(ShowSshPasswordFields));
+        this.RaisePropertyChanged(nameof(ShowSshPublicKeyFields));
     }
 
     private void SyncConnectionStringFromForm()
@@ -274,6 +480,9 @@ public class DatabaseConnectionViewModel : ReactiveObject
                 builder = ConnectionStringBuilderFactory.CreateEmpty(SelectedProvider.Id);
         }
 
+        if (builder == null)
+            return;
+
         suppressConnectionStringSideEffects = true;
         ConnectionStringText = builder.ConnectionString;
         suppressConnectionStringSideEffects = false;
@@ -309,7 +518,11 @@ public class DatabaseConnectionViewModel : ReactiveObject
         try
         {
             var cs = GetEffectiveConnectionString();
-            var result = await EfCoreModuleFactory.Instance.TestConnectionAsync(SelectedProvider.Id, cs);
+            var ssh = BuildSshTunnelConfig();
+            if (ssh is { Enabled: true })
+                SshTunnelSession.Validate(ssh);
+
+            var result = await EfCoreModuleFactory.Instance.TestConnectionAsync(SelectedProvider.Id, cs, ssh);
             StatusText = result.Success
                 ? $"Connected ({result.ElapsedMilliseconds} ms)"
                 : $"Failed: {result.Message}";
@@ -336,9 +549,23 @@ public class DatabaseConnectionViewModel : ReactiveObject
             return;
         }
 
+        SshTunnelConfig? ssh = null;
+        try
+        {
+            ssh = BuildSshTunnelConfig();
+            if (ssh is { Enabled: true })
+                SshTunnelSession.Validate(ssh);
+        }
+        catch (Exception ex)
+        {
+            ParseError = ex.Message;
+            return;
+        }
+
         SavedDisplayName = DisplayName.Trim();
         SavedProviderId = SelectedProvider.Id;
         SavedConnectionString = cs;
+        SavedSshTunnel = ssh;
         WasSaved = true;
     }
 
@@ -352,4 +579,16 @@ public class DatabaseConnectionViewModel : ReactiveObject
 
         return ConnectionStringText ?? string.Empty;
     }
+}
+
+public sealed class SshAuthMethodItem
+{
+    public SshAuthMethodItem(SshAuthMethod value, string displayName)
+    {
+        Value = value;
+        DisplayName = displayName;
+    }
+
+    public SshAuthMethod Value { get; }
+    public string DisplayName { get; }
 }

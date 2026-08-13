@@ -5,13 +5,16 @@
         x:Class="ScratchpadSharp.Views.DatabaseConnectionWindow"
         x:DataType="vm:DatabaseConnectionViewModel"
         Title="Database connection"
-        Width="560"
+        Width="580"
+        MinHeight="360"
+        MaxHeight="760"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        CanResize="False"
+        CanResize="True"
         Opened="OnOpened">
   <Border Padding="20" Background="#FBFCFD">
-    <StackPanel Spacing="14" MaxWidth="520">
+    <ScrollViewer MaxHeight="680" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="14" MaxWidth="540">
       <TextBlock Text="Add database connection"
                  FontWeight="SemiBold"
                  FontSize="16"
@@ -130,12 +133,94 @@
                  TextWrapping="Wrap"
                  MinHeight="80"
                  Text="{Binding ConnectionStringText}" />
-        <TextBlock Text="{Binding ParseError}"
-                   Foreground="#C62828"
-                   FontSize="11.5"
-                   IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
 
+      <Expander Header="SSH Tunnel" IsVisible="{Binding SupportsSshTunnel}" IsExpanded="{Binding SshEnabled}">
+        <StackPanel Spacing="8" Margin="0,8,0,0">
+          <CheckBox Content="Use SSH tunnel" IsChecked="{Binding SshEnabled}" />
+          <TextBlock Text="Database host/port is the address as seen from the SSH server (use localhost if SQL Server runs on the SSH host)."
+                     TextWrapping="Wrap"
+                     FontSize="11.5"
+                     Opacity="0.75"
+                     IsVisible="{Binding SshEnabled}" />
+
+          <StackPanel Spacing="8" IsVisible="{Binding SshEnabled}">
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Host" VerticalAlignment="Center" />
+              <TextBox Margin="8,0,0,0" Text="{Binding SshHost}" />
+            </DockPanel>
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Port" VerticalAlignment="Center" />
+              <NumericUpDown Margin="8,0,0,0"
+                             Minimum="1" Maximum="65535" Increment="1"
+                             Value="{Binding SshPort}" />
+            </DockPanel>
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="User name" VerticalAlignment="Center" />
+              <TextBox Margin="8,0,0,0" Text="{Binding SshUsername}" />
+            </DockPanel>
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Authentication" VerticalAlignment="Center" />
+              <ComboBox Margin="8,0,0,0"
+                        ItemsSource="{Binding SshAuthMethods}"
+                        SelectedItem="{Binding SelectedSshAuthMethod}"
+                        HorizontalAlignment="Left"
+                        MinWidth="200">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SshAuthMethodItem">
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </DockPanel>
+            <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPasswordFields}">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Password" VerticalAlignment="Center" />
+              <TextBox Margin="8,0,0,0" PasswordChar="•" Text="{Binding SshPassword}" />
+            </DockPanel>
+            <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPublicKeyFields}">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Private key" VerticalAlignment="Center" />
+              <DockPanel Margin="8,0,0,0" LastChildFill="True">
+                <Button DockPanel.Dock="Right"
+                        Content="Browse..."
+                        Margin="8,0,0,0"
+                        Click="OnBrowsePrivateKeyClick" />
+                <TextBox Text="{Binding SshPrivateKeyPath}" />
+              </DockPanel>
+            </DockPanel>
+            <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPublicKeyFields}">
+              <TextBlock DockPanel.Dock="Left" Width="140" Text="Passphrase" VerticalAlignment="Center" />
+              <TextBox Margin="8,0,0,0" PasswordChar="•" Text="{Binding SshPassphrase}" />
+            </DockPanel>
+
+            <Expander Header="SSH advanced" IsExpanded="False">
+              <StackPanel Spacing="8" Margin="0,8,0,0">
+                <DockPanel LastChildFill="True">
+                  <TextBlock DockPanel.Dock="Left" Width="140" Text="Remote host" VerticalAlignment="Center" />
+                  <TextBox Margin="8,0,0,0" Watermark="(database server)" Text="{Binding SshRemoteHost}" />
+                </DockPanel>
+                <DockPanel LastChildFill="True">
+                  <TextBlock DockPanel.Dock="Left" Width="140" Text="Remote port" VerticalAlignment="Center" />
+                  <NumericUpDown Margin="8,0,0,0"
+                                 Minimum="0" Maximum="65535" Increment="1"
+                                 Value="{Binding SshRemotePort}" />
+                </DockPanel>
+                <DockPanel LastChildFill="True">
+                  <TextBlock DockPanel.Dock="Left" Width="140" Text="Local port" VerticalAlignment="Center" />
+                  <NumericUpDown Margin="8,0,0,0"
+                                 Minimum="0" Maximum="65535" Increment="1"
+                                 Value="{Binding SshLocalPort}" />
+                </DockPanel>
+              </StackPanel>
+            </Expander>
+          </StackPanel>
+        </StackPanel>
+      </Expander>
+
+      <TextBlock Text="{Binding ParseError}"
+                 Foreground="#C62828"
+                 FontSize="11.5"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap" />
 
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
@@ -145,5 +230,6 @@
                 Background="#4C6EF5" Foreground="White" />
       </StackPanel>
     </StackPanel>
+    </ScrollViewer>
   </Border>
 </Window>

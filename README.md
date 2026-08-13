@@ -54,6 +54,7 @@ Use `--file path/to/script.cs` instead of `--code`. Module id is the folder name
 
 - [SPECIFICATION.md](SPECIFICATION.md) — Technical design and architecture
 - [docs/ef-core.md](docs/ef-core.md) — EF Core modules and database sidebar
+- [docs/ssh-tunnel.md](docs/ssh-tunnel.md) — Optional SSH tunnel for SQL Server (and later TCP databases)
 - [docs/reference-management.md](docs/reference-management.md) — NuGet and assembly reference pipeline
 - [docs/session-restore.md](docs/session-restore.md) — Session persistence
 - [docs/dump-workflow.md](docs/dump-workflow.md) — `.Dump()` HTML output flow

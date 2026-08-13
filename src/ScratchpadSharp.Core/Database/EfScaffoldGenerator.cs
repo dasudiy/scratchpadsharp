@@ -181,6 +181,23 @@ public static class EfScaffoldGenerator
         return isNullable ? clr + "?" : clr;
     }
 
-    private static string EscapeCSharpString(string value) =>
+    public static string EscapeCSharpString(string value) =>
         (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    public static bool TryReplaceBakedConnectionString(
+        string source, string originalConnectionString, string replacementConnectionString, out string updated)
+    {
+        updated = source;
+        if (string.IsNullOrEmpty(source) ||
+            string.Equals(originalConnectionString, replacementConnectionString, StringComparison.Ordinal))
+            return true;
+
+        var from = $"\"{EscapeCSharpString(originalConnectionString)}\"";
+        var to = $"\"{EscapeCSharpString(replacementConnectionString)}\"";
+        if (!source.Contains(from, StringComparison.Ordinal))
+            return false;
+
+        updated = source.Replace(from, to, StringComparison.Ordinal);
+        return true;
+    }
 }

@@ -11,7 +11,9 @@ public sealed record DatabaseProviderInfo(
     string? EfProviderPackageId,
     string EfProviderPackageVersion,
     string UseExtensionMethod,
-    string ConnectionStringTemplate);
+    string ConnectionStringTemplate,
+    bool SupportsSshTunnel = false,
+    int DefaultPort = 0);
 
 public static class DatabaseProviderCatalog
 {
@@ -34,7 +36,9 @@ public static class DatabaseProviderCatalog
         new(DatabaseProviderIds.SqlServer, "SQL Server",
             "Microsoft.EntityFrameworkCore.SqlServer", EfCorePackageVersion,
             "UseSqlServer",
-            "Server=localhost;Database=Scratchpad;Trusted_Connection=True;TrustServerCertificate=True")
+            "Server=localhost;Database=Scratchpad;Trusted_Connection=True;TrustServerCertificate=True",
+            SupportsSshTunnel: true,
+            DefaultPort: 1433)
     ];
 
     public static IReadOnlyList<DatabaseProviderInfo> SelectableProviders { get; } = All;

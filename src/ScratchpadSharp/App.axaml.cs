@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using ScratchpadSharp.Views;
 using ScratchpadSharp.ViewModels;
 using ScratchpadSharp.Core.Configuration;
+using ScratchpadSharp.Core.Security;
 using ScratchpadSharp.Core.Services;
 
 namespace ScratchpadSharp;
@@ -20,6 +21,7 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         AppConfiguration.Initialize();
+        UserSecretPrompt.Current = new AvaloniaUserSecretPrompt();
 
         _ = RoslynWorkspaceService.Instance.EnsureInitializedAsync();
 

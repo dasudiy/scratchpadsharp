@@ -40,6 +40,14 @@ public partial class DatabaseConnectionWindow : Window
         await vm.BrowseDatabaseFileAsync(field);
     }
 
+    private async void OnBrowsePrivateKeyClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DatabaseConnectionViewModel vm)
+            return;
+
+        await vm.BrowsePrivateKeyAsync();
+    }
+
     private void OnFieldLostFocus(object? sender, RoutedEventArgs e)
     {
         if (sender is not TextBox { DataContext: ConnectionStringFieldDescriptor field } ||

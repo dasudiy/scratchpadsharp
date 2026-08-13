@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ScratchpadSharp.Core.Database;
+using ScratchpadSharp.Core.Security;
 using ScratchpadSharp.Shared.Models;
 
 namespace ScratchpadSharp.Core.Modules;
@@ -34,7 +35,8 @@ public sealed class EfCoreModuleFactory
     return pascal;
   }
 
-  public ModuleInstanceConfig CreateConfig(string displayName, string providerId, string connectionString)
+  public ModuleInstanceConfig CreateConfig(string displayName, string providerId, string connectionString,
+    SshTunnelConfig? sshTunnel = null)
   {
     var provider = DatabaseProviderCatalog.Get(providerId);
     if (provider.Id == DatabaseProviderIds.None)
@@ -50,6 +52,7 @@ public sealed class EfCoreModuleFactory
       NamespaceSegment = segment,
       ProviderId = provider.Id,
       ConnectionString = connectionString,
+      SshTunnel = provider.SupportsSshTunnel ? sshTunnel : null,
       Usings = ["System", "Microsoft.EntityFrameworkCore"]
     };
 
@@ -58,25 +61,38 @@ public sealed class EfCoreModuleFactory
   }
 
   public async Task<ModuleInstanceConfig> CreateInstanceAsync(string displayName, string providerId,
-    string connectionString, CancellationToken ct = default)
+    string connectionString, SshTunnelConfig? sshTunnel = null, CancellationToken ct = default)
   {
-    var config = CreateConfig(displayName, providerId, connectionString);
+    var config = CreateConfig(displayName, providerId, connectionString, sshTunnel);
+    ModuleSecrets.ProtectInPlace(config);
     var provider = DatabaseProviderCatalog.Get(providerId);
     var schemaProvider = DbSchemaProviderFactory.Create(provider.Id);
-    var snapshot = await schemaProvider.GetSchemaAsync(connectionString, ct);
-    var model = EfScaffoldGenerator.GenerateModel(snapshot, provider, config.NamespaceSegment, connectionString);
+    var snapshot = await WithLiveConnectionAsync(config, cs => schemaProvider.GetSchemaAsync(cs, ct), ct);
+    var model = EfScaffoldGenerator.GenerateModel(snapshot, provider, config.NamespaceSegment, config.ConnectionString);
     ModuleCatalog.Instance.Save(config, model);
     return config;
   }
 
-  public async Task<ModuleInstanceConfig> UpdateConnectionAsync(ModuleInstanceConfig config, string providerId,
-    string connectionString, CancellationToken ct = default)
+  public Task<ModuleInstanceConfig> UpdateConnectionAsync(ModuleInstanceConfig config, string providerId,
+    string connectionString, SshTunnelConfig? sshTunnel = null, CancellationToken ct = default)
   {
-    config.ProviderId = DatabaseProviderCatalog.Get(providerId).Id;
+    var provider = DatabaseProviderCatalog.Get(providerId);
+    var oldCs = config.ConnectionString;
+    var model = ModuleCatalog.Instance.ReadModelSource(config.Id) ?? string.Empty;
+
+    config.ProviderId = provider.Id;
     config.ConnectionString = connectionString;
+    config.SshTunnel = provider.SupportsSshTunnel ? sshTunnel : null;
     DatabaseProviderCatalog.ApplyModulePackages(config);
-    ModuleCatalog.Instance.Save(config, ModuleCatalog.Instance.ReadModelSource(config.Id) ?? string.Empty);
-    return config;
+    ModuleSecrets.ProtectInPlace(config);
+
+    if (!string.IsNullOrEmpty(model) &&
+        !string.Equals(oldCs, config.ConnectionString, StringComparison.Ordinal) &&
+        EfScaffoldGenerator.TryReplaceBakedConnectionString(model, oldCs, config.ConnectionString, out var rewritten))
+      model = rewritten;
+
+    ModuleCatalog.Instance.Save(config, model);
+    return Task.FromResult(config);
   }
 
   public async Task RegenerateModelAsync(string instanceId, CancellationToken ct = default)
@@ -86,7 +102,7 @@ public sealed class EfCoreModuleFactory
 
     var provider = DatabaseProviderCatalog.Get(config.ProviderId);
     var schemaProvider = DbSchemaProviderFactory.Create(provider.Id);
-    var snapshot = await schemaProvider.GetSchemaAsync(config.ConnectionString, ct);
+    var snapshot = await WithLiveConnectionAsync(config, cs => schemaProvider.GetSchemaAsync(cs, ct), ct);
     var model = EfScaffoldGenerator.GenerateModel(snapshot, provider, config.NamespaceSegment, config.ConnectionString);
     ModuleCatalog.Instance.Save(config, model);
   }
@@ -96,14 +112,30 @@ public sealed class EfCoreModuleFactory
     var config = ModuleCatalog.Instance.TryGet(instanceId)
                  ?? throw new InvalidOperationException($"Module not found: {instanceId}");
     var provider = DbSchemaProviderFactory.Create(config.ProviderId);
-    return await provider.GetSchemaAsync(config.ConnectionString, ct);
+    return await WithLiveConnectionAsync(config, cs => provider.GetSchemaAsync(cs, ct), ct);
   }
 
   public async Task<ConnectionTestResult> TestConnectionAsync(string providerId, string connectionString,
-    CancellationToken ct = default)
+    SshTunnelConfig? sshTunnel = null, CancellationToken ct = default)
   {
+    var config = new ModuleInstanceConfig
+    {
+      ProviderId = providerId,
+      ConnectionString = connectionString,
+      SshTunnel = sshTunnel
+    };
+    ModuleSecrets.ProtectInPlace(config);
     var provider = DbSchemaProviderFactory.Create(providerId);
-    return await provider.TestConnectionAsync(connectionString, ct);
+    return await WithLiveConnectionAsync(config, cs => provider.TestConnectionAsync(cs, ct), ct);
+  }
+
+  private static async Task<T> WithLiveConnectionAsync<T>(
+    ModuleInstanceConfig config, Func<string, Task<T>> action, CancellationToken ct)
+  {
+    var live = await ModuleSecrets.UnlockAsync(config, ct);
+    await using var session = await SshTunnelSession.OpenIfNeededAsync(live, ct);
+    var cs = session?.ConnectionString ?? live.ConnectionString;
+    return await action(cs);
   }
 
   public string BuildTakeScript(ModuleInstanceConfig config, string tableName, int take = 100)

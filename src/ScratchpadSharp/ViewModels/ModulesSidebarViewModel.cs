@@ -254,7 +254,8 @@ public class ModulesSidebarViewModel : ReactiveObject
             await EfCoreModuleFactory.Instance.CreateInstanceAsync(
                 dialog.SavedDisplayName!,
                 dialog.SavedProviderId!,
-                dialog.SavedConnectionString!);
+                dialog.SavedConnectionString!,
+                dialog.SavedSshTunnel);
             await RefreshAsync();
             StatusText = $"Added {dialog.SavedDisplayName}";
         }
@@ -288,7 +289,8 @@ public class ModulesSidebarViewModel : ReactiveObject
             await EfCoreModuleFactory.Instance.UpdateConnectionAsync(
                 existing,
                 dialog.SavedProviderId!,
-                dialog.SavedConnectionString!);
+                dialog.SavedConnectionString!,
+                dialog.SavedSshTunnel);
             existing.DisplayName = dialog.SavedDisplayName!;
             ModuleCatalog.Instance.Save(existing, ModuleCatalog.Instance.ReadModelSource(instanceId) ?? string.Empty);
             await RefreshAsync();
