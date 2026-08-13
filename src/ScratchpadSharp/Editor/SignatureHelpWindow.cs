@@ -211,6 +211,8 @@ public class SignatureHelpWindow : Popup, IStyleable
             // prevents crash when typing deadchar while CC window is open
             if (e.Key == Key.DeadCharProcessed)
                 return;
+            if (e.Handled)
+                return;
             e.Handled = RaiseEventPair(Window, null, KeyDownEvent,
                                        new KeyEventArgs { Key = e.Key });
         }
@@ -218,6 +220,8 @@ public class SignatureHelpWindow : Popup, IStyleable
         public override void OnPreviewKeyUp(KeyEventArgs e)
         {
             if (e.Key == Key.DeadCharProcessed)
+                return;
+            if (e.Handled)
                 return;
             e.Handled = RaiseEventPair(Window, null, KeyUpEvent,
                 new KeyEventArgs { Key = e.Key });
@@ -338,11 +342,23 @@ public class SignatureHelpWindow : Popup, IStyleable
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (!e.Handled && e.Key == Key.Escape)
+        if (e.Handled)
+            return;
+
+        if (e.Key == Key.Escape)
         {
             e.Handled = true;
             Hide();
+            return;
         }
+
+        if (_completionWindowProvider?.Invoke() is { IsOpen: true })
+            return;
+
+        if (e.Key == Key.Down && ViewModel.SelectNextOverload())
+            e.Handled = true;
+        else if (e.Key == Key.Up && ViewModel.SelectPreviousOverload())
+            e.Handled = true;
     }
 
     private Point _visualLocation;

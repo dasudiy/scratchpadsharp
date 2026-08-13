@@ -58,17 +58,31 @@ public class SignatureHelpHandler
 
     public bool HandleKeyDown(KeyEventArgs e)
     {
+        if (_signatureHelpWindow == null)
+            return false;
+
         if (e.Key == Key.Escape)
         {
-            if (_signatureHelpWindow != null)
-            {
-                HideSignatureHelp();
-                return true;
-            }
+            HideSignatureHelp();
+            e.Handled = true;
+            return true;
+        }
+
+        if (e.Key is Key.Up or Key.Down &&
+            _completionWindowProvider?.Invoke() is not { IsOpen: true } &&
+            TryCycleOverload(e.Key))
+        {
+            e.Handled = true;
+            return true;
         }
 
         return false;
     }
+
+    private bool TryCycleOverload(Key key) =>
+        key == Key.Down
+            ? _signatureHelpWindow!.ViewModel.SelectNextOverload()
+            : _signatureHelpWindow!.ViewModel.SelectPreviousOverload();
 
     public void Reset()
     {

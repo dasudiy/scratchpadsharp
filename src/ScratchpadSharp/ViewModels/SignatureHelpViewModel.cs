@@ -85,13 +85,41 @@ public class SignatureHelpViewModel : INotifyPropertyChanged
 
     public void UpdateSignatures(List<MethodSignature> newSignatures, int parameterIndex)
     {
+        var previous = SelectedSignature?.FullSignature;
         var enhancedSignatures = newSignatures.Select(s => CreateEnhancedSignature(s)).ToList();
         Signatures = new ObservableCollection<EnhancedMethodSignature>(enhancedSignatures);
 
         currentParameterIndex = parameterIndex;
         OnPropertyChanged(nameof(CurrentParameterIndex));
 
-        SelectBestMatchingOverload(parameterIndex);
+        var keep = previous != null
+            ? Signatures.FirstOrDefault(s => s.FullSignature == previous)
+            : null;
+        if (keep != null)
+            SelectedSignature = keep;
+        else
+            SelectBestMatchingOverload(parameterIndex);
+    }
+
+    public bool SelectNextOverload() => CycleOverload(1);
+
+    public bool SelectPreviousOverload() => CycleOverload(-1);
+
+    private bool CycleOverload(int delta)
+    {
+        if (Signatures.Count <= 1)
+            return false;
+
+        var index = SelectedSignature == null ? 0 : Signatures.IndexOf(SelectedSignature);
+        if (index < 0)
+            index = 0;
+
+        var next = (index + delta) % Signatures.Count;
+        if (next < 0)
+            next += Signatures.Count;
+
+        SelectedSignature = Signatures[next];
+        return true;
     }
 
     public void UpdateArgumentIndex(int newIndex)
