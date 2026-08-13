@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -71,6 +72,14 @@ public class CodeCompletionHandler(
     {
         if (completionWindow is { IsOpen: true })
         {
+            if (e.Key is Key.Enter or Key.Tab)
+            {
+                EnsureCompletionSelection();
+                e.Handled = true;
+                completionWindow.CompletionList.RequestInsertion(e);
+                return true;
+            }
+
             completionWindow.CompletionList.HandleKey(e);
             if (e.Handled)
                 return true;
@@ -106,6 +115,17 @@ public class CodeCompletionHandler(
         }
 
         return false;
+    }
+
+    private void EnsureCompletionSelection()
+    {
+        if (completionWindow?.CompletionList is not { } list)
+            return;
+        if (list.SelectedItem != null)
+            return;
+        if (list.CompletionData.Count == 0)
+            return;
+        list.SelectedItem = list.CompletionData[0];
     }
 
     private bool ShouldTriggerCompletion(string text)
@@ -178,7 +198,6 @@ public class CodeCompletionHandler(
 
             var code = editor.Document.Text;
             var offset = editor.CaretOffset;
-            var usings = viewModel.ProjectContext.Config.Usings;
 
             var result = await Task.Run(
                 () => completionService.GetCompletionsAsync(
@@ -212,10 +231,13 @@ public class CodeCompletionHandler(
                 completionWindow.MinWidth = 280;
                 completionWindow.MinHeight = 160;
 
+                var documentUsings = viewModel.ProjectContext.EffectiveUsings.ToList();
+                var persistUsings = viewModel.ProjectContext.Config.Usings;
                 var data = completionWindow.CompletionList.CompletionData;
                 foreach (var item in result.Items)
                 {
-                    data.Add(new RoslynCompletionData(item, completionService, tabId, usings));
+                    data.Add(new RoslynCompletionData(
+                        item, completionService, tabId, documentUsings, persistUsings));
                 }
 
                 if (data.Count > 0)
@@ -245,9 +267,13 @@ public class CodeCompletionHandler(
                     }
 
                     completionWindow.EndOffset = caretOffset;
-                    _ = completionWindow.CompletionList.ListBox;
-                    completionWindow.CompletionList.SelectItem(string.Empty);
+                    var typed = caretOffset > completionWindow.StartOffset
+                        ? code[completionWindow.StartOffset..caretOffset]
+                        : string.Empty;
                     completionWindow.Show();
+                    _ = completionWindow.CompletionList.ListBox;
+                    completionWindow.CompletionList.SelectItem(typed);
+                    EnsureCompletionSelection();
                     completionWindowChanged?.Invoke();
                     Dispatcher.UIThread.Post(() => completionWindowChanged?.Invoke(), DispatcherPriority.Render);
                 }

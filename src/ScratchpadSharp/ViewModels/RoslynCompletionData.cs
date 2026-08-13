@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Media;
 using AvaloniaEdit.CodeCompletion;
@@ -20,18 +21,21 @@ public class RoslynCompletionData : ICompletionData
 
     private readonly IRoslynCompletionService completionService;
     private readonly string tabId;
-    private readonly List<string> usings;
+    private readonly List<string> documentUsings;
+    private readonly List<string> persistUsings;
 
     public RoslynCompletionData(
         EnhancedCompletionItem item,
         IRoslynCompletionService completionService,
         string tabId,
-        List<string> usings)
+        List<string> documentUsings,
+        List<string> persistUsings)
     {
         this.enhancedItem = item;
         this.completionService = completionService;
         this.tabId = tabId;
-        this.usings = usings;
+        this.documentUsings = documentUsings;
+        this.persistUsings = persistUsings;
         Text = item.DisplayText;
     }
 
@@ -193,70 +197,98 @@ public class RoslynCompletionData : ICompletionData
     {
         try
         {
-            // AvaloniaEdit expects synchronous insertion when the user accepts a completion item.
-            var change = completionService.GetCompletionChangeAsync(
-                tabId,
-                textArea.Document.Text,
-                enhancedItem.RoslynItem,
-                usings).GetAwaiter().GetResult();
+            CompletionChangeInfo? change = null;
+            try
+            {
+                var code = textArea.Document.Text;
+                change = Task.Run(() => completionService.GetCompletionChangeAsync(
+                    tabId,
+                    code,
+                    enhancedItem.RoslynItem,
+                    documentUsings)).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CompletionData] Error getting completion change: {ex.Message}");
+            }
 
             var document = textArea.Document;
+            var applied = false;
 
             using (document.RunUpdate())
             {
-                // Step 1: Apply code-area text changes FIRST (offsets are valid before any top-insertion)
-                if (change.TextChanges.Length > 0)
+                if (change is { TextChanges.Length: > 0 })
                 {
-                    var changes = change.TextChanges.OrderByDescending(c => c.Span.Start).ToList();
-
-                    foreach (var textChange in changes)
+                    foreach (var textChange in change.TextChanges.OrderByDescending(c => c.Span.Start))
                     {
                         var offset = textChange.Span.Start;
                         var length = textChange.Span.Length;
                         var newText = textChange.NewText ?? "";
 
-                        // Extend to cover the full user-typed segment if needed
-                        if (offset <= completionSegment.EndOffset && (offset + length) >= completionSegment.Offset)
+                        if (offset <= completionSegment.EndOffset && offset + length >= completionSegment.Offset)
                         {
                             var changeEnd = offset + length;
                             if (completionSegment.EndOffset > changeEnd)
-                                length += (completionSegment.EndOffset - changeEnd);
+                                length += completionSegment.EndOffset - changeEnd;
                         }
 
                         if (offset >= 0 && offset + length <= document.TextLength)
+                        {
                             document.Replace(offset, length, newText);
+                            applied = true;
+                        }
                     }
-                }
-                else
-                {
-                    // Fallback to simple replacement
-                    var startOffset = completionSegment.Offset;
-                    while (startOffset > 0)
-                    {
-                        var ch = document.GetCharAt(startOffset - 1);
-                        if (!char.IsLetterOrDigit(ch) && ch != '_') break;
-                        startOffset--;
-                    }
-                    document.Replace(startOffset, completionSegment.EndOffset - startOffset, Text);
                 }
 
-                if (!change.NewUsings.IsEmpty)
+                if (!applied)
+                    ReplaceCompletionSegment(document, completionSegment, Text);
+
+                if (change is { NewUsings.IsDefaultOrEmpty: false })
                 {
                     foreach (var ns in change.NewUsings)
                     {
-                        if (!usings.Contains(ns))
-                            usings.Add(ns);
+                        if (!persistUsings.Contains(ns))
+                            persistUsings.Add(ns);
                     }
                 }
             }
 
-            if (change.NewPosition.HasValue)
-                textArea.Caret.Offset = change.NewPosition.Value;
+            if (applied && change?.NewPosition is { } newPosition &&
+                newPosition >= 0 && newPosition <= document.TextLength)
+            {
+                textArea.Caret.Offset = newPosition;
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[CompletionData] Error applying completion: {ex.Message}");
+            try
+            {
+                ReplaceCompletionSegment(textArea.Document, completionSegment, Text);
+            }
+            catch
+            {
+                // last-resort insert already failed
+            }
         }
+    }
+
+    private static void ReplaceCompletionSegment(IDocument document, ISegment completionSegment, string text)
+    {
+        var startOffset = Math.Clamp(completionSegment.Offset, 0, document.TextLength);
+        var endOffset = Math.Clamp(completionSegment.EndOffset, 0, document.TextLength);
+        if (endOffset < startOffset)
+            (startOffset, endOffset) = (endOffset, startOffset);
+
+        while (startOffset > 0)
+        {
+            var ch = document.GetCharAt(startOffset - 1);
+            if (!char.IsLetterOrDigit(ch) && ch != '_')
+                break;
+            startOffset--;
+        }
+
+        document.Replace(startOffset, endOffset - startOffset, text);
     }
     private class SimpleSegment : ISegment
     {

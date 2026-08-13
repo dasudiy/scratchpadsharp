@@ -227,7 +227,7 @@ public class RoslynCompletionService : IRoslynCompletionService
         try
         {
             // Update document with current code to ensure changes are calculated against correct state
-            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, usings);
+            await RoslynWorkspaceService.Instance.UpdateDocumentAsync(tabId, code, usings).ConfigureAwait(false);
 
             var document = RoslynWorkspaceService.Instance.GetDocument(tabId);
             if (document == null) return new CompletionChangeInfo(ImmutableArray<TextChange>.Empty, null, false);
@@ -236,7 +236,8 @@ public class RoslynCompletionService : IRoslynCompletionService
             if (completionService == null)
                 return new CompletionChangeInfo(ImmutableArray<TextChange>.Empty, null, false);
 
-            var change = await completionService.GetChangeAsync(document, item, cancellationToken: cancellationToken);
+            var change = await completionService.GetChangeAsync(document, item, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
 
             var scriptDocument = RoslynWorkspaceService.Instance.BuildScriptDocument(code, usings);
 
