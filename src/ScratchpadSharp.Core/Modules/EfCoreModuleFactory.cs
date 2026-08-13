@@ -74,11 +74,15 @@ public sealed class EfCoreModuleFactory
   }
 
   public Task<ModuleInstanceConfig> UpdateConnectionAsync(ModuleInstanceConfig config, string providerId,
-    string connectionString, SshTunnelConfig? sshTunnel = null, CancellationToken ct = default)
+    string connectionString, SshTunnelConfig? sshTunnel = null, string? displayName = null,
+    CancellationToken ct = default)
   {
     var provider = DatabaseProviderCatalog.Get(providerId);
     var oldCs = config.ConnectionString;
     var model = ModuleCatalog.Instance.ReadModelSource(config.Id) ?? string.Empty;
+
+    if (!string.IsNullOrWhiteSpace(displayName))
+      config.DisplayName = displayName.Trim();
 
     config.ProviderId = provider.Id;
     config.ConnectionString = connectionString;
@@ -144,7 +148,7 @@ public sealed class EfCoreModuleFactory
     var ns = config.FullNamespace;
     return
       $"await using var db = new {ns}.AppDbContext();\n" +
-      $"db.{entityName}s.Take({take}).Dump(\"{entityName}s\");";
+      $"db.Set<{ns}.{entityName}>().Take({take}).Dump(\"{entityName}\");";
   }
 
   public string BuildCountScript(ModuleInstanceConfig config, string tableName)
@@ -153,6 +157,6 @@ public sealed class EfCoreModuleFactory
     var ns = config.FullNamespace;
     return
       $"await using var db = new {ns}.AppDbContext();\n" +
-      $"db.{entityName}s.Count().Dump(\"{entityName} count\");";
+      $"db.Set<{ns}.{entityName}>().Count().Dump(\"{entityName} count\");";
   }
 }

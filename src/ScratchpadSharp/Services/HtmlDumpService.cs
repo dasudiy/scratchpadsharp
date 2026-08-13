@@ -10,13 +10,21 @@ public class HtmlDumpService
 {
     private static readonly Lazy<string> HtmlLoopTemplate = new(LoadHtmlLoopTemplate);
 
+    private readonly object _bufferLock = new();
     private Action<string>? _updateCallback;
     private readonly StringBuilder _contentBuffer = new();
     private readonly StringBuilder _textBuffer = new();
 
     public IDumpSink DumpSink { get; }
 
-    public string TextOutput => _textBuffer.ToString();
+    public string TextOutput
+    {
+        get
+        {
+            lock (_bufferLock)
+                return _textBuffer.ToString();
+        }
+    }
 
     public HtmlDumpService()
     {
@@ -30,15 +38,20 @@ public class HtmlDumpService
 
     public void Clear()
     {
-        _contentBuffer.Clear();
-        _textBuffer.Clear();
-        var output = HtmlLoopTemplate.Value.Replace("{{BODY}}", string.Empty);
+        string output;
+        lock (_bufferLock)
+        {
+            _contentBuffer.Clear();
+            _textBuffer.Clear();
+            output = HtmlLoopTemplate.Value.Replace("{{BODY}}", string.Empty);
+        }
         _updateCallback?.Invoke(output);
     }
 
     private void AppendPlainText(string text)
     {
-        _textBuffer.Append(text);
+        lock (_bufferLock)
+            _textBuffer.Append(text);
     }
 
     private void RenderHtml(object? data, string? label)
@@ -46,16 +59,23 @@ public class HtmlDumpService
         try
         {
             string htmlContent = data as string ?? data?.ToString() ?? string.Empty;
-            _contentBuffer.Append(htmlContent);
-
-            var output = HtmlLoopTemplate.Value.Replace("{{BODY}}", _contentBuffer.ToString());
+            string output;
+            lock (_bufferLock)
+            {
+                _contentBuffer.Append(htmlContent);
+                output = HtmlLoopTemplate.Value.Replace("{{BODY}}", _contentBuffer.ToString());
+            }
             _updateCallback?.Invoke(output);
         }
         catch (Exception ex)
         {
             var errorHtml = $"<div style='color:red'>Error rendering HTML: {ex.Message}</div>";
-            _contentBuffer.Append(errorHtml);
-            var output = HtmlLoopTemplate.Value.Replace("{{BODY}}", _contentBuffer.ToString());
+            string output;
+            lock (_bufferLock)
+            {
+                _contentBuffer.Append(errorHtml);
+                output = HtmlLoopTemplate.Value.Replace("{{BODY}}", _contentBuffer.ToString());
+            }
             _updateCallback?.Invoke(output);
         }
     }

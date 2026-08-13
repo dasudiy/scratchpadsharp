@@ -25,12 +25,20 @@ public class PackageService
 
     public async Task SaveAsync(ScriptPackage package, string path)
     {
-        var ext = Path.GetExtension(path).ToLowerInvariant();
-
-        if (ext == ".lqpkg")
+        if (IsZipPackage(path))
+        {
             await SaveAsZipAsync(package, path);
-        else
-            await SaveAsFolderAsync(package, path);
+            return;
+        }
+
+        var ext = Path.GetExtension(path);
+        if (!string.IsNullOrEmpty(ext) && !Directory.Exists(path))
+        {
+            throw new InvalidOperationException(
+                $"Cannot save a package over a file path ({path}). Use a .lqpkg file or a Developer Mode folder.");
+        }
+
+        await SaveAsFolderAsync(package, path);
     }
 
     public async Task<ScriptPackage> LoadAsync(string path)

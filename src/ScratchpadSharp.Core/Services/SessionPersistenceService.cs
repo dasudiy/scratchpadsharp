@@ -35,6 +35,8 @@ public static class SessionPersistenceService
         Directory.CreateDirectory(directory);
 
         var json = JsonSerializer.Serialize(session, JsonOptions);
-        File.WriteAllText(SessionFilePath, json);
+        var tempPath = SessionFilePath + ".tmp";
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, SessionFilePath, overwrite: true);
     }
 }

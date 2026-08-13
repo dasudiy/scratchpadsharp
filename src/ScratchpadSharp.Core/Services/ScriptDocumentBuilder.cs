@@ -48,7 +48,7 @@ public static class ScriptDocumentBuilder
         var wrapperBefore = configUsingsBlock + editorLeading + @"
 public class __ScriptRunner
 {
-    public static async Task<object?> __Execute()
+    public static async global::System.Threading.Tasks.Task<object?> __Execute(global::System.Threading.CancellationToken cancellationToken)
     {
     " + lineDirective + @"
         ";

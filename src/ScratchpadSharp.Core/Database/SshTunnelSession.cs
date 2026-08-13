@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 using Renci.SshNet;
 using ScratchpadSharp.Core.Security;
 using ScratchpadSharp.Shared.Models;
@@ -60,6 +61,12 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
             throw new InvalidOperationException($"{provider.DisplayName} connections do not use SSH tunnels.");
 
         var endpoint = DatabaseEndpoint.Parse(providerId, connectionString);
+        if (ssh.RemotePort <= 0 &&
+            DatabaseEndpoint.NeedsExplicitPortForNamedInstance(providerId, connectionString))
+        {
+            throw new InvalidOperationException(
+                "SQL Server named instances need an explicit port (Server=host,port) or an SSH remote port.");
+        }
         var remoteHost = string.IsNullOrWhiteSpace(ssh.RemoteHost) ? endpoint.Host : ssh.RemoteHost.Trim();
         var remotePort = ssh.RemotePort > 0 ? ssh.RemotePort : endpoint.Port;
         if (string.IsNullOrWhiteSpace(remoteHost))
@@ -141,9 +148,24 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
             {
                 KeepAliveInterval = TimeSpan.FromSeconds(30)
             };
-            client.HostKeyReceived += (_, e) => e.CanTrust = true;
+            var hostTrusted = false;
+            client.HostKeyReceived += (_, e) =>
+            {
+                hostTrusted = IsKnownHost(ssh.Host, ssh.Port);
+                e.CanTrust = hostTrusted;
+            };
 
-            await client.ConnectAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await client.ConnectAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!hostTrusted)
+            {
+                throw new InvalidOperationException(
+                    $"SSH host key for {ssh.Host}:{ssh.Port} is not in known_hosts. " +
+                    "Connect once from a terminal (`ssh user@host`) or use agent authentication.",
+                    ex);
+            }
 
             var boundPort = ssh.LocalPort > 0 ? (uint)ssh.LocalPort : 0u;
             forward = new ForwardedPortLocal("127.0.0.1", boundPort, remoteHost, (uint)remotePort);
@@ -175,45 +197,70 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
                      ?? throw new InvalidOperationException(
                          "SSH agent authentication requires the OpenSSH client (`ssh`) on PATH.");
 
-        var localPort = ssh.LocalPort > 0 ? ssh.LocalPort : GetFreeTcpPort();
-        var psi = new ProcessStartInfo
+        Exception? lastError = null;
+        var attempts = ssh.LocalPort > 0 ? 1 : 3;
+        for (var attempt = 0; attempt < attempts; attempt++)
         {
-            FileName = sshExe,
-            UseShellExecute = false,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            CreateNoWindow = true
-        };
-        psi.ArgumentList.Add("-N");
-        psi.ArgumentList.Add("-o");
-        psi.ArgumentList.Add("BatchMode=yes");
-        psi.ArgumentList.Add("-o");
-        psi.ArgumentList.Add("ExitOnForwardFailure=yes");
-        psi.ArgumentList.Add("-o");
-        psi.ArgumentList.Add("ServerAliveInterval=30");
-        psi.ArgumentList.Add("-L");
-        psi.ArgumentList.Add($"127.0.0.1:{localPort}:{remoteHost}:{remotePort}");
-        psi.ArgumentList.Add("-p");
-        psi.ArgumentList.Add(ssh.Port.ToString());
-        psi.ArgumentList.Add($"{ssh.Username.Trim()}@{ssh.Host.Trim()}");
+            var localPort = ssh.LocalPort > 0 ? ssh.LocalPort : GetFreeTcpPort();
+            var stderr = new StringBuilder();
+            var psi = new ProcessStartInfo
+            {
+                FileName = sshExe,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("-N");
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("BatchMode=yes");
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("ExitOnForwardFailure=yes");
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("ServerAliveInterval=30");
+            psi.ArgumentList.Add("-L");
+            psi.ArgumentList.Add($"127.0.0.1:{localPort}:{remoteHost}:{remotePort}");
+            psi.ArgumentList.Add("-p");
+            psi.ArgumentList.Add(ssh.Port.ToString());
+            psi.ArgumentList.Add($"{ssh.Username.Trim()}@{ssh.Host.Trim()}");
 
-        Process? process = null;
-        try
-        {
-            process = Process.Start(psi)
-                      ?? throw new InvalidOperationException("Failed to start the OpenSSH client.");
+            Process? process = null;
+            try
+            {
+                process = Process.Start(psi)
+                          ?? throw new InvalidOperationException("Failed to start the OpenSSH client.");
+                process.OutputDataReceived += (_, _) => { };
+                process.ErrorDataReceived += (_, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        lock (stderr) stderr.AppendLine(e.Data);
+                };
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
 
-            await WaitForLocalPortAsync(process, localPort, ct).ConfigureAwait(false);
-            return new OpenedTunnel(localPort, null, null, process, null);
+                await WaitForLocalPortAsync(process, localPort, () =>
+                {
+                    lock (stderr) return stderr.ToString();
+                }, ct).ConfigureAwait(false);
+                return new OpenedTunnel(localPort, null, null, process, null);
+            }
+            catch (Exception ex) when (ssh.LocalPort <= 0 && attempt < attempts - 1)
+            {
+                lastError = ex;
+                TryKill(process);
+            }
+            catch
+            {
+                TryKill(process);
+                throw;
+            }
         }
-        catch
-        {
-            TryKill(process);
-            throw;
-        }
+
+        throw lastError ?? new InvalidOperationException("Failed to open an SSH tunnel.");
     }
 
-    private static async Task WaitForLocalPortAsync(Process process, int localPort, CancellationToken ct)
+    private static async Task WaitForLocalPortAsync(
+        Process process, int localPort, Func<string> readStderr, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
         while (DateTime.UtcNow < deadline)
@@ -221,11 +268,11 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
             ct.ThrowIfCancellationRequested();
             if (process.HasExited)
             {
-                var stderr = await process.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
+                var stderr = readStderr().Trim();
                 throw new InvalidOperationException(
                     string.IsNullOrWhiteSpace(stderr)
                         ? $"ssh exited with code {process.ExitCode}."
-                        : stderr.Trim());
+                        : stderr);
             }
 
             try
@@ -273,7 +320,13 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
         keyboard.AuthenticationPrompt += (_, e) =>
         {
             foreach (var prompt in e.Prompts)
-                prompt.Response = password;
+            {
+                var text = prompt.Request ?? string.Empty;
+                prompt.Response = text.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                                  e.Prompts.Count == 1
+                    ? password
+                    : string.Empty;
+            }
         };
 
         return
@@ -293,8 +346,14 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
         return [new PrivateKeyAuthenticationMethod(ssh.Username.Trim(), keyFile)];
     }
 
+    private static string? cachedOpenSshClient;
+    private static bool openSshClientResolved;
+
     private static string? FindOpenSshClient()
     {
+        if (openSshClientResolved)
+            return cachedOpenSshClient;
+
         var names = OperatingSystem.IsWindows() ? new[] { "ssh.exe", "ssh" } : new[] { "ssh" };
         foreach (var name in names)
         {
@@ -318,6 +377,8 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
                     continue;
                 }
 
+                cachedOpenSshClient = name;
+                openSshClientResolved = true;
                 return name;
             }
             catch
@@ -326,7 +387,43 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
             }
         }
 
+        openSshClientResolved = true;
         return null;
+    }
+
+    private static bool IsKnownHost(string host, int port)
+    {
+        host = host.Trim();
+        if (string.IsNullOrEmpty(host))
+            return false;
+
+        var lookup = port is 22 or 0 ? host : $"[{host}]:{port}";
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "ssh-keygen",
+                ArgumentList = { "-F", lookup },
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var probe = Process.Start(psi);
+            if (probe == null)
+                return false;
+            if (!probe.WaitForExit(2000))
+            {
+                TryKill(probe);
+                return false;
+            }
+
+            return probe.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static int GetFreeTcpPort()

@@ -84,6 +84,13 @@ public class SignatureHelpHandler
         _signatureHelpWindow = null;
     }
 
+    public void Detach()
+    {
+        HideSignatureHelp();
+        if (_editor.TextArea != null)
+            _editor.TextArea.Caret.PositionChanged -= OnCaretPositionChanged;
+    }
+
     private void OnCaretPositionChanged(object? sender, EventArgs e)
     {
         TriggerUpdate(UpdateDebounceMs);

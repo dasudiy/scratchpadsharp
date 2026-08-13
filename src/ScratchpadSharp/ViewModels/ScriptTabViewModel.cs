@@ -35,6 +35,7 @@ public class ScriptTabViewModel : ReactiveObject
     private readonly HtmlDumpService htmlDumpService;
     private CancellationTokenSource? executeCts;
     private Task packageResolveTask = Task.CompletedTask;
+    private string savedCode = string.Empty;
 
     public ScriptTabViewModel(IScriptExecutionService scriptService, bool deferInitialization = false)
     {
@@ -85,7 +86,11 @@ public class ScriptTabViewModel : ReactiveObject
     public string CodeText
     {
         get => codeText;
-        set => this.RaiseAndSetIfChanged(ref codeText, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref codeText, value);
+            this.RaisePropertyChanged(nameof(IsDirty));
+        }
     }
 
     public string Output
@@ -110,6 +115,8 @@ public class ScriptTabViewModel : ReactiveObject
         get => isExecuting;
         set => this.RaiseAndSetIfChanged(ref isExecuting, value);
     }
+
+    public bool IsDirty => CodeText != savedCode;
 
     public bool ShowHtmlOutput
     {
@@ -193,6 +200,7 @@ public class ScriptTabViewModel : ReactiveObject
         try
         {
             projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
+            MarkClean();
             MarkProjectReady();
             packageResolveTask = ResolvePackagesInBackgroundAsync();
         }
@@ -216,6 +224,7 @@ public class ScriptTabViewModel : ReactiveObject
             StatusText = "New file created";
             htmlDumpService.Clear();
             MarkProjectReady();
+            MarkClean();
             packageResolveTask = ResolvePackagesInBackgroundAsync();
         }
         catch (Exception ex)
@@ -223,6 +232,12 @@ public class ScriptTabViewModel : ReactiveObject
             StatusText = $"New file failed: {ex.Message}";
             MarkProjectReady();
         }
+    }
+
+    private void MarkClean()
+    {
+        savedCode = CodeText ?? string.Empty;
+        this.RaisePropertyChanged(nameof(IsDirty));
     }
 
     private void MarkProjectReady()
@@ -287,6 +302,7 @@ public class ScriptTabViewModel : ReactiveObject
             StatusText = $"Opened: {Title}";
             htmlDumpService.Clear();
             MarkProjectReady();
+            MarkClean();
             packageResolveTask = needsPackageResolve
                 ? ResolvePackagesInBackgroundAsync()
                 : Task.CompletedTask;
@@ -344,6 +360,7 @@ public class ScriptTabViewModel : ReactiveObject
 
             packageResolveTask = Task.CompletedTask;
             ArePackagesLoading = false;
+            MarkClean();
         }
         finally
         {
@@ -367,6 +384,7 @@ public class ScriptTabViewModel : ReactiveObject
 
         Title = Path.GetFileName(projectContext.SourcePath);
         StatusText = $"Saved: {Title}";
+        MarkClean();
     }
 
     public void SetSourcePath(string filePath)
@@ -425,8 +443,6 @@ public class ScriptTabViewModel : ReactiveObject
         {
             ArePackagesLoading = false;
         }
-
-        await RunExecuteAsync();
     }
 
     private async Task FormatCodeAsync()
@@ -444,7 +460,9 @@ public class ScriptTabViewModel : ReactiveObject
 
     private async Task ExecuteAsync()
     {
-        executeCts?.Dispose();
+        if (IsExecuting)
+            return;
+
         executeCts = new CancellationTokenSource();
         var token = executeCts.Token;
 
@@ -459,6 +477,7 @@ public class ScriptTabViewModel : ReactiveObject
                 token.ThrowIfCancellationRequested();
             }
 
+            projectContext.Code = CodeText;
             await ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
 
             StatusText = "Executing...";

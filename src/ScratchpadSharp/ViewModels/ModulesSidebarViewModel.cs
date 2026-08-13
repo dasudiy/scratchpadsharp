@@ -109,7 +109,7 @@ public class ModulesSidebarViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> Take100Command { get; }
     public ReactiveCommand<Unit, Unit> CountCommand { get; }
 
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
     {
         IsBusy = true;
 
@@ -142,8 +142,8 @@ public class ModulesSidebarViewModel : ReactiveObject
                     InstanceId = instance.Id,
                     IsExpanded = false
                 };
-
-                await PopulateInstanceChildrenAsync(instanceNode, instance.Id);
+                instanceNode.Children.Add(CreateLoadingNode("Expand to load schema"));
+                instanceNode.PropertyChanged += OnInstanceNodePropertyChanged;
                 efSection.Children.Add(instanceNode);
             }
 
@@ -164,6 +164,22 @@ public class ModulesSidebarViewModel : ReactiveObject
             efSection.IsLoading = false;
             IsBusy = false;
         }
+
+        return Task.CompletedTask;
+    }
+
+    private async void OnInstanceNodePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender is not ModuleTreeNode node)
+            return;
+        if (e.PropertyName != nameof(ModuleTreeNode.IsExpanded) || !node.IsExpanded)
+            return;
+        if (string.IsNullOrEmpty(node.InstanceId))
+            return;
+        if (node.Children.Any(c => c.NodeKind is "Table" or "Error"))
+            return;
+
+        await PopulateInstanceChildrenAsync(node, node.InstanceId);
     }
 
     private static ModuleTreeNode CreateLoadingNode(string message) =>
@@ -290,11 +306,10 @@ public class ModulesSidebarViewModel : ReactiveObject
                 existing,
                 dialog.SavedProviderId!,
                 dialog.SavedConnectionString!,
-                dialog.SavedSshTunnel);
-            existing.DisplayName = dialog.SavedDisplayName!;
-            ModuleCatalog.Instance.Save(existing, ModuleCatalog.Instance.ReadModelSource(instanceId) ?? string.Empty);
+                dialog.SavedSshTunnel,
+                dialog.SavedDisplayName);
             await RefreshAsync();
-            StatusText = $"Updated {existing.DisplayName}";
+            StatusText = $"Updated {dialog.SavedDisplayName}";
         }
         catch (Exception ex)
         {
@@ -306,11 +321,20 @@ public class ModulesSidebarViewModel : ReactiveObject
         }
     }
 
-    private Task DeleteInstanceAsync()
+    private async Task DeleteInstanceAsync()
     {
         var instanceId = SelectedNode?.InstanceId;
         if (instanceId == null)
-            return Task.CompletedTask;
+            return;
+
+        var existing = ModuleCatalog.Instance.TryGet(instanceId);
+        var name = existing?.DisplayName ?? instanceId;
+        var main = Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+        if (!await Views.ConfirmWindow.ConfirmAsync(
+                main?.MainWindow,
+                "Delete connection",
+                $"Delete '{name}'? This removes the saved module and cannot be undone."))
+            return;
 
         ModuleCatalog.Instance.Delete(instanceId);
 
@@ -322,8 +346,6 @@ public class ModulesSidebarViewModel : ReactiveObject
         StatusText = efSection != null
             ? $"{efSection.Children.Count} database(s)"
             : "Module deleted";
-
-        return Task.CompletedTask;
     }
 
     private async Task RegenerateModelAsync()
@@ -413,7 +435,7 @@ public class ModulesSidebarViewModel : ReactiveObject
         try
         {
             await openModuleQueryAsync(config.Id, title, script);
-            StatusText = countOnly ? "Count query executed" : $"Take({take}) query executed";
+            StatusText = countOnly ? "Count query opened" : $"Take({take}) query opened";
         }
         catch (Exception ex)
         {

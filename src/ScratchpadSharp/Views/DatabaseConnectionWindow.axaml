@@ -12,16 +12,18 @@
         WindowStartupLocation="CenterOwner"
         CanResize="True"
         Opened="OnOpened">
-  <Border Padding="20" Background="#FBFCFD">
+  <Border Padding="20" Background="{StaticResource SurfaceBrush}">
     <ScrollViewer MaxHeight="680" VerticalScrollBarVisibility="Auto">
     <StackPanel Spacing="14" MaxWidth="540">
       <TextBlock Text="Add database connection"
                  FontWeight="SemiBold"
                  FontSize="16"
+                 Foreground="{StaticResource TextPrimaryBrush}"
                  IsVisible="{Binding !IsEdit}" />
       <TextBlock Text="Edit database connection"
                  FontWeight="SemiBold"
                  FontSize="16"
+                 Foreground="{StaticResource TextPrimaryBrush}"
                  IsVisible="{Binding IsEdit}" />
 
       <DockPanel LastChildFill="True">
@@ -143,6 +145,11 @@
                      FontSize="11.5"
                      Opacity="0.75"
                      IsVisible="{Binding SshEnabled}" />
+          <TextBlock Text="The tunnel rewrites the server to 127.0.0.1. If Encrypt is Strict, enable Trust server certificate or login will fail hostname checks."
+                     TextWrapping="Wrap"
+                     FontSize="11.5"
+                     Opacity="0.75"
+                     IsVisible="{Binding SshEnabled}" />
 
           <StackPanel Spacing="8" IsVisible="{Binding SshEnabled}">
             <DockPanel LastChildFill="True">
@@ -217,17 +224,18 @@
       </Expander>
 
       <TextBlock Text="{Binding ParseError}"
-                 Foreground="#C62828"
+                 Foreground="{StaticResource DangerBrush}"
                  FontSize="11.5"
                  TextWrapping="Wrap"
                  IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-      <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap"
+                 Foreground="{StaticResource TextSecondaryBrush}" />
 
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
         <Button Content="Test connection" Command="{Binding TestConnectionCommand}" />
         <Button Content="Cancel" Command="{Binding CancelCommand}" Click="OnCancelClick" />
         <Button Content="Save" Command="{Binding SaveCommand}" Click="OnSaveClick"
-                Background="#4C6EF5" Foreground="White" />
+                Background="{StaticResource AccentBrush}" Foreground="{StaticResource TextOnDarkBrush}" />
       </StackPanel>
     </StackPanel>
     </ScrollViewer>

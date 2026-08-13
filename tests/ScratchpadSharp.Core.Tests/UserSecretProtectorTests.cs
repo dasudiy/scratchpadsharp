@@ -22,6 +22,8 @@ public static class UserSecretProtectorTests
         failures += Run(nameof(Unlock_PromptsWhenBlobCannotBeOpened), Unlock_PromptsWhenBlobCannotBeOpened);
         failures += Run(nameof(Unlock_HeadlessWithoutPrompt_FailsClearly), Unlock_HeadlessWithoutPrompt_FailsClearly);
         failures += Run(nameof(SqlAuth_RequiresPassword_WhenUserIdSet), SqlAuth_RequiresPassword_WhenUserIdSet);
+        failures += Run(nameof(ProtectInPlace_KeepsSshSecret_WhenEmptyFormMergesBlob), ProtectInPlace_KeepsSshSecret_WhenEmptyFormMergesBlob);
+        failures += Run(nameof(ProtectInPlace_EmptySshPassword_StaysEmpty), ProtectInPlace_EmptySshPassword_StaysEmpty);
         return failures;
     }
 
@@ -229,6 +231,49 @@ public static class UserSecretProtectorTests
         return needs && !windows &&
                ConnectionStringBuilderFactory.GetPassword(DatabaseProviderIds.SqlServer, stripped).Length == 0 &&
                ConnectionStringBuilderFactory.GetPassword(DatabaseProviderIds.SqlServer, restored) == "hidden";
+    }
+
+    private static bool ProtectInPlace_KeepsSshSecret_WhenEmptyFormMergesBlob()
+    {
+        var stored = UserSecretProtector.Protect("ssh-secret");
+        var formPassword = string.Empty;
+        var config = new ModuleInstanceConfig
+        {
+            ProviderId = DatabaseProviderIds.SqlServer,
+            ConnectionString = "Server=db;Database=app;Integrated Security=True;TrustServerCertificate=True",
+            SshTunnel = new SshTunnelConfig
+            {
+                Enabled = true,
+                Host = "bastion",
+                Username = "deploy",
+                AuthMethod = SshAuthMethod.Password,
+                Password = string.IsNullOrEmpty(formPassword) ? stored : formPassword
+            }
+        };
+
+        ModuleSecrets.ProtectInPlace(config);
+        return UserSecretProtector.TryUnprotect(config.SshTunnel!.Password, out var plain) &&
+               plain == "ssh-secret";
+    }
+
+    private static bool ProtectInPlace_EmptySshPassword_StaysEmpty()
+    {
+        var config = new ModuleInstanceConfig
+        {
+            ProviderId = DatabaseProviderIds.SqlServer,
+            ConnectionString = "Server=db;Database=app;Integrated Security=True;TrustServerCertificate=True",
+            SshTunnel = new SshTunnelConfig
+            {
+                Enabled = false,
+                Host = "bastion",
+                Username = "deploy",
+                AuthMethod = SshAuthMethod.Password,
+                Password = string.Empty
+            }
+        };
+
+        ModuleSecrets.ProtectInPlace(config);
+        return config.SshTunnel!.Password == string.Empty;
     }
 
     private sealed class FakePrompt : IUserSecretPrompt

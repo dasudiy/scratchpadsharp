@@ -4,9 +4,11 @@ public static class DumpExtension
 {
     public static IDumpSink Sink { get; private set; }
 
+    private static readonly IDumpSink NullSink = new NullDumpSink();
+
     static DumpExtension()
     {
-        Sink = new NullDumpSink();
+        Sink = NullSink;
     }
 
     public static void UseSink(IDumpSink sink)
@@ -14,6 +16,8 @@ public static class DumpExtension
         ArgumentNullException.ThrowIfNull(sink);
         Sink = sink;
     }
+
+    public static void ResetSink() => Sink = NullSink;
 
     /// <summary>
     /// Dumps an object, or value, to the results console.

@@ -64,6 +64,24 @@ public static class DatabaseEndpoint
         return new DatabaseHostPort(StripSqlInstanceName(dataSource), defaultPort > 0 ? defaultPort : 1433);
     }
 
+    public static bool NeedsExplicitPortForNamedInstance(string providerId, string connectionString)
+    {
+        if (!string.Equals(providerId, DatabaseProviderIds.SqlServer, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        var dataSource = (builder.DataSource ?? string.Empty).Trim();
+        if (dataSource.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase))
+            dataSource = dataSource[4..].Trim();
+
+        var slash = dataSource.IndexOf('\\');
+        if (slash < 0)
+            return false;
+
+        var comma = dataSource.LastIndexOf(',');
+        return comma < 0 || comma < slash;
+    }
+
     /// <summary>SSH forwards a TCP host, not a SQL Server named instance.</summary>
     private static string StripSqlInstanceName(string host)
     {

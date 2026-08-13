@@ -37,6 +37,8 @@ public class DatabaseConnectionViewModel : ReactiveObject
     private string sshRemoteHost = string.Empty;
     private decimal sshRemotePort;
     private decimal sshLocalPort;
+    private string storedSshPassword = string.Empty;
+    private string storedSshPassphrase = string.Empty;
 
     public DatabaseConnectionViewModel(ModuleInstanceConfig? existing = null)
     {
@@ -371,6 +373,8 @@ public class DatabaseConnectionViewModel : ReactiveObject
         SshLocalPort = ssh?.LocalPort ?? 0;
         var method = ssh?.AuthMethod ?? SshAuthMethod.Agent;
         SelectedSshAuthMethod = SshAuthMethods.FirstOrDefault(m => m.Value == method) ?? SshAuthMethods[0];
+        storedSshPassword = ssh?.Password ?? string.Empty;
+        storedSshPassphrase = ssh?.Passphrase ?? string.Empty;
 
         if (ModuleSecrets.TryRevealSshPassword(ssh, out var password))
             SshPassword = password;
@@ -401,9 +405,9 @@ public class DatabaseConnectionViewModel : ReactiveObject
             Port = ToPort(SshPort, 22),
             Username = SshUsername.Trim(),
             AuthMethod = SelectedSshAuthMethod?.Value ?? SshAuthMethod.Agent,
-            Password = SshPassword,
+            Password = string.IsNullOrEmpty(SshPassword) ? storedSshPassword : SshPassword,
             PrivateKeyPath = SshPrivateKeyPath.Trim(),
-            Passphrase = SshPassphrase,
+            Passphrase = string.IsNullOrEmpty(SshPassphrase) ? storedSshPassphrase : SshPassphrase,
             RemoteHost = SshRemoteHost.Trim(),
             RemotePort = ToPort(SshRemotePort, 0),
             LocalPort = ToPort(SshLocalPort, 0)
@@ -520,7 +524,10 @@ public class DatabaseConnectionViewModel : ReactiveObject
             var cs = GetEffectiveConnectionString();
             var ssh = BuildSshTunnelConfig();
             if (ssh is { Enabled: true })
+            {
                 SshTunnelSession.Validate(ssh);
+                EnsureNamedInstanceHasPort(cs, ssh);
+            }
 
             var result = await EfCoreModuleFactory.Instance.TestConnectionAsync(SelectedProvider.Id, cs, ssh);
             StatusText = result.Success
@@ -554,7 +561,10 @@ public class DatabaseConnectionViewModel : ReactiveObject
         {
             ssh = BuildSshTunnelConfig();
             if (ssh is { Enabled: true })
+            {
                 SshTunnelSession.Validate(ssh);
+                EnsureNamedInstanceHasPort(cs, ssh);
+            }
         }
         catch (Exception ex)
         {
@@ -567,6 +577,19 @@ public class DatabaseConnectionViewModel : ReactiveObject
         SavedConnectionString = cs;
         SavedSshTunnel = ssh;
         WasSaved = true;
+    }
+
+    private void EnsureNamedInstanceHasPort(string connectionString, SshTunnelConfig ssh)
+    {
+        if (SelectedProvider == null)
+            return;
+        if (ssh.RemotePort > 0)
+            return;
+        if (!DatabaseEndpoint.NeedsExplicitPortForNamedInstance(SelectedProvider.Id, connectionString))
+            return;
+
+        throw new InvalidOperationException(
+            "SQL Server named instances need an explicit port (Server=host,port) or an SSH remote port.");
     }
 
     private string GetEffectiveConnectionString()

@@ -47,8 +47,12 @@ public partial class ScriptTabView : UserControl
         TryInitializeEditor();
     }
 
-    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e) =>
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
         ApplicationSettings.Changed -= OnApplicationSettingsChanged;
+        DetachEditorHooks();
+        _isEditorInitialized = false;
+    }
 
     private void OnApplicationSettingsChanged() =>
         Dispatcher.UIThread.Post(ApplyEditorSettings);
@@ -66,6 +70,7 @@ public partial class ScriptTabView : UserControl
         if (viewModel != null)
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
+        DetachEditorHooks();
         _isEditorInitialized = false;
         _codeCompletionHandler = null;
         _signatureHelpHandler = null;
@@ -86,6 +91,26 @@ public partial class ScriptTabView : UserControl
         }
 
         InitializeEditor();
+    }
+
+    private void DetachEditorHooks()
+    {
+        if (CodeEditor == null)
+            return;
+
+        CodeEditor.TextChanged -= OnCodeEditorTextChanged;
+        CodeEditor.PointerWheelChanged -= OnPointerWheelChanged;
+        if (CodeEditor.TextArea != null)
+        {
+            CodeEditor.TextArea.Caret.PositionChanged -= OnCaretPositionChanged;
+            CodeEditor.TextArea.TextEntered -= OnTextEntered;
+            CodeEditor.TextArea.TextEntering -= OnTextEntering;
+            CodeEditor.TextArea.RemoveHandler(InputElement.KeyDownEvent, OnEditorKeyDown);
+            if (_errorRenderer != null)
+                CodeEditor.TextArea.TextView.BackgroundRenderers.Remove(_errorRenderer);
+        }
+
+        _signatureHelpHandler?.Detach();
     }
 
     private void InitializeEditor()

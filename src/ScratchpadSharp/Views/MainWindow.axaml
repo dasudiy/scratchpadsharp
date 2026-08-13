@@ -154,7 +154,7 @@
                                Classes="rider-status-text"
                                Margin="0,0,12,0" />
                     <Border Classes="rider-status-sep" Margin="0,0,12,0" />
-                    <TextBlock Text="4 spaces"
+                    <TextBlock Text="{Binding IndentLabel}"
                                Classes="rider-status-text" />
                 </StackPanel>
             </Grid>

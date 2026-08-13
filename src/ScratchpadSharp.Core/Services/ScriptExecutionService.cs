@@ -154,7 +154,7 @@ public class ScriptExecutionService : IScriptExecutionService
         List<string>? runtimeReferences = null)
     {
         ScriptAssemblyLoadContext? alc = null;
-        WeakReference? alcWeakRef = null;
+        Task<object?>? executeTask = null;
 
         try
         {
@@ -182,7 +182,6 @@ public class ScriptExecutionService : IScriptExecutionService
                 additionalPaths.Add(nugetPackagesPath);
 
             alc = new ScriptAssemblyLoadContext(null, additionalPaths, runtimeReferences);
-            alcWeakRef = new WeakReference(alc);
 
             var assembly = alc.LoadFromStream(assemblyStream);
 
@@ -190,7 +189,12 @@ public class ScriptExecutionService : IScriptExecutionService
             if (type == null)
                 return FailExecution(sink, "Could not find script runner type");
 
-            var method = type.GetMethod("__Execute", BindingFlags.Public | BindingFlags.Static);
+            var method = type.GetMethod(
+                "__Execute",
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: [typeof(CancellationToken)],
+                modifiers: null);
             if (method == null)
                 return FailExecution(sink, "Could not find script entry point");
 
@@ -212,19 +216,35 @@ public class ScriptExecutionService : IScriptExecutionService
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(config.TimeoutSeconds));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
-                var executeTask = method.Invoke(null, null) as Task<object?>;
+                executeTask = method.Invoke(null, [linkedCts.Token]) as Task<object?>;
                 if (executeTask == null)
                     return FailExecution(sink, "Method invocation failed");
 
-                await executeTask.WaitAsync(linkedCts.Token);
-                var returnValue = await executeTask;
-
-                return new ScriptExecutionResult
+                try
                 {
-                    Success = true,
-                    Output = outputWriter.ToString(),
-                    ReturnValue = returnValue
-                };
+                    await executeTask.WaitAsync(linkedCts.Token);
+                    var returnValue = await executeTask;
+
+                    return new ScriptExecutionResult
+                    {
+                        Success = true,
+                        Output = outputWriter.ToString(),
+                        ReturnValue = returnValue
+                    };
+                }
+                catch (OperationCanceledException)
+                {
+                    try
+                    {
+                        await executeTask.WaitAsync(TimeSpan.FromSeconds(2));
+                    }
+                    catch
+                    {
+                        /* script ignored cancellationToken and is still running */
+                    }
+
+                    throw;
+                }
             }
             finally
             {
@@ -251,41 +271,10 @@ public class ScriptExecutionService : IScriptExecutionService
         }
         finally
         {
-            // Cleanup: Unload the ALC
-            if (alc != null)
-            {
-                alc.Unload();
-
-                // Monitor GC collection (async fire-and-forget)
-                if (alcWeakRef != null)
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        const int monitorDurationMs = 10_000;
-                        const int pollIntervalMs = 500;
-                        var deadline = Environment.TickCount64 + monitorDurationMs;
-
-                        while (alcWeakRef.IsAlive && Environment.TickCount64 < deadline)
-                        {
-                            GC.Collect();
-                            GC.WaitForPendingFinalizers();
-                            GC.Collect();
-                            await Task.Delay(pollIntervalMs);
-                        }
-
-                        if (!alcWeakRef.IsAlive)
-                        {
-                            Console.WriteLine("[ALC] Successfully collected");
-                        }
-                        else
-                        {
-                            Console.WriteLine("[ALC] Warning: Not collected after 10 seconds");
-                        }
-                    });
-                }
-            }
-
-            assemblyStream?.Dispose();
+            DumpExtension.ResetSink();
+            if (executeTask is null or { IsCompleted: true })
+                alc?.Unload();
+            assemblyStream.Dispose();
         }
     }
 
@@ -312,6 +301,7 @@ public class ScriptExecutionService : IScriptExecutionService
     {
         private readonly StringWriter _backingWriter;
         private readonly Action<string> _onWrite;
+        private readonly StringBuilder _pending = new();
 
         public RealTimeConsoleWriter(StringWriter backingWriter, Action<string> onWrite)
         {
@@ -322,19 +312,43 @@ public class ScriptExecutionService : IScriptExecutionService
         public override void Write(char value)
         {
             _backingWriter.Write(value);
-            _onWrite(value.ToString());
+            _pending.Append(value);
+            if (value == '\n')
+                FlushPending();
         }
 
         public override void Write(string? value)
         {
             _backingWriter.Write(value);
-            if (value != null) _onWrite(value);
+            if (string.IsNullOrEmpty(value))
+                return;
+            _pending.Append(value);
+            if (value.Contains('\n'))
+                FlushPending();
         }
 
         public override void WriteLine(string? value)
         {
             _backingWriter.WriteLine(value);
-            if (value != null) _onWrite(value + Environment.NewLine);
+            _pending.Append(value);
+            _pending.Append(Environment.NewLine);
+            FlushPending();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                FlushPending();
+            base.Dispose(disposing);
+        }
+
+        private void FlushPending()
+        {
+            if (_pending.Length == 0)
+                return;
+            var text = _pending.ToString();
+            _pending.Clear();
+            _onWrite(text);
         }
 
         public override Encoding Encoding => _backingWriter.Encoding;

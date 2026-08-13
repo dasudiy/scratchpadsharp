@@ -49,7 +49,7 @@ public class MainWindowViewModel : ReactiveObject
         ModulesSidebar = dockFactory.ModulesSidebar;
 
         NewTabCommand = ReactiveCommand.Create(AddTab);
-        CloseTabCommand = ReactiveCommand.Create(CloseSelectedTab,
+        CloseTabCommand = ReactiveCommand.CreateFromTask(CloseSelectedTabAsync,
             this.WhenAnyValue(x => x.SelectedTab).Select(tab => tab != null));
         OpenCommand = ReactiveCommand.CreateFromTask(OpenAsync);
         OpenFolderCommand = ReactiveCommand.CreateFromTask(OpenFolderAsync);
@@ -68,6 +68,8 @@ public class MainWindowViewModel : ReactiveObject
         ManageReferencesCommand = ReactiveCommand.Create(OpenReferenceManager, SelectedTabReady);
         OpenSettingsCommand = ReactiveCommand.Create(OpenSettings);
         ExitCommand = ReactiveCommand.Create(Exit);
+
+        ApplicationSettings.Changed += () => this.RaisePropertyChanged(nameof(IndentLabel));
 
         _ = RestoreSessionAsync();
     }
@@ -101,6 +103,7 @@ public class MainWindowViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(StatusText));
             this.RaisePropertyChanged(nameof(StatusBarPath));
             this.RaisePropertyChanged(nameof(CursorPosition));
+            this.RaisePropertyChanged(nameof(IndentLabel));
         }
     }
 
@@ -110,6 +113,8 @@ public class MainWindowViewModel : ReactiveObject
         SelectedTab != null ? $"ScratchpadSharp › {SelectedTab.Title}" : "ScratchpadSharp";
 
     public string CursorPosition => SelectedTab?.CursorPosition ?? "1:1";
+
+    public string IndentLabel => $"{ApplicationSettings.TabSize} spaces";
 
     public Window? MainWindow
     {
@@ -281,6 +286,16 @@ public class MainWindowViewModel : ReactiveObject
         SessionPersistenceService.Save(session);
     }
 
+    public bool HasDirtyTabs => Tabs.Any(tab => tab.IsDirty);
+
+    public async Task<bool> ConfirmDiscardUnsavedAsync(string? title = null)
+    {
+        return await Views.ConfirmWindow.ConfirmAsync(
+            MainWindow,
+            title ?? "Unsaved changes",
+            "Discard unsaved changes?");
+    }
+
     public void CloseTab(ScriptTabViewModel tab)
     {
         if (!dockFactory.TryGetDocument(tab, out var document))
@@ -289,10 +304,13 @@ public class MainWindowViewModel : ReactiveObject
         dockFactory.CloseDockable(document);
     }
 
-    private void CloseSelectedTab()
+    private async Task CloseSelectedTabAsync()
     {
-        if (SelectedTab != null)
-            CloseTab(SelectedTab);
+        if (SelectedTab == null)
+            return;
+        if (SelectedTab.IsDirty && !await ConfirmDiscardUnsavedAsync())
+            return;
+        CloseTab(SelectedTab);
     }
 
     private async Task OpenAsync()
@@ -301,6 +319,12 @@ public class MainWindowViewModel : ReactiveObject
 
         try
         {
+            if (SelectedTab.IsDirty && !await ConfirmDiscardUnsavedAsync("Open file"))
+            {
+                SelectedTab.StatusText = "Open cancelled";
+                return;
+            }
+
             SelectedTab.StatusText = "Opening file...";
 
             var filePath = await ShowOpenFileDialogAsync();
@@ -327,6 +351,12 @@ public class MainWindowViewModel : ReactiveObject
 
         try
         {
+            if (SelectedTab.IsDirty && !await ConfirmDiscardUnsavedAsync("Open folder"))
+            {
+                SelectedTab.StatusText = "Open cancelled";
+                return;
+            }
+
             SelectedTab.StatusText = "Opening folder package...";
             var folderPath = await ShowOpenFolderDialogAsync("Open Developer Mode package folder");
             if (folderPath == null)
@@ -401,9 +431,21 @@ public class MainWindowViewModel : ReactiveObject
 
         try
         {
-            var folderPath = await ShowOpenFolderDialogAsync("Save as Developer Mode folder");
+            var folderPath = await ShowOpenFolderDialogAsync("Choose parent folder for Developer Mode package");
             if (string.IsNullOrEmpty(folderPath)) return;
 
+            var suggested = SanitizeFolderName(SelectedTab.Title);
+            var name = await Views.ConfirmWindow.PromptAsync(
+                MainWindow,
+                "Save as folder",
+                "Folder name (leave empty to use the selected folder).",
+                suggested);
+            if (name == null)
+                return;
+            if (!string.IsNullOrWhiteSpace(name))
+                folderPath = Path.Combine(folderPath, SanitizeFolderName(name));
+
+            Directory.CreateDirectory(folderPath);
             SelectedTab.SetSourcePath(folderPath);
             await SaveAsync();
             SelectedTab.StatusText = $"Saved developer folder: {Path.GetFileName(folderPath)}";
@@ -592,5 +634,14 @@ public class MainWindowViewModel : ReactiveObject
         });
 
         return file?.Path.LocalPath;
+    }
+
+    private static string SanitizeFolderName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name == "Untitled")
+            return "script";
+        foreach (var c in Path.GetInvalidFileNameChars())
+            name = name.Replace(c, '_');
+        return name.Trim();
     }
 }

@@ -2,6 +2,8 @@ using System;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
+using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.ViewModels;
 
 namespace ScratchpadSharp.Views;
@@ -12,14 +14,39 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         TrySetWindowIcon();
-        Closing += (_, _) =>
+        Closing += OnClosing;
+    }
+
+    private bool allowClose;
+
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        if (allowClose)
         {
-            if (DataContext is MainWindowViewModel vm)
+            vm.SaveSession();
+            vm.CleanupAllTabs();
+            return;
+        }
+
+        if (vm.HasDirtyTabs && !ApplicationSettings.RestoreSessionOnStartup)
+        {
+            e.Cancel = true;
+            Dispatcher.UIThread.Post(async () =>
             {
-                vm.SaveSession();
-                vm.CleanupAllTabs();
-            }
-        };
+                if (await vm.ConfirmDiscardUnsavedAsync("Close ScratchpadSharp"))
+                {
+                    allowClose = true;
+                    Close();
+                }
+            });
+            return;
+        }
+
+        vm.SaveSession();
+        vm.CleanupAllTabs();
     }
 
     private void TrySetWindowIcon()

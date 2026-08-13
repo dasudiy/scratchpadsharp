@@ -99,10 +99,11 @@ public class ProjectService
         context.Manifest = packageDto.Manifest!;
         HydratePaths(context);
 
-        if (!string.IsNullOrEmpty(context.SourcePath))
+        if (context.SourcePath is { Length: > 0 } sourcePath &&
+            ShouldPersistResolvedPackage(sourcePath))
         {
             packageDto.Config = context.Config;
-            await PackageService.Instance.SaveAsync(packageDto, context.SourcePath);
+            await PackageService.Instance.SaveAsync(packageDto, sourcePath);
         }
 
         await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
@@ -196,6 +197,16 @@ public class ProjectService
         RoslynWorkspaceService.Instance.RemoveProject(tabId);
         RoslynWorkspaceService.Instance.CreateProject(tabId);
         await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
+    }
+
+    private static bool ShouldPersistResolvedPackage(string? sourcePath)
+    {
+        if (string.IsNullOrEmpty(sourcePath))
+            return false;
+
+        return PackageService.Instance.IsZipPackage(sourcePath) ||
+               PackageService.Instance.IsFolderPackage(sourcePath) ||
+               Directory.Exists(sourcePath);
     }
 
     public async Task SaveProjectAsync(ProjectContext projectContext)

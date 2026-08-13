@@ -84,13 +84,15 @@ public static class ModuleSecrets
         switch (ssh.AuthMethod)
         {
             case SshAuthMethod.Password:
-                ssh.Password = UserSecretProtector.Protect(ssh.Password);
+                ssh.Password = string.IsNullOrEmpty(ssh.Password)
+                    ? ssh.Password
+                    : UserSecretProtector.Protect(ssh.Password);
                 ssh.Passphrase = string.Empty;
                 break;
             case SshAuthMethod.PublicKey:
                 ssh.Password = string.Empty;
                 ssh.Passphrase = string.IsNullOrEmpty(ssh.Passphrase)
-                    ? string.Empty
+                    ? ssh.Passphrase
                     : UserSecretProtector.Protect(ssh.Passphrase);
                 break;
             default:

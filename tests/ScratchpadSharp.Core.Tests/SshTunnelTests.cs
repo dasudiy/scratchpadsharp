@@ -14,6 +14,8 @@ public static class SshTunnelTests
         failures += Run(nameof(SqlServer_Parse_HostAndPort), SqlServer_Parse_HostAndPort);
         failures += Run(nameof(SqlServer_Parse_TcpPrefix), SqlServer_Parse_TcpPrefix);
         failures += Run(nameof(SqlServer_Parse_NamedInstance_StripsInstanceForTcpHost), SqlServer_Parse_NamedInstance_StripsInstanceForTcpHost);
+        failures += Run(nameof(SqlServer_NamedInstanceWithoutPort_NeedsExplicitPort), SqlServer_NamedInstanceWithoutPort_NeedsExplicitPort);
+        failures += Run(nameof(SqlServer_NamedInstanceWithPort_DoesNotNeedExplicitPort), SqlServer_NamedInstanceWithPort_DoesNotNeedExplicitPort);
         failures += Run(nameof(SqlServer_Rewrite_UsesLoopbackAndKeepsCatalog), SqlServer_Rewrite_UsesLoopbackAndKeepsCatalog);
         failures += Run(nameof(Sqlite_DoesNotSupportSshTunnel), Sqlite_DoesNotSupportSshTunnel);
         failures += Run(nameof(ReplaceBakedConnectionString_RewritesOnConfiguring), ReplaceBakedConnectionString_RewritesOnConfiguring);
@@ -62,6 +64,16 @@ public static class SshTunnelTests
             "Server=sql01\\INST;Database=app");
         return endpoint.Host == "sql01" && endpoint.Port == 1433;
     }
+
+    private static bool SqlServer_NamedInstanceWithoutPort_NeedsExplicitPort() =>
+        DatabaseEndpoint.NeedsExplicitPortForNamedInstance(
+            DatabaseProviderIds.SqlServer,
+            "Server=sql01\\INST;Database=app");
+
+    private static bool SqlServer_NamedInstanceWithPort_DoesNotNeedExplicitPort() =>
+        !DatabaseEndpoint.NeedsExplicitPortForNamedInstance(
+            DatabaseProviderIds.SqlServer,
+            "Data Source=tcp:sql01\\INST,41433;Initial Catalog=app");
 
     private static bool SqlServer_Rewrite_UsesLoopbackAndKeepsCatalog()
     {

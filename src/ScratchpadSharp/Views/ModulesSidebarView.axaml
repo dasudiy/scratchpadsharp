@@ -67,7 +67,8 @@
       <TreeView ItemsSource="{Binding RootNodes}"
                 SelectedItem="{Binding SelectedNode}"
                 SelectionMode="Single"
-                Background="Transparent">
+                Background="Transparent"
+                PointerPressed="OnTreePointerPressed">
         <TreeView.Styles>
           <Style Selector="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
