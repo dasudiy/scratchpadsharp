@@ -60,15 +60,7 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
         if (!provider.SupportsSshTunnel)
             throw new InvalidOperationException($"{provider.DisplayName} connections do not use SSH tunnels.");
 
-        var endpoint = DatabaseEndpoint.Parse(providerId, connectionString);
-        if (ssh.RemotePort <= 0 &&
-            DatabaseEndpoint.NeedsExplicitPortForNamedInstance(providerId, connectionString))
-        {
-            throw new InvalidOperationException(
-                "SQL Server named instances need an explicit port (Server=host,port) or an SSH remote port.");
-        }
-        var remoteHost = string.IsNullOrWhiteSpace(ssh.RemoteHost) ? endpoint.Host : ssh.RemoteHost.Trim();
-        var remotePort = ssh.RemotePort > 0 ? ssh.RemotePort : endpoint.Port;
+        var (remoteHost, remotePort) = ResolveForwardTarget(ssh, providerId, connectionString);
         if (string.IsNullOrWhiteSpace(remoteHost))
             throw new InvalidOperationException("SSH tunnel remote host is empty.");
         if (remotePort is <= 0 or > 65535)
@@ -94,6 +86,27 @@ public sealed class SshTunnelSession : IAsyncDisposable, IDisposable
             throw new InvalidOperationException(
                 $"SSH tunnel to {ssh.Host}:{ssh.Port} failed: {ex.Message}", ex);
         }
+    }
+
+    public static (string Host, int Port) ResolveForwardTarget(
+        SshTunnelConfig ssh, string providerId, string connectionString)
+    {
+        var hasExplicitHost = !string.IsNullOrWhiteSpace(ssh.RemoteHost);
+        var hasExplicitPort = ssh.RemotePort > 0;
+        if (hasExplicitHost && hasExplicitPort)
+            return (ssh.RemoteHost.Trim(), ssh.RemotePort);
+
+        var endpoint = DatabaseEndpoint.Parse(providerId, connectionString);
+        if (!hasExplicitPort &&
+            DatabaseEndpoint.NeedsExplicitPortForNamedInstance(providerId, connectionString))
+        {
+            throw new InvalidOperationException(
+                "SQL Server named instances need an explicit port (Server=host,port) or an SSH remote port.");
+        }
+
+        var host = hasExplicitHost ? ssh.RemoteHost.Trim() : endpoint.Host;
+        var port = hasExplicitPort ? ssh.RemotePort : endpoint.Port;
+        return (host, port);
     }
 
     public static void Validate(SshTunnelConfig ssh)

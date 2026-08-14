@@ -39,6 +39,7 @@ public class DatabaseConnectionViewModel : ReactiveObject
     private decimal sshLocalPort;
     private string storedSshPassword = string.Empty;
     private string storedSshPassphrase = string.Empty;
+    private int selectedTabIndex;
 
     public DatabaseConnectionViewModel(ModuleInstanceConfig? existing = null)
     {
@@ -64,6 +65,8 @@ public class DatabaseConnectionViewModel : ReactiveObject
 
         TestConnectionCommand = ReactiveCommand.CreateFromTask(TestConnectionAsync,
             this.WhenAnyValue(x => x.IsBusy, busy => !busy));
+        TestSshTunnelCommand = ReactiveCommand.CreateFromTask(TestSshTunnelAsync,
+            this.WhenAnyValue(x => x.IsBusy, x => x.SupportsSshTunnel, (busy, ssh) => !busy && ssh));
         SaveCommand = ReactiveCommand.Create(Save,
             this.WhenAnyValue(x => x.IsBusy, x => x.DisplayName, (busy, name) => !busy && !string.IsNullOrWhiteSpace(name)));
         CancelCommand = ReactiveCommand.Create(() => { });
@@ -97,10 +100,18 @@ public class DatabaseConnectionViewModel : ReactiveObject
                                   !string.Equals(previousId, value.Id, StringComparison.OrdinalIgnoreCase);
             RebuildBuilderFromProvider(providerChanged);
             this.RaisePropertyChanged(nameof(SupportsSshTunnel));
+            if (!SupportsSshTunnel)
+                SelectedTabIndex = 0;
         }
     }
 
     public bool SupportsSshTunnel => selectedProvider?.SupportsSshTunnel == true;
+
+    public int SelectedTabIndex
+    {
+        get => selectedTabIndex;
+        set => this.RaiseAndSetIfChanged(ref selectedTabIndex, value);
+    }
 
     public bool UseFormMode
     {
@@ -170,6 +181,7 @@ public class DatabaseConnectionViewModel : ReactiveObject
     }
 
     public ReactiveCommand<Unit, Unit> TestConnectionCommand { get; }
+    public ReactiveCommand<Unit, Unit> TestSshTunnelCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
 
@@ -261,10 +273,10 @@ public class DatabaseConnectionViewModel : ReactiveObject
     }
 
     public bool ShowSshPasswordFields =>
-        SshEnabled && SelectedSshAuthMethod?.Value == SshAuthMethod.Password;
+        SelectedSshAuthMethod?.Value == SshAuthMethod.Password;
 
     public bool ShowSshPublicKeyFields =>
-        SshEnabled && SelectedSshAuthMethod?.Value == SshAuthMethod.PublicKey;
+        SelectedSshAuthMethod?.Value == SshAuthMethod.PublicKey;
 
     public void OnFieldChanged(ConnectionStringFieldDescriptor field)
     {
@@ -532,6 +544,34 @@ public class DatabaseConnectionViewModel : ReactiveObject
             var result = await EfCoreModuleFactory.Instance.TestConnectionAsync(SelectedProvider.Id, cs, ssh);
             StatusText = result.Success
                 ? $"Connected ({result.ElapsedMilliseconds} ms)"
+                : $"Failed: {result.Message}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task TestSshTunnelAsync()
+    {
+        if (SelectedProvider == null || !SupportsSshTunnel)
+            return;
+
+        IsBusy = true;
+        StatusText = "Testing SSH tunnel...";
+        try
+        {
+            var ssh = BuildSshTunnelConfig() ?? new SshTunnelConfig();
+            ssh.Enabled = true;
+            SshTunnelSession.Validate(ssh);
+            var cs = GetEffectiveConnectionString();
+            var result = await EfCoreModuleFactory.Instance.TestSshTunnelAsync(SelectedProvider.Id, cs, ssh);
+            StatusText = result.Success
+                ? $"{result.Message} ({result.ElapsedMilliseconds} ms)"
                 : $"Failed: {result.Message}";
         }
         catch (Exception ex)

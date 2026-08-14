@@ -20,6 +20,8 @@ public static class SshTunnelTests
         failures += Run(nameof(Sqlite_DoesNotSupportSshTunnel), Sqlite_DoesNotSupportSshTunnel);
         failures += Run(nameof(ReplaceBakedConnectionString_RewritesOnConfiguring), ReplaceBakedConnectionString_RewritesOnConfiguring);
         failures += Run(nameof(Validate_RequiresHostUserAndAuthSecrets), Validate_RequiresHostUserAndAuthSecrets);
+        failures += Run(nameof(ResolveForwardTarget_UsesExplicitRemoteHostAndPort), ResolveForwardTarget_UsesExplicitRemoteHostAndPort);
+        failures += Run(nameof(ResolveForwardTarget_FallsBackToConnectionString), ResolveForwardTarget_FallsBackToConnectionString);
         failures += Run(nameof(ModuleConfig_SshTunnel_JsonRoundTrip), ModuleConfig_SshTunnel_JsonRoundTrip);
         return failures;
     }
@@ -172,6 +174,38 @@ public static class SshTunnelTests
             AuthMethod = SshAuthMethod.Agent
         });
         return true;
+    }
+
+    private static bool ResolveForwardTarget_UsesExplicitRemoteHostAndPort()
+    {
+        var target = SshTunnelSession.ResolveForwardTarget(
+            new SshTunnelConfig
+            {
+                Enabled = true,
+                Host = "bastion",
+                Port = 22,
+                Username = "ubuntu",
+                RemoteHost = "db.internal",
+                RemotePort = 14333
+            },
+            DatabaseProviderIds.SqlServer,
+            string.Empty);
+        return target.Host == "db.internal" && target.Port == 14333;
+    }
+
+    private static bool ResolveForwardTarget_FallsBackToConnectionString()
+    {
+        var target = SshTunnelSession.ResolveForwardTarget(
+            new SshTunnelConfig
+            {
+                Enabled = true,
+                Host = "bastion",
+                Port = 22,
+                Username = "ubuntu"
+            },
+            DatabaseProviderIds.SqlServer,
+            "Server=10.0.0.8,41433;Database=app");
+        return target.Host == "10.0.0.8" && target.Port == 41433;
     }
 
     private static bool ModuleConfig_SshTunnel_JsonRoundTrip()

@@ -6,238 +6,255 @@
         x:DataType="vm:DatabaseConnectionViewModel"
         Title="Database connection"
         Width="580"
-        MinHeight="360"
-        MaxHeight="760"
+        MinHeight="420"
+        MaxHeight="780"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         CanResize="True"
         Opened="OnOpened">
   <Border Padding="20" Background="{StaticResource SurfaceBrush}">
-    <ScrollViewer MaxHeight="680" VerticalScrollBarVisibility="Auto">
-    <StackPanel Spacing="14" MaxWidth="540">
-      <TextBlock Text="Add database connection"
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" MaxWidth="540">
+      <TextBlock Grid.Row="0"
+                 Text="Add database connection"
                  FontWeight="SemiBold"
                  FontSize="16"
                  Foreground="{StaticResource TextPrimaryBrush}"
                  IsVisible="{Binding !IsEdit}" />
-      <TextBlock Text="Edit database connection"
+      <TextBlock Grid.Row="0"
+                 Text="Edit database connection"
                  FontWeight="SemiBold"
                  FontSize="16"
                  Foreground="{StaticResource TextPrimaryBrush}"
                  IsVisible="{Binding IsEdit}" />
 
-      <DockPanel LastChildFill="True">
-        <TextBlock DockPanel.Dock="Left" Width="120" Text="Display name" VerticalAlignment="Center" />
-        <TextBox Margin="12,0,0,0" Text="{Binding DisplayName}" />
-      </DockPanel>
+      <StackPanel Grid.Row="1" Spacing="14" Margin="0,14,0,12">
+        <DockPanel LastChildFill="True">
+          <TextBlock DockPanel.Dock="Left" Width="120" Text="Display name" VerticalAlignment="Center" />
+          <TextBox Margin="12,0,0,0" Text="{Binding DisplayName}" />
+        </DockPanel>
 
-      <DockPanel LastChildFill="True">
-        <TextBlock DockPanel.Dock="Left" Width="120" Text="Provider" VerticalAlignment="Center" />
-        <ComboBox Margin="12,0,0,0"
-                  ItemsSource="{Binding Providers}"
-                  SelectedItem="{Binding SelectedProvider}"
-                  MinWidth="200"
-                  HorizontalAlignment="Left">
-          <ComboBox.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding DisplayName}" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
-      </DockPanel>
-
-      <StackPanel Orientation="Horizontal" Spacing="12">
-        <RadioButton Content="Form" IsChecked="{Binding UseFormMode}" GroupName="ConnMode" />
-        <RadioButton Content="Connection string" IsChecked="{Binding UseConnectionStringMode}" GroupName="ConnMode" />
+        <DockPanel LastChildFill="True">
+          <TextBlock DockPanel.Dock="Left" Width="120" Text="Provider" VerticalAlignment="Center" />
+          <ComboBox Margin="12,0,0,0"
+                    ItemsSource="{Binding Providers}"
+                    SelectedItem="{Binding SelectedProvider}"
+                    MinWidth="200"
+                    HorizontalAlignment="Left">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </DockPanel>
       </StackPanel>
 
-      <StackPanel IsVisible="{Binding UseFormMode}" Spacing="8">
-        <TextBlock Text="Common" FontWeight="SemiBold" />
-        <ItemsControl ItemsSource="{Binding CommonFields}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="modules:ConnectionStringFieldDescriptor">
-              <DockPanel Margin="0,4" LastChildFill="True">
-                <TextBlock DockPanel.Dock="Left" Width="140" Text="{Binding DisplayName}" VerticalAlignment="Center" />
-                <CheckBox Margin="8,0,0,0"
-                          IsVisible="{Binding IsBoolean}"
-                          IsChecked="{Binding Value}"
-                          Content=""
-                          Click="OnFieldCheckChanged" />
+      <TabControl Grid.Row="2" MinHeight="280" SelectedIndex="{Binding SelectedTabIndex}">
+        <TabItem Header="Connection">
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="14" Margin="0,12,0,0">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <RadioButton Content="Form" IsChecked="{Binding UseFormMode}" GroupName="ConnMode" />
+                <RadioButton Content="Connection string" IsChecked="{Binding UseConnectionStringMode}" GroupName="ConnMode" />
+              </StackPanel>
+
+              <StackPanel IsVisible="{Binding UseFormMode}" Spacing="8">
+                <TextBlock Text="Common" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding CommonFields}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="modules:ConnectionStringFieldDescriptor">
+                      <DockPanel Margin="0,4" LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Left" Width="140" Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                        <CheckBox Margin="8,0,0,0"
+                                  IsVisible="{Binding IsBoolean}"
+                                  IsChecked="{Binding Value}"
+                                  Content=""
+                                  Click="OnFieldCheckChanged" />
+                        <ComboBox Margin="8,0,0,0"
+                                  IsVisible="{Binding IsEnum}"
+                                  ItemsSource="{Binding EnumOptions}"
+                                  SelectedItem="{Binding Value}"
+                                  SelectionChanged="OnFieldSelectionChanged" />
+                        <TextBox Margin="8,0,0,0"
+                                 IsVisible="{Binding IsPassword}"
+                                 PasswordChar="•"
+                                 Text="{Binding Value}"
+                                 LostFocus="OnFieldLostFocus" />
+                        <DockPanel Margin="8,0,0,0" IsVisible="{Binding IsFileBrowse}">
+                          <Button DockPanel.Dock="Right"
+                                  Content="Browse..."
+                                  Margin="8,0,0,0"
+                                  Click="OnBrowseFileClick"
+                                  Tag="{Binding}" />
+                          <TextBox Text="{Binding Value}" LostFocus="OnFieldLostFocus" />
+                        </DockPanel>
+                        <TextBox Margin="8,0,0,0"
+                                 IsVisible="{Binding UseTextBoxEditor}"
+                                 Text="{Binding Value}"
+                                 LostFocus="OnFieldLostFocus" />
+                      </DockPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Expander Header="Advanced" IsExpanded="False">
+                  <ItemsControl ItemsSource="{Binding AdvancedFields}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="modules:ConnectionStringFieldDescriptor">
+                        <DockPanel Margin="0,4" LastChildFill="True">
+                          <TextBlock DockPanel.Dock="Left" Width="140" Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                          <CheckBox Margin="8,0,0,0"
+                                    IsVisible="{Binding IsBoolean}"
+                                    IsChecked="{Binding Value}"
+                                    Content=""
+                                    Click="OnFieldCheckChanged" />
+                          <ComboBox Margin="8,0,0,0"
+                                    IsVisible="{Binding IsEnum}"
+                                    ItemsSource="{Binding EnumOptions}"
+                                    SelectedItem="{Binding Value}"
+                                    SelectionChanged="OnFieldSelectionChanged" />
+                          <TextBox Margin="8,0,0,0"
+                                   IsVisible="{Binding IsPassword}"
+                                   PasswordChar="•"
+                                   Text="{Binding Value}"
+                                   LostFocus="OnFieldLostFocus" />
+                          <DockPanel Margin="8,0,0,0" IsVisible="{Binding IsFileBrowse}">
+                            <Button DockPanel.Dock="Right"
+                                    Content="Browse..."
+                                    Margin="8,0,0,0"
+                                    Click="OnBrowseFileClick"
+                                    Tag="{Binding}" />
+                            <TextBox Text="{Binding Value}" LostFocus="OnFieldLostFocus" />
+                          </DockPanel>
+                          <TextBox Margin="8,0,0,0"
+                                   IsVisible="{Binding UseTextBoxEditor}"
+                                   Text="{Binding Value}"
+                                   LostFocus="OnFieldLostFocus" />
+                        </DockPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Expander>
+              </StackPanel>
+
+              <StackPanel IsVisible="{Binding UseConnectionStringMode}" Spacing="6">
+                <TextBox AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="80"
+                         Text="{Binding ConnectionStringText}" />
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Test connection" Command="{Binding TestConnectionCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="SSH Tunnel" IsVisible="{Binding SupportsSshTunnel}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="8" Margin="0,12,0,0">
+              <CheckBox Content="Use SSH tunnel" IsChecked="{Binding SshEnabled}" />
+              <TextBlock Text="Database host/port is the address as seen from the SSH server (use localhost if SQL Server runs on the SSH host)."
+                         TextWrapping="Wrap"
+                         FontSize="11.5"
+                         Opacity="0.75" />
+              <TextBlock Text="The tunnel rewrites the server to 127.0.0.1. If Encrypt is Strict, enable Trust server certificate or login will fail hostname checks."
+                         TextWrapping="Wrap"
+                         FontSize="11.5"
+                         Opacity="0.75" />
+
+              <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="Host" VerticalAlignment="Center" />
+                <TextBox Margin="8,0,0,0" Text="{Binding SshHost}" />
+              </DockPanel>
+              <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="Port" VerticalAlignment="Center" />
+                <NumericUpDown Margin="8,0,0,0"
+                               Minimum="1" Maximum="65535" Increment="1"
+                               Value="{Binding SshPort}" />
+              </DockPanel>
+              <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="User name" VerticalAlignment="Center" />
+                <TextBox Margin="8,0,0,0" Text="{Binding SshUsername}" />
+              </DockPanel>
+              <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="Authentication" VerticalAlignment="Center" />
                 <ComboBox Margin="8,0,0,0"
-                          IsVisible="{Binding IsEnum}"
-                          ItemsSource="{Binding EnumOptions}"
-                          SelectedItem="{Binding Value}"
-                          SelectionChanged="OnFieldSelectionChanged" />
-                <TextBox Margin="8,0,0,0"
-                         IsVisible="{Binding IsPassword}"
-                         PasswordChar="•"
-                         Text="{Binding Value}"
-                         LostFocus="OnFieldLostFocus" />
-                <DockPanel Margin="8,0,0,0" IsVisible="{Binding IsFileBrowse}">
+                          ItemsSource="{Binding SshAuthMethods}"
+                          SelectedItem="{Binding SelectedSshAuthMethod}"
+                          HorizontalAlignment="Left"
+                          MinWidth="200">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SshAuthMethodItem">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </DockPanel>
+              <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPasswordFields}">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="Password" VerticalAlignment="Center" />
+                <TextBox Margin="8,0,0,0" PasswordChar="•" Text="{Binding SshPassword}" />
+              </DockPanel>
+              <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPublicKeyFields}">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="Private key" VerticalAlignment="Center" />
+                <DockPanel Margin="8,0,0,0" LastChildFill="True">
                   <Button DockPanel.Dock="Right"
                           Content="Browse..."
                           Margin="8,0,0,0"
-                          Click="OnBrowseFileClick"
-                          Tag="{Binding}" />
-                  <TextBox Text="{Binding Value}" LostFocus="OnFieldLostFocus" />
+                          Click="OnBrowsePrivateKeyClick" />
+                  <TextBox Text="{Binding SshPrivateKeyPath}" />
                 </DockPanel>
-                <TextBox Margin="8,0,0,0"
-                         IsVisible="{Binding UseTextBoxEditor}"
-                         Text="{Binding Value}"
-                         LostFocus="OnFieldLostFocus" />
               </DockPanel>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+              <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPublicKeyFields}">
+                <TextBlock DockPanel.Dock="Left" Width="140" Text="Passphrase" VerticalAlignment="Center" />
+                <TextBox Margin="8,0,0,0" PasswordChar="•" Text="{Binding SshPassphrase}" />
+              </DockPanel>
 
-        <Expander Header="Advanced" IsExpanded="False">
-          <ItemsControl ItemsSource="{Binding AdvancedFields}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="modules:ConnectionStringFieldDescriptor">
-                <DockPanel Margin="0,4" LastChildFill="True">
-                  <TextBlock DockPanel.Dock="Left" Width="140" Text="{Binding DisplayName}" VerticalAlignment="Center" />
-                  <CheckBox Margin="8,0,0,0"
-                            IsVisible="{Binding IsBoolean}"
-                            IsChecked="{Binding Value}"
-                            Content=""
-                            Click="OnFieldCheckChanged" />
-                  <ComboBox Margin="8,0,0,0"
-                            IsVisible="{Binding IsEnum}"
-                            ItemsSource="{Binding EnumOptions}"
-                            SelectedItem="{Binding Value}"
-                            SelectionChanged="OnFieldSelectionChanged" />
-                  <TextBox Margin="8,0,0,0"
-                           IsVisible="{Binding IsPassword}"
-                           PasswordChar="•"
-                           Text="{Binding Value}"
-                           LostFocus="OnFieldLostFocus" />
-                  <DockPanel Margin="8,0,0,0" IsVisible="{Binding IsFileBrowse}">
-                    <Button DockPanel.Dock="Right"
-                            Content="Browse..."
-                            Margin="8,0,0,0"
-                            Click="OnBrowseFileClick"
-                            Tag="{Binding}" />
-                    <TextBox Text="{Binding Value}" LostFocus="OnFieldLostFocus" />
+              <Expander Header="SSH advanced" IsExpanded="False">
+                <StackPanel Spacing="8" Margin="0,8,0,0">
+                  <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Width="140" Text="Remote host" VerticalAlignment="Center" />
+                    <TextBox Margin="8,0,0,0" Watermark="(database server)" Text="{Binding SshRemoteHost}" />
                   </DockPanel>
-                  <TextBox Margin="8,0,0,0"
-                           IsVisible="{Binding UseTextBoxEditor}"
-                           Text="{Binding Value}"
-                           LostFocus="OnFieldLostFocus" />
-                </DockPanel>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </Expander>
-      </StackPanel>
+                  <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Width="140" Text="Remote port" VerticalAlignment="Center" />
+                    <NumericUpDown Margin="8,0,0,0"
+                                   Minimum="0" Maximum="65535" Increment="1"
+                                   Value="{Binding SshRemotePort}" />
+                  </DockPanel>
+                  <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Width="140" Text="Local port" VerticalAlignment="Center" />
+                    <NumericUpDown Margin="8,0,0,0"
+                                   Minimum="0" Maximum="65535" Increment="1"
+                                   Value="{Binding SshLocalPort}" />
+                  </DockPanel>
+                </StackPanel>
+              </Expander>
 
-      <StackPanel IsVisible="{Binding UseConnectionStringMode}" Spacing="6">
-        <TextBox AcceptsReturn="True"
-                 TextWrapping="Wrap"
-                 MinHeight="80"
-                 Text="{Binding ConnectionStringText}" />
-      </StackPanel>
-
-      <Expander Header="SSH Tunnel" IsVisible="{Binding SupportsSshTunnel}" IsExpanded="{Binding SshEnabled}">
-        <StackPanel Spacing="8" Margin="0,8,0,0">
-          <CheckBox Content="Use SSH tunnel" IsChecked="{Binding SshEnabled}" />
-          <TextBlock Text="Database host/port is the address as seen from the SSH server (use localhost if SQL Server runs on the SSH host)."
-                     TextWrapping="Wrap"
-                     FontSize="11.5"
-                     Opacity="0.75"
-                     IsVisible="{Binding SshEnabled}" />
-          <TextBlock Text="The tunnel rewrites the server to 127.0.0.1. If Encrypt is Strict, enable Trust server certificate or login will fail hostname checks."
-                     TextWrapping="Wrap"
-                     FontSize="11.5"
-                     Opacity="0.75"
-                     IsVisible="{Binding SshEnabled}" />
-
-          <StackPanel Spacing="8" IsVisible="{Binding SshEnabled}">
-            <DockPanel LastChildFill="True">
-              <TextBlock DockPanel.Dock="Left" Width="140" Text="Host" VerticalAlignment="Center" />
-              <TextBox Margin="8,0,0,0" Text="{Binding SshHost}" />
-            </DockPanel>
-            <DockPanel LastChildFill="True">
-              <TextBlock DockPanel.Dock="Left" Width="140" Text="Port" VerticalAlignment="Center" />
-              <NumericUpDown Margin="8,0,0,0"
-                             Minimum="1" Maximum="65535" Increment="1"
-                             Value="{Binding SshPort}" />
-            </DockPanel>
-            <DockPanel LastChildFill="True">
-              <TextBlock DockPanel.Dock="Left" Width="140" Text="User name" VerticalAlignment="Center" />
-              <TextBox Margin="8,0,0,0" Text="{Binding SshUsername}" />
-            </DockPanel>
-            <DockPanel LastChildFill="True">
-              <TextBlock DockPanel.Dock="Left" Width="140" Text="Authentication" VerticalAlignment="Center" />
-              <ComboBox Margin="8,0,0,0"
-                        ItemsSource="{Binding SshAuthMethods}"
-                        SelectedItem="{Binding SelectedSshAuthMethod}"
-                        HorizontalAlignment="Left"
-                        MinWidth="200">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:SshAuthMethodItem">
-                    <TextBlock Text="{Binding DisplayName}" />
-                  </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
-            </DockPanel>
-            <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPasswordFields}">
-              <TextBlock DockPanel.Dock="Left" Width="140" Text="Password" VerticalAlignment="Center" />
-              <TextBox Margin="8,0,0,0" PasswordChar="•" Text="{Binding SshPassword}" />
-            </DockPanel>
-            <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPublicKeyFields}">
-              <TextBlock DockPanel.Dock="Left" Width="140" Text="Private key" VerticalAlignment="Center" />
-              <DockPanel Margin="8,0,0,0" LastChildFill="True">
-                <Button DockPanel.Dock="Right"
-                        Content="Browse..."
-                        Margin="8,0,0,0"
-                        Click="OnBrowsePrivateKeyClick" />
-                <TextBox Text="{Binding SshPrivateKeyPath}" />
-              </DockPanel>
-            </DockPanel>
-            <DockPanel LastChildFill="True" IsVisible="{Binding ShowSshPublicKeyFields}">
-              <TextBlock DockPanel.Dock="Left" Width="140" Text="Passphrase" VerticalAlignment="Center" />
-              <TextBox Margin="8,0,0,0" PasswordChar="•" Text="{Binding SshPassphrase}" />
-            </DockPanel>
-
-            <Expander Header="SSH advanced" IsExpanded="False">
-              <StackPanel Spacing="8" Margin="0,8,0,0">
-                <DockPanel LastChildFill="True">
-                  <TextBlock DockPanel.Dock="Left" Width="140" Text="Remote host" VerticalAlignment="Center" />
-                  <TextBox Margin="8,0,0,0" Watermark="(database server)" Text="{Binding SshRemoteHost}" />
-                </DockPanel>
-                <DockPanel LastChildFill="True">
-                  <TextBlock DockPanel.Dock="Left" Width="140" Text="Remote port" VerticalAlignment="Center" />
-                  <NumericUpDown Margin="8,0,0,0"
-                                 Minimum="0" Maximum="65535" Increment="1"
-                                 Value="{Binding SshRemotePort}" />
-                </DockPanel>
-                <DockPanel LastChildFill="True">
-                  <TextBlock DockPanel.Dock="Left" Width="140" Text="Local port" VerticalAlignment="Center" />
-                  <NumericUpDown Margin="8,0,0,0"
-                                 Minimum="0" Maximum="65535" Increment="1"
-                                 Value="{Binding SshLocalPort}" />
-                </DockPanel>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="Test SSH tunnel" Command="{Binding TestSshTunnelCommand}" />
               </StackPanel>
-            </Expander>
-          </StackPanel>
-        </StackPanel>
-      </Expander>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+      </TabControl>
 
-      <TextBlock Text="{Binding ParseError}"
-                 Foreground="{StaticResource DangerBrush}"
-                 FontSize="11.5"
-                 TextWrapping="Wrap"
-                 IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-      <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap"
-                 Foreground="{StaticResource TextSecondaryBrush}" />
+      <StackPanel Grid.Row="3" Spacing="6" Margin="0,12,0,0">
+        <TextBlock Text="{Binding ParseError}"
+                   Foreground="{StaticResource DangerBrush}"
+                   FontSize="11.5"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap"
+                   Foreground="{StaticResource TextSecondaryBrush}" />
+      </StackPanel>
 
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-        <Button Content="Test connection" Command="{Binding TestConnectionCommand}" />
+      <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
         <Button Content="Cancel" Command="{Binding CancelCommand}" Click="OnCancelClick" />
         <Button Content="Save" Command="{Binding SaveCommand}" Click="OnSaveClick"
                 Background="{StaticResource AccentBrush}" Foreground="{StaticResource TextOnDarkBrush}" />
       </StackPanel>
-    </StackPanel>
-    </ScrollViewer>
+    </Grid>
   </Border>
 </Window>

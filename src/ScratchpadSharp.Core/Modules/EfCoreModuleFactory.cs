@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -131,6 +132,27 @@ public sealed class EfCoreModuleFactory
     ModuleSecrets.ProtectInPlace(config);
     var provider = DbSchemaProviderFactory.Create(providerId);
     return await WithLiveConnectionAsync(config, cs => provider.TestConnectionAsync(cs, ct), ct);
+  }
+
+  public async Task<ConnectionTestResult> TestSshTunnelAsync(
+    string providerId, string connectionString, SshTunnelConfig sshTunnel, CancellationToken ct = default)
+  {
+    var sw = Stopwatch.StartNew();
+    var config = new ModuleInstanceConfig
+    {
+      ProviderId = providerId,
+      ConnectionString = connectionString,
+      SshTunnel = sshTunnel
+    };
+    ModuleSecrets.ProtectInPlace(config);
+    var live = await ModuleSecrets.UnlockAsync(config, ct);
+    var ssh = live.SshTunnel ?? throw new InvalidOperationException("SSH tunnel is not configured.");
+    ssh.Enabled = true;
+    await using var session = await SshTunnelSession.OpenAsync(ssh, live.ProviderId, live.ConnectionString, ct);
+    return new ConnectionTestResult(
+      true,
+      $"SSH tunnel connected (127.0.0.1:{session.LocalPort})",
+      ElapsedMilliseconds: sw.ElapsedMilliseconds);
   }
 
   private static async Task<T> WithLiveConnectionAsync<T>(
