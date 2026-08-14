@@ -44,6 +44,7 @@ public static class MetadataReferenceProvider
 
         cachedReferences = paths
             .Where(File.Exists)
+            .Where(path => !string.Equals(Path.GetFileName(path), "Dumpify.dll", StringComparison.OrdinalIgnoreCase))
             .Select(CreateReferenceWithXmlDocs)
             .ToList();
 

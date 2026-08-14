@@ -170,7 +170,7 @@ public sealed class EfCoreModuleFactory
     var ns = config.FullNamespace;
     return
       $"await using var db = new {ns}.AppDbContext();\n" +
-      $"db.Set<{ns}.{entityName}>().Take({take}).Dump(\"{entityName}\");";
+      $"db.Set<{ns}.{entityName}>().Take({take}).Dump(title: \"{entityName}\");";
   }
 
   public string BuildCountScript(ModuleInstanceConfig config, string tableName)
@@ -179,6 +179,6 @@ public sealed class EfCoreModuleFactory
     var ns = config.FullNamespace;
     return
       $"await using var db = new {ns}.AppDbContext();\n" +
-      $"db.Set<{ns}.{entityName}>().Count().Dump(\"{entityName} count\");";
+      $"db.Set<{ns}.{entityName}>().Count().Dump(title: \"{entityName} count\");";
   }
 }

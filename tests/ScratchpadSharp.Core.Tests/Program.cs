@@ -2,6 +2,7 @@ using ScratchpadSharp.Core.Tests;
 
 var failures = ConnectionStringBuilderFactoryTests.RunAll();
 failures += EfScaffoldGeneratorTests.RunAll();
+failures += DumpAmbiguityTests.RunAll();
 failures += NuGetPackageAssetResolverTests.RunAll();
 failures += ScriptIsolationTests.RunAll();
 failures += EfSqlServerScriptTests.RunAll();

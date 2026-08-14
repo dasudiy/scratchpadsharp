@@ -28,10 +28,7 @@ public static class ScriptDocumentBuilder
         var (cleanCode, userUsings, removedLineCount, editorCodeStartOffset) =
             ScriptPreprocessor.ExtractUsingsAndComments(editorCode);
 
-        var effectiveUsings = configUsings
-            .Concat(userUsings)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var effectiveUsings = NormalizeScriptUsings(configUsings.Concat(userUsings));
 
         var configUsingsBlock = string.Join(Environment.NewLine, effectiveUsings.Select(u => $"using {u};"));
         if (configUsingsBlock.Length > 0)
@@ -93,5 +90,31 @@ public class __ScriptRunner
             return documentPosition - doc.ConfigUsingsSectionLength;
 
         return doc.UserCodeStartInEditor + (documentPosition - doc.UserCodeStartInDocument);
+    }
+
+    /// <summary>
+    /// Dumpify's <c>.Dump()</c> collides with NetPad's. Scripts should only see the NetPad extension.
+    /// </summary>
+    private static List<string> NormalizeScriptUsings(IEnumerable<string> usings)
+    {
+        const string netPadDump = "ScratchpadSharp.Core.External.NetPad.Presentation";
+        var result = new List<string>();
+        var hadDumpify = false;
+        foreach (var ns in usings)
+        {
+            if (string.Equals(ns, "Dumpify", StringComparison.Ordinal))
+            {
+                hadDumpify = true;
+                continue;
+            }
+
+            if (!result.Contains(ns, StringComparer.Ordinal))
+                result.Add(ns);
+        }
+
+        if (hadDumpify && !result.Contains(netPadDump, StringComparer.Ordinal))
+            result.Add(netPadDump);
+
+        return result;
     }
 }
