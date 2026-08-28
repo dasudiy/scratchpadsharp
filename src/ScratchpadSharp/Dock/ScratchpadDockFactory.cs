@@ -20,19 +20,23 @@ public sealed class ScratchpadDockFactory : Factory
     private IDocumentDock? documentDock;
     private IRootDock? rootDock;
     private ModulesTool? modulesTool;
+    private QueriesTool? queriesTool;
 
     public ScratchpadDockFactory(
         Func<ScriptTabViewModel?> getSelectedTab,
         Func<string, string, string, Task> openModuleQueryAsync,
+        Func<string, Task> openQueryFileAsync,
         Func<ScriptTabViewModel> createTab,
         Action<ScriptTabViewModel, ScriptDocument> onDocumentCreated)
     {
         this.createTab = createTab;
         this.onDocumentCreated = onDocumentCreated;
         ModulesSidebar = new ModulesSidebarViewModel(getSelectedTab, openModuleQueryAsync);
+        QueriesSidebar = new QueriesSidebarViewModel(openQueryFileAsync);
     }
 
     public ModulesSidebarViewModel ModulesSidebar { get; }
+    public QueriesSidebarViewModel QueriesSidebar { get; }
 
     public IDocumentDock? DocumentDock => documentDock;
 
@@ -42,16 +46,17 @@ public sealed class ScratchpadDockFactory : Factory
 
     public override IRootDock CreateLayout()
     {
+        queriesTool = new QueriesTool(QueriesSidebar);
         modulesTool = new ModulesTool(ModulesSidebar);
 
         var leftDock = new ToolDock
         {
-            Id = "ModulesDock",
+            Id = "LeftToolsDock",
             Proportion = 0.22,
             Alignment = Alignment.Left,
             GripMode = GripMode.Visible,
-            ActiveDockable = modulesTool,
-            VisibleDockables = CreateList<IDockable>(modulesTool)
+            ActiveDockable = queriesTool,
+            VisibleDockables = CreateList<IDockable>(queriesTool, modulesTool)
         };
 
         documentDock = new DocumentDock

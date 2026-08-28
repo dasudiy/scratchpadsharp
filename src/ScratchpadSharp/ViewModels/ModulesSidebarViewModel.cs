@@ -43,6 +43,7 @@ public class ModulesSidebarViewModel : ReactiveObject
     private string statusText = string.Empty;
     private bool isBusy;
     private ModuleTreeNode? selectedNode;
+    private ModuleTreeNode? rootNode;
 
     public ModulesSidebarViewModel(
         Func<ScriptTabViewModel?> getSelectedTab,
@@ -81,6 +82,12 @@ public class ModulesSidebarViewModel : ReactiveObject
     }
 
     public ObservableCollection<ModuleTreeNode> RootNodes { get; }
+
+    public ModuleTreeNode? RootNode
+    {
+        get => rootNode;
+        private set => this.RaiseAndSetIfChanged(ref rootNode, value);
+    }
 
     public ModuleTreeNode? SelectedNode
     {
@@ -125,6 +132,8 @@ public class ModulesSidebarViewModel : ReactiveObject
             };
             RootNodes.Add(efSection);
         }
+
+        RootNode = efSection;
 
         efSection.IsLoading = true;
         efSection.Children.Clear();

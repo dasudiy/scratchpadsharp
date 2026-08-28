@@ -1,17 +1,20 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:ScratchpadSharp.ViewModels"
-             xmlns:conv="using:ScratchpadSharp.Converters"
-             x:Class="ScratchpadSharp.Views.ModulesSidebarView"
-             x:DataType="vm:ModulesSidebarViewModel">
+             x:Class="ScratchpadSharp.Views.QueriesSidebarView"
+             x:DataType="vm:QueriesSidebarViewModel">
   <UserControl.Resources>
+    <vm:QueryTreeIconConverter x:Key="QueryTreeIconConverter" />
     <x:Double x:Key="TreeViewItemIndent">12</x:Double>
     <Thickness x:Key="TreeViewItemExpandCollapseChevronMargin">0</Thickness>
 
-    <StreamGeometry x:Key="ModuleTreeCollapsedChevron">M 1,0 10,10 l -9,10 -1,-1 L 8,10 -0,1 Z</StreamGeometry>
-    <StreamGeometry x:Key="ModuleTreeExpandedChevron">M0,1 L10,10 20,1 19,0 10,8 1,0 Z</StreamGeometry>
+    <StreamGeometry x:Key="QueryTreeCollapsedChevron">M 1,0 10,10 l -9,10 -1,-1 L 8,10 -0,1 Z</StreamGeometry>
+    <StreamGeometry x:Key="QueryTreeExpandedChevron">M0,1 L10,10 20,1 19,0 10,8 1,0 Z</StreamGeometry>
+    <Geometry x:Key="QueryFolderIcon">M2 4h6l2 2h10v12H2V4z</Geometry>
+    <Geometry x:Key="QueryFileIcon">M6 2h8l4 4v14H6V2zm8 0v4h4</Geometry>
+    <Geometry x:Key="QueryPackageIcon">M4 4h16v4H4V4zm0 6h16v10H4V10z</Geometry>
 
-    <ControlTheme x:Key="ModuleTreeExpandChevron" TargetType="ToggleButton">
+    <ControlTheme x:Key="QueryTreeExpandChevron" TargetType="ToggleButton">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Width" Value="14" />
@@ -28,8 +31,7 @@
             <Path x:Name="ChevronPath"
                   Width="10"
                   Height="10"
-                  Margin="0,0,0,0"
-                  Data="{StaticResource ModuleTreeCollapsedChevron}"
+                  Data="{StaticResource QueryTreeCollapsedChevron}"
                   Fill="{DynamicResource TreeViewItemForeground}"
                   Stretch="Uniform"
                   HorizontalAlignment="Right"
@@ -38,12 +40,9 @@
         </ControlTemplate>
       </Setter>
       <Style Selector="^:checked /template/ Path#ChevronPath">
-        <Setter Property="Data" Value="{StaticResource ModuleTreeExpandedChevron}" />
+        <Setter Property="Data" Value="{StaticResource QueryTreeExpandedChevron}" />
       </Style>
     </ControlTheme>
-
-    <conv:ModuleTreeIconImageConverter x:Key="ModuleTreeIconImageConverter" />
-    <Geometry x:Key="ModuleTreeSpinnerIcon">M8 1.5A6.5 6.5 0 1 1 1.5 8H0a8 8 0 1 0 8-8v1.5z</Geometry>
   </UserControl.Resources>
 
   <UserControl.Styles>
@@ -57,7 +56,7 @@
     </Style>
 
     <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
-      <Setter Property="Theme" Value="{StaticResource ModuleTreeExpandChevron}" />
+      <Setter Property="Theme" Value="{StaticResource QueryTreeExpandChevron}" />
       <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
 
@@ -80,24 +79,6 @@
     <Style Selector="TreeViewItem:empty /template/ Panel#PART_ExpandCollapseChevronContainer">
       <Setter Property="Width" Value="12" />
     </Style>
-
-    <Style Selector="PathIcon.module-tree-spinner">
-      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
-      <Setter Property="RenderTransform">
-        <RotateTransform Angle="0" />
-      </Setter>
-      <Style.Animations>
-        <Animation Duration="0:0:0.85"
-                   IterationCount="INFINITE">
-          <KeyFrame Cue="0%">
-            <Setter Property="RotateTransform.Angle" Value="0" />
-          </KeyFrame>
-          <KeyFrame Cue="100%">
-            <Setter Property="RotateTransform.Angle" Value="360" />
-          </KeyFrame>
-        </Animation>
-      </Style.Animations>
-    </Style>
   </UserControl.Styles>
 
   <DockPanel LastChildFill="True">
@@ -114,25 +95,15 @@
 
     <ScrollViewer Padding="0,2">
       <StackPanel>
-        <DockPanel x:Name="ModuleRootRow"
+        <DockPanel x:Name="QueryRootRow"
                    Margin="4,6,4,0"
                    MinHeight="20"
                    PointerReleased="OnRootRowPointerReleased">
-          <StackPanel DockPanel.Dock="Right"
-                      Orientation="Horizontal"
-                      Spacing="4"
-                      VerticalAlignment="Center">
-            <PathIcon Width="12"
-                      Height="12"
-                      IsVisible="{Binding IsBusy}"
-                      Classes="module-tree-spinner"
-                      Data="{StaticResource ModuleTreeSpinnerIcon}"
-                      Foreground="{StaticResource AccentBrush}" />
-            <Button Classes="rider-side-panel-btn"
-                    Content="+"
-                    Command="{Binding AddDatabaseCommand}"
-                    ToolTip.Tip="Add database" />
-          </StackPanel>
+          <Button DockPanel.Dock="Right"
+                  Classes="rider-side-panel-btn"
+                  Content="↻"
+                  Command="{Binding RefreshCommand}"
+                  ToolTip.Tip="Refresh" />
           <StackPanel Orientation="Horizontal"
                       Spacing="4"
                       VerticalAlignment="Center">
@@ -140,20 +111,21 @@
               <Path Width="10"
                     Height="10"
                     IsVisible="{Binding !RootNode.IsExpanded}"
-                    Data="{StaticResource ModuleTreeCollapsedChevron}"
+                    Data="{StaticResource QueryTreeCollapsedChevron}"
                     Fill="{DynamicResource TreeViewItemForeground}"
                     Stretch="Uniform" />
               <Path Width="10"
                     Height="10"
                     IsVisible="{Binding RootNode.IsExpanded}"
-                    Data="{StaticResource ModuleTreeExpandedChevron}"
+                    Data="{StaticResource QueryTreeExpandedChevron}"
                     Fill="{DynamicResource TreeViewItemForeground}"
                     Stretch="Uniform" />
             </Panel>
-            <Image Width="16"
-                   Height="16"
-                   VerticalAlignment="Center"
-                   Source="{Binding RootNode, Converter={StaticResource ModuleTreeIconImageConverter}}" />
+            <PathIcon Width="14"
+                      Height="14"
+                      VerticalAlignment="Center"
+                      Data="{StaticResource QueryFolderIcon}"
+                      Foreground="{StaticResource TextMutedBrush}" />
             <TextBlock Text="{Binding RootNode.Name}"
                        FontSize="12"
                        VerticalAlignment="Center"
@@ -161,7 +133,7 @@
           </StackPanel>
         </DockPanel>
 
-        <TreeView x:Name="ModuleTree"
+        <TreeView x:Name="QueryTree"
                   ItemsSource="{Binding RootNode.Children}"
                   IsVisible="{Binding RootNode.IsExpanded}"
                   SelectedItem="{Binding SelectedNode}"
@@ -175,21 +147,14 @@
           </Style>
         </TreeView.Styles>
         <TreeView.ItemTemplate>
-          <TreeDataTemplate DataType="vm:ModuleTreeNode"
+          <TreeDataTemplate DataType="vm:QueryTreeNode"
                             ItemsSource="{Binding Children}">
-            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-              <Panel Width="16" Height="16" VerticalAlignment="Center">
-                <Image Width="16"
-                       Height="16"
-                       IsVisible="{Binding !IsLoading}"
-                       Source="{Binding ., Converter={StaticResource ModuleTreeIconImageConverter}}" />
-                <PathIcon Width="13"
-                          Height="13"
-                          IsVisible="{Binding IsLoading}"
-                          Classes="module-tree-spinner"
-                          Data="{StaticResource ModuleTreeSpinnerIcon}"
-                          Foreground="{StaticResource AccentBrush}" />
-              </Panel>
+            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+              <PathIcon Width="14"
+                        Height="14"
+                        VerticalAlignment="Center"
+                        Data="{Binding Kind, Converter={StaticResource QueryTreeIconConverter}}"
+                        Foreground="{StaticResource TextMutedBrush}" />
               <TextBlock Text="{Binding Name}"
                          FontSize="12"
                          VerticalAlignment="Center"
@@ -199,15 +164,7 @@
         </TreeView.ItemTemplate>
         <TreeView.ContextMenu>
           <ContextMenu>
-            <MenuItem Header="Edit connection" Command="{Binding EditConnectionCommand}" />
-            <MenuItem Header="Regenerate model" Command="{Binding RegenerateModelCommand}" />
-            <MenuItem Header="Add ref to query" Command="{Binding AddRefCommand}" />
-            <MenuItem Header="Remove ref from query" Command="{Binding RemoveRefCommand}" />
-            <MenuItem Header="Delete" Command="{Binding DeleteInstanceCommand}" />
-            <Separator />
-            <MenuItem Header="Take (100)" Command="{Binding Take100Command}" />
-            <MenuItem Header="Count" Command="{Binding CountCommand}" />
-            <Separator />
+            <MenuItem Header="Open" Command="{Binding OpenSelectedCommand}" />
             <MenuItem Header="Refresh" Command="{Binding RefreshCommand}" />
           </ContextMenu>
         </TreeView.ContextMenu>

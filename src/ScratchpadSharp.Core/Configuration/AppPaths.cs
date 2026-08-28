@@ -22,9 +22,12 @@ public static class AppPaths
 
     public static string ModulesDirectory { get; } = Path.Combine(UserDataDirectory, "modules");
 
+    public static string QueriesDirectory { get; } = Path.Combine(UserDataDirectory, "Queries");
+
     public static void EnsureUserDataDirectory()
     {
         Directory.CreateDirectory(UserDataDirectory);
         Directory.CreateDirectory(ModulesDirectory);
+        Directory.CreateDirectory(QueriesDirectory);
     }
 }

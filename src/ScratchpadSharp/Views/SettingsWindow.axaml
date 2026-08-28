@@ -26,6 +26,29 @@
           <TextBlock Text="Application" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
           <CheckBox Content="Restore session on startup"
                     IsChecked="{Binding RestoreSessionOnStartup}" />
+          <StackPanel Spacing="6">
+            <TextBlock Text="Default query directory"
+                       Foreground="{StaticResource TextSecondaryBrush}" />
+            <DockPanel LastChildFill="True">
+              <Button DockPanel.Dock="Right"
+                      Margin="8,0,0,0"
+                      Content="Browse..."
+                      Command="{Binding BrowseQueryDirectoryCommand}"
+                      Background="Transparent"
+                      BorderBrush="{StaticResource BorderBrush}"
+                      BorderThickness="1"
+                      Foreground="{StaticResource TextSecondaryBrush}"
+                      Padding="10,4"
+                      CornerRadius="6"
+                      Cursor="Hand" />
+              <TextBox Text="{Binding DefaultQueryDirectory}"
+                       Watermark="Leave empty for %LocalAppData%/ScratchpadSharp/Queries" />
+            </DockPanel>
+            <TextBlock Text="{Binding EffectiveQueryDirectory, StringFormat='Active directory: {0}'}"
+                       TextWrapping="Wrap"
+                       FontSize="11.5"
+                       Foreground="{StaticResource TextMutedBrush}" />
+          </StackPanel>
         </StackPanel>
 
         <StackPanel Spacing="10">

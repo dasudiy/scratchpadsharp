@@ -36,6 +36,7 @@ public class MainWindowViewModel : ReactiveObject
         dockFactory = new ScratchpadDockFactory(
             () => SelectedTab,
             OpenModuleQueryAsync,
+            OpenQueryFromTreeAsync,
             () => CreateTab(),
             OnDocumentCreated);
 
@@ -47,6 +48,7 @@ public class MainWindowViewModel : ReactiveObject
         Layout = dockLayout;
 
         ModulesSidebar = dockFactory.ModulesSidebar;
+        QueriesSidebar = dockFactory.QueriesSidebar;
 
         NewTabCommand = ReactiveCommand.Create(AddTab);
         CloseTabCommand = ReactiveCommand.CreateFromTask(CloseSelectedTabAsync,
@@ -75,6 +77,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     public ModulesSidebarViewModel ModulesSidebar { get; }
+    public QueriesSidebarViewModel QueriesSidebar { get; }
 
     public IRootDock? Layout
     {
@@ -221,6 +224,46 @@ public class MainWindowViewModel : ReactiveObject
         dockFactory.AddScriptDocument(tab);
         SelectedTab = tab;
         await tab.OpenModuleQueryAsync(instanceId, title, code, autoRun: true);
+    }
+
+    public async Task OpenQueryFromTreeAsync(string filePath)
+    {
+        var existing = Tabs.FirstOrDefault(tab =>
+            !string.IsNullOrEmpty(tab.ProjectContext.SourcePath) &&
+            string.Equals(tab.ProjectContext.SourcePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            SelectedTab = existing;
+            return;
+        }
+
+        if (SelectedTab?.IsDirty == true && !await ConfirmDiscardUnsavedAsync("Open query"))
+            return;
+
+        var tab = SelectedTab is { IsDirty: false } && string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath)
+            ? SelectedTab
+            : CreateTab(deferInitialization: true);
+
+        if (tab != SelectedTab)
+        {
+            dockFactory.AddScriptDocument(tab);
+            SelectedTab = tab;
+        }
+
+        try
+        {
+            tab.StatusText = "Opening query...";
+            await tab.OpenFileAsync(filePath);
+            QueriesSidebar.RequestRefresh();
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
+        catch (Exception ex)
+        {
+            tab.Output = $"Error opening query: {ex.Message}";
+            tab.StatusText = "Error opening query";
+            this.RaisePropertyChanged(nameof(StatusText));
+        }
     }
 
     private ScriptTabViewModel CreateTab(bool deferInitialization = false)
@@ -388,14 +431,16 @@ public class MainWindowViewModel : ReactiveObject
 
         if (string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath))
         {
-            await SaveAsAsync();
-            return;
+            var defaultPath = AllocateDefaultQueryPath(SelectedTab.Title);
+            Directory.CreateDirectory(Path.GetDirectoryName(defaultPath)!);
+            SelectedTab.SetSourcePath(defaultPath);
         }
 
         try
         {
             SelectedTab.StatusText = "Saving...";
             await SelectedTab.SaveAsync();
+            QueriesSidebar.RequestRefresh();
             this.RaisePropertyChanged(nameof(StatusText));
         }
         catch (Exception ex)
@@ -416,6 +461,7 @@ public class MainWindowViewModel : ReactiveObject
 
             SelectedTab.SetSourcePath(filePath);
             await SaveAsync();
+            QueriesSidebar.RequestRefresh();
         }
         catch (Exception ex)
         {
@@ -555,7 +601,10 @@ public class MainWindowViewModel : ReactiveObject
     {
         if (MainWindow == null) return;
 
-        var window = new Views.SettingsWindow { DataContext = new SettingsViewModel() };
+        var window = new Views.SettingsWindow
+        {
+            DataContext = new SettingsViewModel { StorageProvider = MainWindow.StorageProvider }
+        };
         window.ShowDialog(MainWindow);
     }
 
@@ -578,6 +627,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = "Open Script",
             AllowMultiple = false,
+            SuggestedStartLocation = await GetQueryDirectoryFolderAsync(),
             FileTypeFilter =
             [
                 new FilePickerFileType("Scratchpad Script") { Patterns = ["*.cs", "*.lqpkg"] }
@@ -594,7 +644,8 @@ public class MainWindowViewModel : ReactiveObject
         var folders = await MainWindow.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
             Title = title,
-            AllowMultiple = false
+            AllowMultiple = false,
+            SuggestedStartLocation = await GetQueryDirectoryFolderAsync()
         });
 
         return folders.FirstOrDefault()?.Path.LocalPath;
@@ -608,6 +659,8 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = "Save Script",
             DefaultExtension = "cs",
+            SuggestedStartLocation = await GetQueryDirectoryFolderAsync(),
+            SuggestedFileName = SelectedTab != null ? SanitizeFolderName(SelectedTab.Title) + ".cs" : "query.cs",
             FileTypeChoices =
             [
                 new FilePickerFileType("C# Script") { Patterns = ["*.cs"] },
@@ -626,6 +679,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = "Pack to .lqpkg",
             DefaultExtension = "lqpkg",
+            SuggestedStartLocation = await GetQueryDirectoryFolderAsync(),
             FileTypeChoices =
             [
                 new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }
@@ -633,6 +687,32 @@ public class MainWindowViewModel : ReactiveObject
         });
 
         return file?.Path.LocalPath;
+    }
+
+    private async Task<IStorageFolder?> GetQueryDirectoryFolderAsync()
+    {
+        if (MainWindow?.StorageProvider == null)
+            return null;
+
+        var directory = ApplicationSettings.GetEffectiveQueryDirectory();
+        Directory.CreateDirectory(directory);
+        return await MainWindow.StorageProvider.TryGetFolderFromPathAsync(directory);
+    }
+
+    private static string AllocateDefaultQueryPath(string title)
+    {
+        var directory = ApplicationSettings.GetEffectiveQueryDirectory();
+        var baseName = SanitizeFolderName(title);
+        var path = Path.Combine(directory, $"{baseName}.cs");
+        if (!File.Exists(path))
+            return path;
+
+        for (var i = 2; ; i++)
+        {
+            path = Path.Combine(directory, $"{baseName}{i}.cs");
+            if (!File.Exists(path))
+                return path;
+        }
     }
 
     private static string SanitizeFolderName(string name)

@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using System.Reactive;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Avalonia.Platform.Storage;
 using ReactiveUI;
 using ScratchpadSharp.Core.Configuration;
 
@@ -10,6 +12,7 @@ namespace ScratchpadSharp.ViewModels;
 public class SettingsViewModel : ReactiveObject
 {
     private bool restoreSessionOnStartup;
+    private string defaultQueryDirectory = string.Empty;
     private string editorFontFamily = string.Empty;
     private decimal editorFontSize;
     private bool showLineNumbers;
@@ -25,13 +28,24 @@ public class SettingsViewModel : ReactiveObject
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync,
             this.WhenAnyValue(x => x.IsSaving, saving => !saving));
         ResetToDefaultsCommand = ReactiveCommand.Create(LoadFromEffectiveSettings);
+        BrowseQueryDirectoryCommand = ReactiveCommand.CreateFromTask(BrowseQueryDirectoryAsync);
     }
+
+    public IStorageProvider? StorageProvider { get; set; }
 
     public bool RestoreSessionOnStartup
     {
         get => restoreSessionOnStartup;
         set => this.RaiseAndSetIfChanged(ref restoreSessionOnStartup, value);
     }
+
+    public string DefaultQueryDirectory
+    {
+        get => defaultQueryDirectory;
+        set => this.RaiseAndSetIfChanged(ref defaultQueryDirectory, value);
+    }
+
+    public string EffectiveQueryDirectory => ApplicationSettings.GetEffectiveQueryDirectory();
 
     public string EditorFontFamily
     {
@@ -79,10 +93,12 @@ public class SettingsViewModel : ReactiveObject
 
     public ReactiveCommand<Unit, Unit> SaveCommand { get; }
     public ReactiveCommand<Unit, Unit> ResetToDefaultsCommand { get; }
+    public ReactiveCommand<Unit, Unit> BrowseQueryDirectoryCommand { get; }
 
     private void LoadFromEffectiveSettings()
     {
         RestoreSessionOnStartup = ApplicationSettings.RestoreSessionOnStartup;
+        DefaultQueryDirectory = ApplicationSettings.DefaultQueryDirectory;
         EditorFontFamily = ApplicationSettings.EditorFontFamily;
         EditorFontSize = (decimal)ApplicationSettings.EditorFontSize;
         ShowLineNumbers = ApplicationSettings.ShowLineNumbers;
@@ -100,7 +116,8 @@ public class SettingsViewModel : ReactiveObject
             {
                 ["Application"] = new JsonObject
                 {
-                    ["RestoreSessionOnStartup"] = RestoreSessionOnStartup
+                    ["RestoreSessionOnStartup"] = RestoreSessionOnStartup,
+                    ["DefaultQueryDirectory"] = DefaultQueryDirectory
                 },
                 ["Editor"] = new JsonObject
                 {
@@ -120,6 +137,7 @@ public class SettingsViewModel : ReactiveObject
             };
 
             await UserSettingsStore.SaveOverridesAsync(patch);
+            this.RaisePropertyChanged(nameof(EffectiveQueryDirectory));
             StatusText = $"Saved to {AppPaths.UserSettingsPath}";
         }
         catch (Exception ex)
@@ -130,5 +148,24 @@ public class SettingsViewModel : ReactiveObject
         {
             IsSaving = false;
         }
+    }
+
+    private async Task BrowseQueryDirectoryAsync()
+    {
+        if (StorageProvider == null)
+        {
+            StatusText = "Folder picker is not available.";
+            return;
+        }
+
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Select default query directory",
+            AllowMultiple = false
+        });
+
+        var path = folders.FirstOrDefault()?.Path.LocalPath;
+        if (!string.IsNullOrEmpty(path))
+            DefaultQueryDirectory = path;
     }
 }

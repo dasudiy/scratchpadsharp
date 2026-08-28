@@ -12,7 +12,8 @@ public sealed class ViewLocator : IDataTemplate
     private static readonly Dictionary<Type, Func<Control>> Views = new()
     {
         [typeof(ScriptDocument)] = () => new ScriptDocumentView(),
-        [typeof(ModulesTool)] = () => new ModulesToolView()
+        [typeof(ModulesTool)] = () => new ModulesToolView(),
+        [typeof(QueriesTool)] = () => new QueriesToolView()
     };
 
     public Control? Build(object? data)

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -6,23 +7,25 @@ using ScratchpadSharp.ViewModels;
 
 namespace ScratchpadSharp.Views;
 
-public partial class ModulesSidebarView : UserControl
+public partial class QueriesSidebarView : UserControl
 {
-    public ModulesSidebarView()
+    public QueriesSidebarView()
     {
         InitializeComponent();
 
-        ModuleTree.AddHandler(
+        QueryTree.AddHandler(
             InputElement.PointerReleasedEvent,
             OnTreePointerReleased,
             RoutingStrategies.Bubble,
             handledEventsToo: true);
+
+        QueryTree.DoubleTapped += OnTreeDoubleTapped;
     }
 
     private void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         var treeViewItem = (e.Source as Control)?.FindAncestorOfType<TreeViewItem>();
-        if (treeViewItem?.DataContext is ModuleTreeNode node && DataContext is ModulesSidebarViewModel vm)
+        if (treeViewItem?.DataContext is QueryTreeNode node && DataContext is QueriesSidebarViewModel vm)
             vm.SelectedNode = node;
 
         if (e.InitialPressMouseButton == MouseButton.Right)
@@ -43,9 +46,21 @@ public partial class ModulesSidebarView : UserControl
         if ((e.Source as Control)?.FindAncestorOfType<Button>() != null)
             return;
 
-        if (DataContext is ModulesSidebarViewModel { RootNode: { } root })
+        if (DataContext is QueriesSidebarViewModel { RootNode: { } root })
             root.IsExpanded = !root.IsExpanded;
 
         e.Handled = true;
+    }
+
+    private async void OnTreeDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is not QueriesSidebarViewModel vm)
+            return;
+
+        var treeViewItem = (e.Source as Control)?.FindAncestorOfType<TreeViewItem>();
+        if (treeViewItem?.DataContext is QueryTreeNode node)
+            vm.SelectedNode = node;
+
+        await vm.OpenSelectedAsync();
     }
 }
