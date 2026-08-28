@@ -14,23 +14,25 @@
     <ControlTheme x:Key="ModuleTreeExpandChevron" TargetType="ToggleButton">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Width" Value="18" />
+      <Setter Property="Width" Value="14" />
       <Setter Property="Height" Value="20" />
       <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
       <Setter Property="Template">
         <ControlTemplate>
           <Border Background="Transparent"
-                  Width="18"
+                  Width="14"
                   Height="20"
-                  HorizontalAlignment="Center"
+                  HorizontalAlignment="Right"
                   VerticalAlignment="Center">
             <Path x:Name="ChevronPath"
                   Width="10"
                   Height="10"
+                  Margin="0,0,0,0"
                   Data="{StaticResource ModuleTreeCollapsedChevron}"
                   Fill="{DynamicResource TreeViewItemForeground}"
                   Stretch="Uniform"
-                  HorizontalAlignment="Center"
+                  HorizontalAlignment="Right"
                   VerticalAlignment="Center" />
           </Border>
         </ControlTemplate>
@@ -59,14 +61,19 @@
     </Style>
 
     <Style Selector="TreeViewItem /template/ Panel#PART_ExpandCollapseChevronContainer">
-      <Setter Property="Width" Value="18" />
+      <Setter Property="Width" Value="5" />
       <Setter Property="Height" Value="20" />
       <Setter Property="Margin" Value="0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <Style Selector="TreeViewItem /template/ ContentPresenter#PART_HeaderPresenter">
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+
     <Style Selector="TreeViewItem:empty /template/ Panel#PART_ExpandCollapseChevronContainer">
-      <Setter Property="Width" Value="18" />
+      <Setter Property="Width" Value="12" />
     </Style>
 
     <Style Selector="PathIcon.module-tree-spinner">
@@ -130,13 +137,13 @@
         <TreeView.Styles>
           <Style Selector="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-            <Setter Property="Padding" Value="0,1" />
+            <Setter Property="Padding" Value="0" />
           </Style>
         </TreeView.Styles>
         <TreeView.ItemTemplate>
           <TreeDataTemplate DataType="vm:ModuleTreeNode"
                             ItemsSource="{Binding Children}">
-            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
               <Panel Width="16" Height="16" VerticalAlignment="Center">
                 <Image Width="16"
                        Height="16"
