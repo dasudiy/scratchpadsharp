@@ -17,6 +17,7 @@ public class ModuleTreeNode : ReactiveObject
 
     public string Name { get; set; } = string.Empty;
     public string NodeKind { get; set; } = string.Empty;
+    public string? ProviderId { get; set; }
     public string? InstanceId { get; set; }
     public string? TableName { get; set; }
 
@@ -71,10 +72,10 @@ public class ModulesSidebarViewModel : ReactiveObject
                 (node, busy) => !busy && node?.NodeKind == "Instance"));
         Take100Command = ReactiveCommand.CreateFromTask(Take100Async,
             this.WhenAnyValue(x => x.SelectedNode, x => x.IsBusy,
-                (node, busy) => !busy && node?.NodeKind == "Table"));
+                (node, busy) => !busy && node?.NodeKind is "Table" or "View"));
         CountCommand = ReactiveCommand.CreateFromTask(CountAsync,
             this.WhenAnyValue(x => x.SelectedNode, x => x.IsBusy,
-                (node, busy) => !busy && node?.NodeKind == "Table"));
+                (node, busy) => !busy && node?.NodeKind is "Table" or "View"));
 
         _ = RefreshAsync();
     }
@@ -139,6 +140,7 @@ public class ModulesSidebarViewModel : ReactiveObject
                 {
                     Name = instance.DisplayName,
                     NodeKind = "Instance",
+                    ProviderId = instance.ProviderId,
                     InstanceId = instance.Id,
                     IsExpanded = false
                 };
@@ -176,7 +178,7 @@ public class ModulesSidebarViewModel : ReactiveObject
             return;
         if (string.IsNullOrEmpty(node.InstanceId))
             return;
-        if (node.Children.Any(c => c.NodeKind is "Table" or "Error"))
+        if (node.Children.Any(c => c.NodeKind is "TableFolder" or "Table" or "Error"))
             return;
 
         await PopulateInstanceChildrenAsync(node, node.InstanceId);
@@ -197,12 +199,20 @@ public class ModulesSidebarViewModel : ReactiveObject
         try
         {
             var snapshot = await EfCoreModuleFactory.Instance.GetSchemaAsync(instanceId);
+            var tablesFolder = new ModuleTreeNode
+            {
+                Name = "tables",
+                NodeKind = "TableFolder",
+                InstanceId = instanceId,
+                IsExpanded = true
+            };
+
             foreach (var table in snapshot.Tables)
             {
                 var tableNode = new ModuleTreeNode
                 {
-                    Name = table.IsView ? $"{table.Name} (view)" : table.Name,
-                    NodeKind = "Table",
+                    Name = table.Name,
+                    NodeKind = table.IsView ? "View" : "Table",
                     InstanceId = instanceId,
                     TableName = table.Name
                 };
@@ -216,8 +226,10 @@ public class ModulesSidebarViewModel : ReactiveObject
                     });
                 }
 
-                instanceNode.Children.Add(tableNode);
+                tablesFolder.Children.Add(tableNode);
             }
+
+            instanceNode.Children.Add(tablesFolder);
         }
         catch (Exception ex)
         {

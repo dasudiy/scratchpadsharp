@@ -58,6 +58,7 @@
             <SolidColorBrush x:Key="DockTabForegroundBrush" Color="#FF586069" />
             <SolidColorBrush x:Key="DockTabSelectedForegroundBrush" Color="#FF1B1F23" />
             <SolidColorBrush x:Key="DockTabActiveForegroundBrush" Color="#FF1B1F23" />
+            <SolidColorBrush x:Key="DockDocumentTabPointerOverForegroundBrush" Color="#FF1B1F23" />
             <SolidColorBrush x:Key="DockTabCloseHoverBackgroundBrush" Color="#FFE8E8EC" />
             <SolidColorBrush x:Key="DockChromeButtonForegroundBrush" Color="#FF586069" />
             <SolidColorBrush x:Key="DockChromeButtonHoverBackgroundBrush" Color="#FFF0F2F5" />

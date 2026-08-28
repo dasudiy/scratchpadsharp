@@ -4,7 +4,71 @@
              xmlns:conv="using:ScratchpadSharp.Converters"
              x:Class="ScratchpadSharp.Views.ModulesSidebarView"
              x:DataType="vm:ModulesSidebarViewModel">
+  <UserControl.Resources>
+    <x:Double x:Key="TreeViewItemIndent">12</x:Double>
+    <Thickness x:Key="TreeViewItemExpandCollapseChevronMargin">0</Thickness>
+
+    <StreamGeometry x:Key="ModuleTreeCollapsedChevron">M 1,0 10,10 l -9,10 -1,-1 L 8,10 -0,1 Z</StreamGeometry>
+    <StreamGeometry x:Key="ModuleTreeExpandedChevron">M0,1 L10,10 20,1 19,0 10,8 1,0 Z</StreamGeometry>
+
+    <ControlTheme x:Key="ModuleTreeExpandChevron" TargetType="ToggleButton">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="Transparent"
+                  Width="18"
+                  Height="20"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+            <Path x:Name="ChevronPath"
+                  Width="10"
+                  Height="10"
+                  Data="{StaticResource ModuleTreeCollapsedChevron}"
+                  Fill="{DynamicResource TreeViewItemForeground}"
+                  Stretch="Uniform"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:checked /template/ Path#ChevronPath">
+        <Setter Property="Data" Value="{StaticResource ModuleTreeExpandedChevron}" />
+      </Style>
+    </ControlTheme>
+
+    <conv:ModuleTreeIconImageConverter x:Key="ModuleTreeIconImageConverter" />
+    <Geometry x:Key="ModuleTreeSpinnerIcon">M8 1.5A6.5 6.5 0 1 1 1.5 8H0a8 8 0 1 0 8-8v1.5z</Geometry>
+  </UserControl.Resources>
+
   <UserControl.Styles>
+    <Style Selector="ScrollViewer">
+      <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="VerticalScrollBarVisibility" Value="Visible" />
+    </Style>
+
+    <Style Selector="TreeViewItem">
+      <Setter Property="MinHeight" Value="20" />
+    </Style>
+
+    <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
+      <Setter Property="Theme" Value="{StaticResource ModuleTreeExpandChevron}" />
+    </Style>
+
+    <Style Selector="TreeViewItem /template/ Panel#PART_ExpandCollapseChevronContainer">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="TreeViewItem:empty /template/ Panel#PART_ExpandCollapseChevronContainer">
+      <Setter Property="Width" Value="18" />
+    </Style>
+
     <Style Selector="PathIcon.module-tree-spinner">
       <Setter Property="RenderTransformOrigin" Value="50%,50%" />
       <Setter Property="RenderTransform">
@@ -23,12 +87,6 @@
       </Style.Animations>
     </Style>
   </UserControl.Styles>
-
-  <UserControl.Resources>
-    <conv:ModuleTreeIconConverter x:Key="ModuleTreeIconConverter" />
-    <conv:ModuleTreeIconBrushConverter x:Key="ModuleTreeIconBrushConverter" />
-    <Geometry x:Key="ModuleTreeSpinnerIcon">M8 1.5A6.5 6.5 0 1 1 1.5 8H0a8 8 0 1 0 8-8v1.5z</Geometry>
-  </UserControl.Resources>
 
   <DockPanel LastChildFill="True">
     <Border DockPanel.Dock="Top" Padding="8,6,8,4">
@@ -63,7 +121,7 @@
                  Foreground="{StaticResource TextMutedBrush}" />
     </Border>
 
-    <ScrollViewer Padding="2,4">
+    <ScrollViewer Padding="0,2">
       <TreeView ItemsSource="{Binding RootNodes}"
                 SelectedItem="{Binding SelectedNode}"
                 SelectionMode="Single"
@@ -72,28 +130,27 @@
         <TreeView.Styles>
           <Style Selector="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="Padding" Value="0,1" />
           </Style>
         </TreeView.Styles>
         <TreeView.ItemTemplate>
           <TreeDataTemplate DataType="vm:ModuleTreeNode"
                             ItemsSource="{Binding Children}">
-            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-              <Panel Width="14" Height="14" VerticalAlignment="Center">
-                <PathIcon Width="14"
-                          Height="14"
-                          IsVisible="{Binding !IsLoading}"
-                          Data="{Binding NodeKind, Converter={StaticResource ModuleTreeIconConverter}}"
-                          Foreground="{Binding NodeKind, Converter={StaticResource ModuleTreeIconBrushConverter}}" />
-                <PathIcon Width="14"
-                          Height="14"
+            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+              <Panel Width="16" Height="16" VerticalAlignment="Center">
+                <Image Width="16"
+                       Height="16"
+                       IsVisible="{Binding !IsLoading}"
+                       Source="{Binding ., Converter={StaticResource ModuleTreeIconImageConverter}}" />
+                <PathIcon Width="13"
+                          Height="13"
                           IsVisible="{Binding IsLoading}"
                           Classes="module-tree-spinner"
                           Data="{StaticResource ModuleTreeSpinnerIcon}"
                           Foreground="{StaticResource AccentBrush}" />
               </Panel>
               <TextBlock Text="{Binding Name}"
-                         FontSize="12.5"
+                         FontSize="12"
                          VerticalAlignment="Center"
                          Foreground="{StaticResource TextPrimaryBrush}" />
             </StackPanel>
