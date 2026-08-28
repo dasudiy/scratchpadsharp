@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using NuGet.Configuration;
 using NuGet.Frameworks;
@@ -17,6 +18,7 @@ public class ProjectService
     public static ProjectService Instance => LazyInstance.Value;
 
     private readonly string globalPackagesFolder;
+    private readonly ConcurrentDictionary<string, ResolvedPackageSnapshot> resolvedPackageCache = new(StringComparer.Ordinal);
 
     private ProjectService()
     {
@@ -83,6 +85,13 @@ public class ProjectService
             return;
         }
 
+        var cacheKey = PackageCacheKey(resolveConfig);
+        if (TryApplyResolvedPackageCache(cacheKey, context))
+        {
+            await RoslynWorkspaceService.Instance.UpdateProjectEnvironmentAsync(tabId, context);
+            return;
+        }
+
         progress?.Report(new PackageInstallProgress("Resolving packages...", 5, ""));
 
         var packageDto = new ScriptPackage
@@ -98,6 +107,7 @@ public class ProjectService
 
         context.Manifest = packageDto.Manifest!;
         HydratePaths(context);
+        StoreResolvedPackageCache(cacheKey, context);
 
         if (context.SourcePath is { Length: > 0 } sourcePath &&
             ShouldPersistResolvedPackage(sourcePath))
@@ -549,4 +559,84 @@ public class ProjectService
     }
 
     private string GetCurrentRuntimeIdentifier() => RuntimeInformation.RuntimeIdentifier;
+
+    private sealed record ResolvedPackageSnapshot(
+        PackageManifest Manifest,
+        List<string> CompileReferences,
+        List<string> RuntimeReferences,
+        List<string> NativeAssets);
+
+    private static string PackageCacheKey(ScriptConfig config)
+    {
+        var packages = string.Join(';',
+            config.NuGetPackages
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"{kv.Key}@{kv.Value}"));
+        var locals = string.Join(';',
+            config.References
+                .Where(IsLocalReferencePath)
+                .OrderBy(r => r, StringComparer.OrdinalIgnoreCase));
+        return packages + "#" + locals;
+    }
+
+    private bool TryApplyResolvedPackageCache(string cacheKey, ProjectContext context)
+    {
+        if (!resolvedPackageCache.TryGetValue(cacheKey, out var snapshot))
+            return false;
+        if (!SnapshotFilesExist(snapshot))
+        {
+            resolvedPackageCache.TryRemove(cacheKey, out _);
+            return false;
+        }
+
+        context.Manifest = CloneManifest(snapshot.Manifest);
+        context.AbsoluteCompileReferences = [..snapshot.CompileReferences];
+        context.AbsoluteRuntimeReferences = [..snapshot.RuntimeReferences];
+        context.AbsoluteNativeAssets = [..snapshot.NativeAssets];
+        return true;
+    }
+
+    private void StoreResolvedPackageCache(string cacheKey, ProjectContext context)
+    {
+        if (context.AbsoluteCompileReferences.Count == 0)
+            return;
+
+        resolvedPackageCache[cacheKey] = new ResolvedPackageSnapshot(
+            CloneManifest(context.Manifest),
+            [..context.AbsoluteCompileReferences],
+            [..context.AbsoluteRuntimeReferences],
+            [..context.AbsoluteNativeAssets]);
+    }
+
+    private static bool SnapshotFilesExist(ResolvedPackageSnapshot snapshot) =>
+        snapshot.CompileReferences.Count > 0 &&
+        snapshot.CompileReferences.All(File.Exists) &&
+        snapshot.RuntimeReferences.All(File.Exists) &&
+        snapshot.NativeAssets.All(File.Exists);
+
+    private static PackageManifest CloneManifest(PackageManifest source) =>
+        new()
+        {
+            FormatVersion = source.FormatVersion,
+            Created = source.Created,
+            Modified = source.Modified,
+            IsProvided = source.IsProvided,
+            ResolvedState = new ResolvedState
+            {
+                Assemblies = source.ResolvedState.Assemblies.Select(CloneAsset).ToList(),
+                NativeAssets = source.ResolvedState.NativeAssets.ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value.Select(CloneAsset).ToList(),
+                    StringComparer.OrdinalIgnoreCase)
+            }
+        };
+
+    private static ResolvedAsset CloneAsset(ResolvedAsset asset) =>
+        new()
+        {
+            Origin = asset.Origin,
+            Id = asset.Id,
+            Version = asset.Version,
+            RelativePath = asset.RelativePath
+        };
 }

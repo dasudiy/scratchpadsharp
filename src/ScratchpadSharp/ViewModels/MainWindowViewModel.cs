@@ -217,11 +217,10 @@ public class MainWindowViewModel : ReactiveObject
 
     public async Task OpenModuleQueryAsync(string instanceId, string title, string code)
     {
-        AddTab();
-        if (SelectedTab == null)
-            return;
-
-        await SelectedTab.OpenModuleQueryAsync(instanceId, title, code);
+        var tab = CreateTab(deferInitialization: true);
+        dockFactory.AddScriptDocument(tab);
+        SelectedTab = tab;
+        await tab.OpenModuleQueryAsync(instanceId, title, code, autoRun: true);
     }
 
     private ScriptTabViewModel CreateTab(bool deferInitialization = false)

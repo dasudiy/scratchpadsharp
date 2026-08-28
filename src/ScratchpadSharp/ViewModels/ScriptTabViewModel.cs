@@ -4,6 +4,7 @@ using System.IO;
 using System.Reactive;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using ReactiveUI;
 using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.PackageManagement;
@@ -21,7 +22,7 @@ public class ScriptTabViewModel : ReactiveObject
     private string statusText = "Ready";
     private bool isExecuting;
     private string codeText = string.Empty;
-    private ProjectContext projectContext = null!;
+    private ProjectContext projectContext = new();
     private bool isProjectReady;
     private bool arePackagesLoading;
     private string htmlOutput = string.Empty;
@@ -48,7 +49,7 @@ public class ScriptTabViewModel : ReactiveObject
 
         TabId = Guid.NewGuid().ToString("N");
 
-        ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync,
+        ExecuteCommand = ReactiveCommand.CreateFromTask(() => ExecuteAsync(),
             this.WhenAnyValue(
                 x => x.IsExecuting,
                 x => x.IsProjectReady,
@@ -419,30 +420,43 @@ public class ScriptTabViewModel : ReactiveObject
 
     public Task RunFormatAsync() => FormatCodeAsync();
 
-    public async Task OpenModuleQueryAsync(string instanceId, string title, string code)
+    public async Task OpenModuleQueryAsync(string instanceId, string title, string code, bool autoRun = false)
     {
-        await InitializationTask;
-
-        await ProjectService.Instance.AddModuleRefAsync(TabId, projectContext, instanceId);
-
         CodeText = code;
-        projectContext.Code = code;
         Title = title;
         Output = string.Empty;
         htmlDumpService.Clear();
+        StatusText = "Loading module packages...";
         this.RaisePropertyChanged(nameof(ProjectContext));
 
-        ArePackagesLoading = true;
-        StatusText = "Loading module packages...";
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+
         try
         {
+            if (projectContext.EffectiveRootPath.Length == 0)
+                projectContext = await ProjectService.Instance.CreateShellProjectAsync(TabId);
+            else
+                await InitializationTask;
+
+            projectContext.Code = code;
+            if (!projectContext.Config.ModuleRefs.Contains(instanceId))
+                projectContext.Config.ModuleRefs.Add(instanceId);
+
+            ArePackagesLoading = true;
             packageResolveTask = ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
             await packageResolveTask;
+            MarkProjectReady();
+            this.RaisePropertyChanged(nameof(ProjectContext));
         }
         finally
         {
             ArePackagesLoading = false;
         }
+
+        MarkClean();
+
+        if (autoRun)
+            await ExecuteAsync(refreshEnvironment: false);
     }
 
     private async Task FormatCodeAsync()
@@ -458,7 +472,7 @@ public class ScriptTabViewModel : ReactiveObject
         }
     }
 
-    private async Task ExecuteAsync()
+    private async Task ExecuteAsync(bool refreshEnvironment = true)
     {
         if (IsExecuting)
             return;
@@ -478,7 +492,8 @@ public class ScriptTabViewModel : ReactiveObject
             }
 
             projectContext.Code = CodeText;
-            await ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
+            if (refreshEnvironment)
+                await ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
 
             StatusText = "Executing...";
             Output = string.Empty;
