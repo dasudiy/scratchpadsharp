@@ -178,7 +178,7 @@ public class ModulesSidebarViewModel : ReactiveObject
             return;
         if (string.IsNullOrEmpty(node.InstanceId))
             return;
-        if (node.Children.Any(c => c.NodeKind is "TableFolder" or "Table" or "Error"))
+        if (node.Children.Any(c => c.NodeKind is "TableFolder" or "ViewFolder" or "Error"))
             return;
 
         await PopulateInstanceChildrenAsync(node, node.InstanceId);
@@ -206,6 +206,13 @@ public class ModulesSidebarViewModel : ReactiveObject
                 InstanceId = instanceId,
                 IsExpanded = true
             };
+            var viewsFolder = new ModuleTreeNode
+            {
+                Name = "views",
+                NodeKind = "ViewFolder",
+                InstanceId = instanceId,
+                IsExpanded = true
+            };
 
             foreach (var table in snapshot.Tables)
             {
@@ -226,10 +233,14 @@ public class ModulesSidebarViewModel : ReactiveObject
                     });
                 }
 
-                tablesFolder.Children.Add(tableNode);
+                if (table.IsView)
+                    viewsFolder.Children.Add(tableNode);
+                else
+                    tablesFolder.Children.Add(tableNode);
             }
 
             instanceNode.Children.Add(tablesFolder);
+            instanceNode.Children.Add(viewsFolder);
         }
         catch (Exception ex)
         {

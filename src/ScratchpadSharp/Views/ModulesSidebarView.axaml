@@ -58,6 +58,11 @@
 
     <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
       <Setter Property="Theme" Value="{StaticResource ModuleTreeExpandChevron}" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+
+    <Style Selector="TreeViewItem:not(:empty) /template/ Panel#PART_ExpandCollapseChevronContainer">
+      <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
 
     <Style Selector="TreeViewItem /template/ Panel#PART_ExpandCollapseChevronContainer">
@@ -129,11 +134,11 @@
     </Border>
 
     <ScrollViewer Padding="0,2">
-      <TreeView ItemsSource="{Binding RootNodes}"
+      <TreeView x:Name="ModuleTree"
+                ItemsSource="{Binding RootNodes}"
                 SelectedItem="{Binding SelectedNode}"
                 SelectionMode="Single"
-                Background="Transparent"
-                PointerPressed="OnTreePointerPressed">
+                Background="Transparent">
         <TreeView.Styles>
           <Style Selector="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />

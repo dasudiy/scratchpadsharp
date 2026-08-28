@@ -34,6 +34,7 @@ public static class ModuleTreeIcons
         "Instance" => "database.svg",
         "Type" => "efCore.svg",
         "TableFolder" => "folder.svg",
+        "ViewFolder" => "folder.svg",
         "Table" => "table.svg",
         "View" => "view.svg",
         "Column" => "column.svg",

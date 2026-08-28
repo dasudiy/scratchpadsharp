@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using ScratchpadSharp.ViewModels;
 
@@ -10,25 +11,27 @@ public partial class ModulesSidebarView : UserControl
     public ModulesSidebarView()
     {
         InitializeComponent();
+
+        ModuleTree.AddHandler(
+            InputElement.PointerReleasedEvent,
+            OnTreePointerReleased,
+            RoutingStrategies.Bubble,
+            handledEventsToo: true);
     }
 
-    private void OnTreePointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
-            return;
-        if (DataContext is not ModulesSidebarViewModel vm)
+        var treeViewItem = (e.Source as Control)?.FindAncestorOfType<TreeViewItem>();
+        if (treeViewItem?.DataContext is ModuleTreeNode node && DataContext is ModulesSidebarViewModel vm)
+            vm.SelectedNode = node;
+
+        if (e.InitialPressMouseButton == MouseButton.Right)
             return;
 
-        Control? current = e.Source as Control;
-        while (current != null && current != sender)
-        {
-            if (current.DataContext is ModuleTreeNode node)
-            {
-                vm.SelectedNode = node;
-                return;
-            }
+        if (treeViewItem is null || treeViewItem.ItemCount == 0)
+            return;
 
-            current = current.GetVisualParent<Control>();
-        }
+        treeViewItem.IsExpanded = !treeViewItem.IsExpanded;
+        e.Handled = true;
     }
 }
