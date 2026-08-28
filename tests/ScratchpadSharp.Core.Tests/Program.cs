@@ -8,6 +8,7 @@ failures += ScriptIsolationTests.RunAll();
 failures += EfSqlServerScriptTests.RunAll();
 failures += SshTunnelTests.RunAll();
 failures += UserSecretProtectorTests.RunAll();
+failures += ReferenceManagementTests.RunAll();
 if (failures > 0)
 {
     Console.Error.WriteLine($"{failures} test(s) failed.");

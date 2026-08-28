@@ -53,6 +53,29 @@ public static class NuGetPackageAssetResolver
     }
 
     /// <summary>
+    /// Prefers <c>ref/{tfm}</c> metadata for Roslyn when the package has it; otherwise the implementation path.
+    /// </summary>
+    public static string PreferCompileAssemblyPath(string assemblyPath)
+    {
+        if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
+            return assemblyPath;
+
+        if (IsReferenceAssemblyPath(assemblyPath))
+            return assemblyPath;
+
+        var packageRoot = InferPackageRoot(assemblyPath);
+        if (packageRoot == null)
+            return assemblyPath;
+
+        var rel = Path.GetRelativePath(packageRoot, assemblyPath).Replace('\\', '/');
+        if (!TryParsePackageLibRelativePath(rel, out var tfm, out var fileName))
+            return assemblyPath;
+
+        var refPath = Path.Combine(packageRoot, "ref", tfm, fileName);
+        return File.Exists(refPath) ? refPath : assemblyPath;
+    }
+
+    /// <summary>
     /// Collapses duplicate runtime DLLs (ref/lib/runtimes) to one path per assembly name,
     /// preferring <c>runtimes/{os}/lib</c> over plain <c>lib/</c> over <c>ref/</c>.
     /// </summary>
@@ -74,6 +97,37 @@ public static class NuGetPackageAssetResolver
 
                 if (!best.TryGetValue(name, out var existing) || priority > existing.Priority)
                     best[name] = (impl, priority);
+            }
+            catch
+            {
+                // skip invalid paths
+            }
+        }
+
+        return best.Values.Select(v => v.Path).ToList();
+    }
+
+    /// <summary>
+    /// Collapses candidate paths to one compile asset per assembly name, preferring <c>ref/</c>.
+    /// </summary>
+    public static List<string> SelectPreferredCompileAssemblies(IEnumerable<string> assemblyPaths)
+    {
+        var best = new Dictionary<string, (string Path, int Priority)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in assemblyPaths)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                continue;
+
+            try
+            {
+                var compile = PreferCompileAssemblyPath(path);
+                var name = AssemblyName.GetAssemblyName(compile).Name
+                           ?? Path.GetFileNameWithoutExtension(compile);
+                var priority = IsReferenceAssemblyPath(compile) ? 2 : 1;
+
+                if (!best.TryGetValue(name, out var existing) || priority > existing.Priority)
+                    best[name] = (compile, priority);
             }
             catch
             {
@@ -117,9 +171,10 @@ public static class NuGetPackageAssetResolver
         tfm = string.Empty;
         fileName = string.Empty;
 
-        if (rel.Contains("/ref/", StringComparison.OrdinalIgnoreCase))
+        if (rel.Contains("/ref/", StringComparison.OrdinalIgnoreCase) ||
+            rel.StartsWith("ref/", StringComparison.OrdinalIgnoreCase))
         {
-            var segments = rel.Split('/');
+            var segments = rel.Replace('\\', '/').Split('/');
             if (segments.Length < 3)
                 return false;
 

@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using NuGet.Configuration;
 using NuGet.Frameworks;
 using NuGet.Packaging.Core;
@@ -483,7 +486,7 @@ public class ProjectService
                             .GetResult();
 
                         foreach (var runtimePath in assets.RuntimeAssemblyReferences)
-                            AddRuntimeReference(context, runtimePath);
+                            AddResolvedAssembly(context, runtimePath);
                     }
                 }
 
@@ -492,7 +495,7 @@ public class ProjectService
                     asset.RelativePath);
 
                 if (File.Exists(absPath))
-                    context.AbsoluteCompileReferences.Add(absPath);
+                    AddResolvedAssembly(context, absPath);
                 else
                     Console.WriteLine($"[Warning] Missing compile asset: {absPath}");
             }
@@ -504,8 +507,11 @@ public class ProjectService
 
                 if (File.Exists(absPath))
                 {
-                    context.AbsoluteCompileReferences.Add(absPath);
-                    AddRuntimeReference(context, absPath);
+                    AddResolvedAssembly(context, absPath);
+                    var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    AddLocalSiblingClosure(context, absPath, visited);
+                    foreach (var localPath in visited)
+                        AddDepsJsonAssets(context, localPath);
                 }
                 else
                     Console.WriteLine($"[Warning] Missing compile asset: {absPath}");
@@ -539,9 +545,229 @@ public class ProjectService
             }
         }
 
-        var preferred = NuGetPackageAssetResolver.SelectPreferredRuntimeAssemblies(context.AbsoluteRuntimeReferences);
+        UnifyReferenceLists(context);
+    }
+
+    private static void UnifyReferenceLists(ProjectContext context)
+    {
+        var all = context.AbsoluteCompileReferences
+            .Concat(context.AbsoluteRuntimeReferences)
+            .ToList();
+
         context.AbsoluteRuntimeReferences.Clear();
-        context.AbsoluteRuntimeReferences.AddRange(preferred);
+        context.AbsoluteRuntimeReferences.AddRange(
+            NuGetPackageAssetResolver.SelectPreferredRuntimeAssemblies(all));
+
+        context.AbsoluteCompileReferences.Clear();
+        context.AbsoluteCompileReferences.AddRange(
+            NuGetPackageAssetResolver.SelectPreferredCompileAssemblies(all));
+    }
+
+    private static void AddResolvedAssembly(ProjectContext context, string assemblyPath)
+    {
+        AddRuntimeReference(context, assemblyPath);
+
+        var compilePath = NuGetPackageAssetResolver.PreferCompileAssemblyPath(assemblyPath);
+        if (File.Exists(compilePath) &&
+            !context.AbsoluteCompileReferences.Contains(compilePath, StringComparer.OrdinalIgnoreCase))
+            context.AbsoluteCompileReferences.Add(compilePath);
+    }
+
+    /// <summary>
+    /// Adds directly referenced assemblies that sit next to a local DLL (copy-local / project
+    /// references). Package dependencies listed in .deps.json are added separately.
+    /// </summary>
+    private static void AddLocalSiblingClosure(ProjectContext context, string assemblyPath, HashSet<string> visited)
+    {
+        var full = Path.GetFullPath(assemblyPath);
+        if (!visited.Add(full))
+            return;
+
+        var dir = Path.GetDirectoryName(full);
+        if (string.IsNullOrEmpty(dir))
+            return;
+
+        foreach (var name in ReadReferencedAssemblyNames(full))
+        {
+            var sibling = Path.Combine(dir, name + ".dll");
+            if (!File.Exists(sibling))
+                continue;
+
+            AddResolvedAssembly(context, sibling);
+            AddLocalSiblingClosure(context, sibling, visited);
+        }
+    }
+
+    private static List<string> ReadReferencedAssemblyNames(string assemblyPath)
+    {
+        var names = new List<string>();
+        try
+        {
+            using var stream = File.OpenRead(assemblyPath);
+            using var pe = new PEReader(stream);
+            if (!pe.HasMetadata)
+                return names;
+
+            var reader = pe.GetMetadataReader();
+            foreach (var handle in reader.AssemblyReferences)
+            {
+                var reference = reader.GetAssemblyReference(handle);
+                var name = reader.GetString(reference.Name);
+                if (!string.IsNullOrEmpty(name))
+                    names.Add(name);
+            }
+        }
+        catch
+        {
+            // ignore unreadable assemblies
+        }
+
+        return names;
+    }
+
+    private void AddDepsJsonAssets(ProjectContext context, string assemblyPath)
+    {
+        var dir = Path.GetDirectoryName(assemblyPath);
+        if (string.IsNullOrEmpty(dir))
+            return;
+
+        var depsPath = Path.Combine(dir, Path.GetFileNameWithoutExtension(assemblyPath) + ".deps.json");
+        if (!File.Exists(depsPath))
+            return;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(depsPath));
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("targets", out var targets) ||
+                !root.TryGetProperty("libraries", out var libraries))
+                return;
+
+            var target = SelectDepsTarget(targets);
+            if (target.ValueKind != JsonValueKind.Object)
+                return;
+
+            foreach (var package in target.EnumerateObject())
+            {
+                string? libraryType = null;
+                string? packagePath = null;
+                if (libraries.TryGetProperty(package.Name, out var library))
+                {
+                    if (library.TryGetProperty("type", out var typeEl))
+                        libraryType = typeEl.GetString();
+                    if (library.TryGetProperty("path", out var pathEl))
+                        packagePath = pathEl.GetString();
+                }
+
+                if (package.Value.TryGetProperty("runtime", out var runtime) &&
+                    runtime.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var file in runtime.EnumerateObject())
+                    {
+                        var rel = file.Name.Replace('\\', '/');
+                        if (!rel.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        var fullPath = ResolveDepsJsonFile(dir, globalPackagesFolder, libraryType, packagePath,
+                            file.Name);
+                        if (fullPath != null)
+                            AddResolvedAssembly(context, fullPath);
+                    }
+                }
+
+                if (!package.Value.TryGetProperty("runtimeTargets", out var runtimeTargets) ||
+                    runtimeTargets.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                foreach (var file in runtimeTargets.EnumerateObject())
+                {
+                    var rid = file.Value.TryGetProperty("rid", out var ridEl) ? ridEl.GetString() : null;
+                    var assetType = file.Value.TryGetProperty("assetType", out var typeProp)
+                        ? typeProp.GetString()
+                        : "runtime";
+                    if (!RidApplies(rid))
+                        continue;
+
+                    var fullPath = ResolveDepsJsonFile(dir, globalPackagesFolder, libraryType, packagePath, file.Name);
+                    if (fullPath == null)
+                        continue;
+
+                    if (string.Equals(assetType, "native", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!context.AbsoluteNativeAssets.Contains(fullPath, StringComparer.OrdinalIgnoreCase))
+                            context.AbsoluteNativeAssets.Add(fullPath);
+                    }
+                    else if (file.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                        AddResolvedAssembly(context, fullPath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Warning] Failed to read {depsPath}: {ex.Message}");
+        }
+    }
+
+    private static string? ResolveDepsJsonFile(
+        string assemblyDir, string globalPackagesFolder, string? libraryType, string? packagePath, string relativeFile)
+    {
+        var rel = relativeFile.Replace('\\', '/');
+        if (rel.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        string fullPath;
+        if (string.Equals(libraryType, "package", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(packagePath))
+        {
+            fullPath = Path.Combine(
+                globalPackagesFolder,
+                packagePath.Replace('/', Path.DirectorySeparatorChar),
+                rel.Replace('/', Path.DirectorySeparatorChar));
+        }
+        else
+        {
+            fullPath = Path.Combine(assemblyDir, Path.GetFileName(rel));
+        }
+
+        return File.Exists(fullPath) ? fullPath : null;
+    }
+
+    private static bool RidApplies(string? rid)
+    {
+        if (string.IsNullOrEmpty(rid))
+            return true;
+
+        var current = RuntimeInformation.RuntimeIdentifier;
+        if (current.Equals(rid, StringComparison.OrdinalIgnoreCase) ||
+            current.StartsWith(rid + "-", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return rid.Equals("unix", StringComparison.OrdinalIgnoreCase) ||
+                   rid.Equals("linux", StringComparison.OrdinalIgnoreCase);
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return rid.Equals("unix", StringComparison.OrdinalIgnoreCase) ||
+                   rid.Equals("osx", StringComparison.OrdinalIgnoreCase);
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return rid.Equals("win", StringComparison.OrdinalIgnoreCase);
+
+        return false;
+    }
+
+    private static JsonElement SelectDepsTarget(JsonElement targets)
+    {
+        JsonElement fallback = default;
+        foreach (var target in targets.EnumerateObject())
+        {
+            fallback = target.Value;
+            if (target.Name.Contains("8.0", StringComparison.Ordinal) &&
+                target.Name.Contains("NETCoreApp", StringComparison.OrdinalIgnoreCase))
+                return target.Value;
+        }
+
+        return fallback;
     }
 
     private static void AddRuntimeReference(ProjectContext context, string assemblyPath)

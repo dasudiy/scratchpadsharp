@@ -5,7 +5,7 @@ This document describes the intended IntelliSense pipeline in ScratchpadSharp: U
 ## Design Principles
 
 1. **Editor and Roslyn must stay in sync** — every completion request pushes the current editor text (plus hidden usings) into the Roslyn document *before* querying completions. Position adjustment for hidden usings only works when the document actually contains those usings.
-2. **References come from hydrated runtime state** — use `ProjectContext.AbsoluteCompileReferences` (absolute DLL paths resolved from `PackageManifest`), not raw `Config.NuGetPackages`. After adding/removing packages, `ProjectService` refreshes this list and updates the Roslyn workspace; completion re-syncs on each request.
+2. **References come from hydrated runtime state** — use `ProjectContext.AbsoluteCompileReferences` (absolute DLL paths after `HydratePaths` / `UnifyReferenceLists`), not raw `Config.NuGetPackages`. Local DLLs also pull sibling copy-local assemblies and `{name}.deps.json` package graphs into this list (same identity set as `AbsoluteRuntimeReferences`, `ref/` vs `lib/` paths). After adding/removing packages, `ProjectService` refreshes this list and updates the Roslyn workspace; completion re-syncs on each request. `GetReferencesWithPackages` replaces a TPA default when an extra path has the same assembly simple name.
 3. **Same pipeline as signature help** — `RoslynCompletionService` and `SignatureProvider` follow the same workspace preparation order: check ready → sync references → sync document → adjust position → query Roslyn.
 
 ## 1. Triggering Mechanism (`CodeCompletionHandler.cs`)

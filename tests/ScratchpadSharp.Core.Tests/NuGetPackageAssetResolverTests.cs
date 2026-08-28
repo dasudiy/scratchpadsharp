@@ -11,6 +11,13 @@ public static class NuGetPackageAssetResolverTests
         failures += Run(nameof(ResolveRuntimeAssemblyPath_LibUsesUnixLib), ResolveRuntimeAssemblyPath_LibUsesUnixLib);
         failures += Run(nameof(SelectPreferredRuntimeAssemblies_PrefersUnixOverLib),
             SelectPreferredRuntimeAssemblies_PrefersUnixOverLib);
+        failures += Run(nameof(InferPackageRoot_ReturnsNullWithoutNuGetLayout),
+            InferPackageRoot_ReturnsNullWithoutNuGetLayout);
+        failures += Run(nameof(InferPackageRoot_DetectsLibFolder), InferPackageRoot_DetectsLibFolder);
+        failures += Run(nameof(PreferCompileAssemblyPath_UsesRefWhenPresent),
+            PreferCompileAssemblyPath_UsesRefWhenPresent);
+        failures += Run(nameof(SelectPreferredCompileAssemblies_PrefersRefOverLib),
+            SelectPreferredCompileAssemblies_PrefersRefOverLib);
         return failures;
     }
 
@@ -71,5 +78,51 @@ public static class NuGetPackageAssetResolverTests
 
         var selected = NuGetPackageAssetResolver.SelectPreferredRuntimeAssemblies([libPath, unixPath]);
         return selected.Count == 1 && selected[0].Equals(unixPath, StringComparison.Ordinal);
+    }
+
+    private static bool InferPackageRoot_ReturnsNullWithoutNuGetLayout()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "scratchpad-local", "MyLib.dll");
+        return NuGetPackageAssetResolver.InferPackageRoot(path) == null;
+    }
+
+    private static bool InferPackageRoot_DetectsLibFolder()
+    {
+        var path = Path.Combine("cache", "newtonsoft.json", "13.0.3", "lib", "net6.0", "Newtonsoft.Json.dll");
+        var root = NuGetPackageAssetResolver.InferPackageRoot(path);
+        return root != null &&
+               root.Replace('\\', '/').EndsWith("newtonsoft.json/13.0.3", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool PreferCompileAssemblyPath_UsesRefWhenPresent()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var libPath = Path.Combine(
+            home, ".nuget", "packages", "microsoft.data.sqlclient", "5.2.2",
+            "lib", "net8.0", "Microsoft.Data.SqlClient.dll");
+        var refPath = Path.Combine(
+            home, ".nuget", "packages", "microsoft.data.sqlclient", "5.2.2",
+            "ref", "net8.0", "Microsoft.Data.SqlClient.dll");
+        if (!File.Exists(libPath) || !File.Exists(refPath))
+            return true;
+
+        var compile = NuGetPackageAssetResolver.PreferCompileAssemblyPath(libPath);
+        return compile.Equals(refPath, StringComparison.Ordinal);
+    }
+
+    private static bool SelectPreferredCompileAssemblies_PrefersRefOverLib()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var libPath = Path.Combine(
+            home, ".nuget", "packages", "microsoft.data.sqlclient", "5.2.2",
+            "lib", "net8.0", "Microsoft.Data.SqlClient.dll");
+        var refPath = Path.Combine(
+            home, ".nuget", "packages", "microsoft.data.sqlclient", "5.2.2",
+            "ref", "net8.0", "Microsoft.Data.SqlClient.dll");
+        if (!File.Exists(libPath) || !File.Exists(refPath))
+            return true;
+
+        var selected = NuGetPackageAssetResolver.SelectPreferredCompileAssemblies([libPath, refPath]);
+        return selected.Count == 1 && selected[0].Equals(refPath, StringComparison.Ordinal);
     }
 }

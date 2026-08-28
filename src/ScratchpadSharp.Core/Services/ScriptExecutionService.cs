@@ -172,6 +172,14 @@ public class ScriptExecutionService : IScriptExecutionService
                     var packageRoot = NuGetPackageAssetResolver.InferPackageRoot(reference);
                     if (packageRoot != null && !additionalPaths.Contains(packageRoot))
                         additionalPaths.Add(packageRoot);
+
+                    if (!File.Exists(reference))
+                        continue;
+
+                    var dir = Path.GetDirectoryName(reference);
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir) &&
+                        !additionalPaths.Contains(dir, StringComparer.OrdinalIgnoreCase))
+                        additionalPaths.Add(dir);
                 }
             }
 

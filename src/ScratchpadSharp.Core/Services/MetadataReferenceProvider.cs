@@ -87,16 +87,35 @@ public static class MetadataReferenceProvider
     }
 
     /// <summary>
-    /// Default framework refs + NuGet compile assets from <see cref="DependencyResolver"/> / manifest hydrate.
+    /// Default framework refs plus extra compile assets. Extra paths replace a default
+    /// reference with the same assembly simple name so IntelliSense matches script runtime.
     /// </summary>
-    public static IEnumerable<MetadataReference> GetReferencesWithPackages(List<string>? nugetPackages)
+    public static IEnumerable<MetadataReference> GetReferencesWithPackages(List<string>? extraPaths)
     {
-        var references = GetDefaultReferences().ToList();
+        var byName = new Dictionary<string, MetadataReference>(StringComparer.OrdinalIgnoreCase);
 
-        if (nugetPackages == null || nugetPackages.Count == 0)
-            return references;
+        foreach (var reference in GetDefaultReferences())
+        {
+            var name = Path.GetFileNameWithoutExtension(reference.Display ?? string.Empty);
+            if (!string.IsNullOrEmpty(name))
+                byName[name] = reference;
+        }
 
-        references.AddRange(nugetPackages.Select(CreateReferenceWithXmlDocs));
-        return references;
+        if (extraPaths == null || extraPaths.Count == 0)
+            return byName.Values;
+
+        foreach (var path in extraPaths)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                continue;
+
+            var name = Path.GetFileNameWithoutExtension(path);
+            if (string.IsNullOrEmpty(name))
+                continue;
+
+            byName[name] = CreateReferenceWithXmlDocs(path);
+        }
+
+        return byName.Values;
     }
 }

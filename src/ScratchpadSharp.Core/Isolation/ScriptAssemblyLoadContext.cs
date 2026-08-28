@@ -24,7 +24,8 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
         "Microsoft.EntityFrameworkCore.SqlServer"
     ];
 
-    private readonly AssemblyDependencyResolver? resolver;
+    private readonly List<AssemblyDependencyResolver> resolvers = [];
+    private readonly HashSet<string> resolverAssemblyPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> additionalProbingPaths;
     private readonly Dictionary<string, string> runtimeReferencePaths;
 
@@ -38,10 +39,53 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
         IEnumerable<string>? runtimeReferences = null)
         : base(isCollectible: true)
     {
-        resolver = assemblyPath != null ? new AssemblyDependencyResolver(assemblyPath) : null;
-        additionalProbingPaths = additionalPaths ?? new List<string>();
+        additionalProbingPaths = additionalPaths is { Count: > 0 } ? [..additionalPaths] : [];
         runtimeReferencePaths = BuildRuntimeReferenceMap(runtimeReferences);
+
+        TryAddResolver(assemblyPath);
+        if (runtimeReferences != null)
+        {
+            foreach (var path in runtimeReferences)
+            {
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                    continue;
+
+                var dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir) &&
+                    !additionalProbingPaths.Contains(dir, StringComparer.OrdinalIgnoreCase))
+                    additionalProbingPaths.Add(dir);
+
+                if (NuGetPackageAssetResolver.InferPackageRoot(path) == null)
+                    TryAddResolver(path);
+            }
+        }
+
         PreloadRuntimeAssemblies(runtimeReferences);
+    }
+
+    private void TryAddResolver(string? assemblyPath)
+    {
+        if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
+            return;
+
+        var depsPath = Path.Combine(
+            Path.GetDirectoryName(assemblyPath)!,
+            Path.GetFileNameWithoutExtension(assemblyPath) + ".deps.json");
+        if (!File.Exists(depsPath))
+            return;
+
+        if (!resolverAssemblyPaths.Add(Path.GetFullPath(assemblyPath)))
+            return;
+
+        try
+        {
+            resolvers.Add(new AssemblyDependencyResolver(assemblyPath));
+        }
+        catch
+        {
+            resolverAssemblyPaths.Remove(Path.GetFullPath(assemblyPath));
+            // deps.json present but not usable as a component manifest
+        }
     }
 
     private void PreloadRuntimeAssemblies(IEnumerable<string>? runtimeReferences)
@@ -108,7 +152,7 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        if (resolver != null)
+        foreach (var resolver in resolvers)
         {
             var assemblyPath = resolver.ResolveAssemblyToPath(assemblyName);
             if (assemblyPath != null)
@@ -151,7 +195,7 @@ public class ScriptAssemblyLoadContext : AssemblyLoadContext
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
-        if (resolver != null)
+        foreach (var resolver in resolvers)
         {
             var libraryPath = resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
             if (libraryPath != null)

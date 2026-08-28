@@ -396,7 +396,7 @@ When `Application.RestoreSessionOnStartup` is `true` (default):
 - **On window close**: `MainWindowViewModel.SaveSession()` writes all tabs to `{LocalApplicationData}/ScratchpadSharp/session.json` — including unsaved tabs (no `SourcePath`), unsaved code edits, and reference state (`Config` + `Manifest`).
 - **On startup**: `RestoreSessionAsync()` recreates tabs from that file instead of opening a single empty tab.
 
-Unsaved tabs depend entirely on session data; saved `.lqpkg` tabs with embedded local DLLs require `PrepareEffectiveRootForSessionRestoreAsync` so `EffectiveRootPath` matches the package extract directory. Details: [docs/session-restore.md](docs/session-restore.md).
+Unsaved tabs depend entirely on session data; saved `.lqpkg` tabs with Local zip entries require `PrepareEffectiveRootForSessionRestoreAsync` so `EffectiveRootPath` matches the package extract directory. `SaveAsZipAsync` does not currently pack local DLLs. Details: [docs/session-restore.md](docs/session-restore.md) and [docs/reference-management.md](docs/reference-management.md).
 
 ---
 

@@ -71,13 +71,14 @@ flowchart LR
 
 **脱水（Dehydrate）**：将绝对路径剥离为相对路径存入 Manifest，NuGet 资产存包内相对路径（如 `lib/net8.0/Newtonsoft.Json.dll`），Local 资产存相对于项目根的路径，路径分隔符统一用 `/`。
 
-**补水（Hydrate）**：
+**补水（Hydrate）**（`HydratePaths` → `UnifyReferenceLists`）：
 
-- NuGet 编译资产：`globalPackagesFolder / id.toLower() / version.toLower() / relPath`（Manifest 中多为 `ref/`）
-- NuGet 运行时程序集：对每个包调用 `GetPackageAssetsAsync`，收集 `lib/` 与 `runtimes/{unix|win|osx}/lib/` 到 `AbsoluteRuntimeReferences`（**禁止** `ref/` 存根）
-- Local 资产：`EffectiveRootPath / relPath`；若 `RelativePath` 已是绝对路径则直接使用
+- NuGet：对每个包调用 `GetPackageAssetsAsync`，经 `AddResolvedAssembly` 同时写入编译与运行时列表；Manifest 中的 `ref/` 路径用于编译，实现 DLL 用于运行时
+- Local：`EffectiveRootPath / relPath`（已是绝对路径则直接用）→ `AddResolvedAssembly`；再读 PE 引用，把**同目录存在的** sibling DLL 一并加入
+- 每个已加入的本地 DLL 若旁边有 `{name}.deps.json`，解析 `runtime` 与当前 RID 匹配的 `runtimeTargets`（managed → 同一套程序集身份；`native` → `AbsoluteNativeAssets`）。class library 默认不拷贝 PackageReference，依赖从 `~/.nuget/packages/{libraries.path}/` 解析
+- 最后按程序集**简单名**折叠：`SelectPreferredCompileAssemblies`（优先 `ref/`）与 `SelectPreferredRuntimeAssemblies`（优先 `lib/` / `runtimes/*/lib`）。两边名字集合一致，只是路径不同。Roslyn `GetReferencesWithPackages` 对同名程序集用补水路径覆盖宿主 TPA
 
-Native 资产按当前平台 RID（`RuntimeInformation.RuntimeIdentifier`）从 Manifest 的 `NativeAssets` 字典过滤，补水为 **native 文件的绝对路径**（如 `.../runtimes/linux-x64/native/*.so`）。脚本 ALC 同时把这些路径当作直接 native 探针，并从对应 NuGet 包根目录探测 `runtimes/{rid}/native/`。
+Native 资产按当前 RID 从 Manifest `NativeAssets` 过滤，再并入 deps.json 的 native `runtimeTargets`。脚本 ALC 把这些路径当探针，并从 NuGet 包根探测 `runtimes/{rid}/native/`，同时把每个运行时 DLL 所在目录加入探测路径。
 
 ---
 
@@ -104,12 +105,23 @@ flowchart TD
 ```mermaid
 flowchart TD
     S1["1. 写 Config<br/>计算相对路径，存入 Config.References"]
-    S2["2. 写 Manifest<br/>直接添加 Local 类型 ResolvedAsset（无需算图）"]
+    S2["2. 写 Manifest<br/>直接添加 Local 类型 ResolvedAsset"]
     S3["3. 保存磁盘<br/>PackageService.SaveAsync"]
-    S4["4. 补水刷新<br/>HydratePaths → RoslynWorkspaceService.UpdateReferences"]
+    S4["4. 补水刷新<br/>HydratePaths：sibling + deps.json → UnifyReferenceLists"]
 
     S1 --> S2 --> S3 --> S4
 ```
+
+本地 DLL **不算 NuGet 图**。补水时会读取程序集引用，把**同目录下存在的**被引用 DLL 一并加入编译/运行时列表（copy-local / ProjectReference）。
+
+同时读取旁边的 `{name}.deps.json`（含 sibling 上的 deps），把 `runtime` 与当前 RID 的 `runtimeTargets` 补进**同一套程序集身份**：
+
+- **编译 / 智能感知**：`PreferCompileAssemblyPath`（有 `ref/` 则用元数据程序集）
+- **运行时**：`EnsureImplementationAssemblyPath`（`lib/` / `runtimes/*/lib`）
+
+两边按程序集简单名折叠，集合一致，只是路径不同。Roslyn 对同名程序集用 deps/NuGet 路径覆盖宿主 TPA，避免补全一套、执行另一套。native `runtimeTargets` 进入 `AbsoluteNativeAssets`。
+
+未出现在同目录、也未写入 deps.json 的依赖仍需用户自行 `AddPackage` / `AddReference`。
 
 ### 3. 加载项目（`LoadProjectAsync`）
 
@@ -127,9 +139,11 @@ flowchart TD
 
 只需接收 `code` + `ProjectContext`，直接使用：
 
-- `AbsoluteCompileReferences` → Roslyn 编译引用（`ref/` 元数据）
-- `AbsoluteRuntimeReferences` → `ScriptAssemblyLoadContext` 预加载与程序集解析（实现 DLL，非 `ref/`；构造参数名为 `runtimeReferences`）
+- `AbsoluteCompileReferences` → Roslyn 编译引用（`ref/` 元数据；同名覆盖 TPA）
+- `AbsoluteRuntimeReferences` → `ScriptAssemblyLoadContext` 预加载与程序集解析（实现 DLL，非 `ref/`）
 - `AbsoluteNativeAssets` → native 文件路径 + 包根目录探针（`runtimes/{rid}/native/`）
+
+ALC 还会：把每个运行时 DLL 所在目录加入探测路径（同目录 sibling）；对非 NuGet 布局且存在 `{name}.deps.json` 的 DLL 构造 `AssemblyDependencyResolver`（有 runtimeconfig 探测路径时有效；主路径仍是补水进 `AbsoluteRuntimeReferences` 的 deps 图）。
 
 ### 5. Session 恢复（`RestoreFromSessionAsync`）
 
@@ -168,7 +182,7 @@ project/
 
 ### .lqpkg（发布模式）
 
-标准 Zip 压缩包，内含同名文件。本地引用的 DLL 随包打入 Zip，加载时解压到临时目录。
+标准 Zip，内含 `manifest.json`、`code.cs`、`config.json`（及可选 `last_run.txt`）。**当前 `SaveAsZipAsync` / `PackAsync` 不会把本地 DLL 打进 Zip。** `LoadAsync` 若在 Zip 里找到 Manifest 所记的 Local 条目，会解压到 `{Temp}/ScratchpadSharp/Packages/{包名}/` 并设置 `RootPath`。要分发带本地引用的包，需自行把 DLL 放进 Zip 或改用文件夹开发模式（DLL 留在项目目录）。
 
 ### manifest.json 片段
 
@@ -207,6 +221,6 @@ project/
 
 ## `ScriptConfig.References` 说明
 
-`References` 仅用于 **用户本地 DLL 路径**（如 `"libs/MyLib.dll"`，或包含路径分隔符的相对路径）。条目会写入 Manifest 作为 `Local` 资产。
+`References` 仅用于 **用户本地 DLL 路径**（如 `"libs/MyLib.dll"`，或包含路径分隔符的相对路径）。条目会写入 Manifest 作为 `Local` 资产。加载/补水时不会把 deps.json 里的 NuGet 包写回 `Config.NuGetPackages`；那些包只出现在补水后的编译/运行时列表里。
 
-共享框架（BCL）不由此字段配置：`MetadataReferenceProvider.GetDefaultReferences()` 从运行时 `TRUSTED_PLATFORM_ASSEMBLIES` 加载完整 TPA 列表；无 TPA 时回退到共享框架目录或最小类型集。
+共享框架（BCL）不由此字段配置：`MetadataReferenceProvider.GetDefaultReferences()` 从运行时 `TRUSTED_PLATFORM_ASSEMBLIES` 加载完整 TPA 列表；无 TPA 时回退到共享框架目录或最小类型集。脚本额外引用与 TPA **同名**时，`GetReferencesWithPackages` 用补水路径覆盖 TPA 条目。

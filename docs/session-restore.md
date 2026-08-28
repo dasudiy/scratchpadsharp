@@ -82,7 +82,7 @@ An **unsaved tab** has no `SourcePath` (never saved with Save / Save As). These 
 1. User opens a new tab (Untitled), writes code, installs NuGet packages or adds local references.
 2. User closes the app without saving.
 3. On next launch, tab title, code, and references are restored from `session.json`.
-4. Run / IntelliSense work as before because `Manifest` is re-hydrated into `ProjectContext.AbsoluteCompileReferences`.
+4. Run / IntelliSense work as before because `Manifest` is re-hydrated (`HydratePaths` fills both `AbsoluteCompileReferences` and `AbsoluteRuntimeReferences`, including local sibling DLLs and `{name}.deps.json` graphs).
 
 ### Local references on unsaved tabs
 
@@ -105,7 +105,7 @@ The file on disk is not modified until the user saves again.
 
 ## `.lqpkg` and local packaged assets
 
-`.lqpkg` files may embed local DLLs inside the zip. On first load, `PackageService` extracts them to a **stable directory**:
+`.lqpkg` files **may** contain local DLL zip entries; `SaveAsZipAsync` does not currently pack them. If entries exist, `PackageService` extracts them to a **stable directory**:
 
 ```
 {Temp}/ScratchpadSharp/Packages/{package-name}/

@@ -90,13 +90,15 @@ public static class EfSqlServerScriptTests
         }
 
         if (sqlClient.Contains("/ref/", StringComparison.OrdinalIgnoreCase) ||
-            sqlClient.Contains("/lib/", StringComparison.OrdinalIgnoreCase))
+            (sqlClient.Contains("/lib/", StringComparison.OrdinalIgnoreCase) &&
+             !sqlClient.Contains("/runtimes/", StringComparison.OrdinalIgnoreCase)))
         {
             Console.WriteLine($"SqlClient is not platform runtime: {sqlClient}");
             return false;
         }
 
         var code = """
+            using System.Linq;
             await using var db = new Modules.HeadlessTest.AppDbContext();
             var q = db.Orders.Take(1);
             using var e = q.GetEnumerator();
@@ -161,6 +163,8 @@ public static class EfSqlServerScriptTests
         await ProjectService.Instance.RefreshMergedEnvironmentAsync(tabId, context);
 
         var code = """
+            using System.Linq;
+            using ScratchpadSharp.Core.External.NetPad.Presentation;
             await using var db = new Modules.HeadlessDumpTest.AppDbContext();
             db.Orders.Take(1).Dump();
             """;
