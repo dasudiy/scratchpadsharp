@@ -239,7 +239,7 @@
         <Setter Property="Width" Value="28" />
         <Setter Property="Height" Value="28" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -300,7 +300,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="8,2" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Transitions">
