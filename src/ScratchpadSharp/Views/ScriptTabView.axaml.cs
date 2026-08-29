@@ -14,6 +14,7 @@ using AvaloniaEdit;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Highlighting.Xshd;
+using AvaloniaEdit.Rendering;
 using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Editor;
@@ -38,6 +39,7 @@ public partial class ScriptTabView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
+        SizeChanged += OnViewSizeChanged;
         AttachedToVisualTree += OnAttachedToVisualTree;
         DetachedFromVisualTree += OnDetachedFromVisualTree;
     }
@@ -107,6 +109,9 @@ public partial class ScriptTabView : UserControl
 
         CodeEditor.TextChanged -= OnCodeEditorTextChanged;
         CodeEditor.PointerWheelChanged -= OnPointerWheelChanged;
+        CodeEditor.SizeChanged -= OnEditorSizeChanged;
+        if (MainGrid != null)
+            MainGrid.SizeChanged -= OnEditorSizeChanged;
         if (CodeEditor.TextArea != null)
         {
             CodeEditor.TextArea.Caret.PositionChanged -= OnCaretPositionChanged;
@@ -152,6 +157,8 @@ public partial class ScriptTabView : UserControl
         CodeEditor.Document ??= new TextDocument();
         CodeEditor.TextChanged += OnCodeEditorTextChanged;
         CodeEditor.PointerWheelChanged += OnPointerWheelChanged;
+        CodeEditor.SizeChanged += OnEditorSizeChanged;
+        MainGrid.SizeChanged += OnEditorSizeChanged;
         CodeEditor.TextArea.Caret.PositionChanged += OnCaretPositionChanged;
 
         CodeEditor.Document.Text = viewModel.CodeText;
@@ -244,6 +251,39 @@ public partial class ScriptTabView : UserControl
         RenameTextBox.SelectAll();
     }
 
+    private void OnViewSizeChanged(object? sender, SizeChangedEventArgs e) =>
+        ScheduleEditorViewportFix();
+
+    private void OnEditorSizeChanged(object? sender, SizeChangedEventArgs e) =>
+        ScheduleEditorViewportFix();
+
+    private void ScheduleEditorViewportFix()
+    {
+        if (CodeEditor?.TextArea?.TextView is null)
+            return;
+
+        Dispatcher.UIThread.Post(FixEditorViewport, DispatcherPriority.Render);
+    }
+
+    private void FixEditorViewport()
+    {
+        if (CodeEditor?.TextArea?.TextView is not TextView textView)
+            return;
+
+        textView.InvalidateMeasure();
+        textView.InvalidateArrange();
+
+        var viewportHeight = textView.Bounds.Height;
+        if (viewportHeight <= 0 || double.IsNaN(viewportHeight))
+            return;
+
+        var maxScroll = Math.Max(0, textView.DocumentHeight - viewportHeight);
+        var offsetY = textView.ScrollOffset.Y;
+        var clampedY = Math.Clamp(offsetY, 0, maxScroll);
+        if (Math.Abs(clampedY - offsetY) > 0.5)
+            CodeEditor.ScrollToVerticalOffset(clampedY);
+    }
+
     private void OnCaretPositionChanged(object? sender, EventArgs e) => UpdateCursorPosition();
 
     private void UpdateCursorPosition()
@@ -263,6 +303,8 @@ public partial class ScriptTabView : UserControl
         MainGrid.RowDefinitions[2].Height = expanded
             ? new GridLength(2, GridUnitType.Star)
             : GridLength.Auto;
+
+        ScheduleEditorViewportFix();
     }
 
     private void OnCodeEditorTextChanged(object? sender, EventArgs e)
