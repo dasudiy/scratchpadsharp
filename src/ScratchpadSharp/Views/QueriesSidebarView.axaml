@@ -72,7 +72,7 @@
       <Separator IsVisible="{Binding IsPackageSelected}" />
       <MenuItem Header="Open Containing Folder"
                 Command="{Binding OpenContainingFolderCommand}"
-                IsVisible="{Binding IsPackageSelected}" />
+                IsVisible="{Binding CanOpenContainingFolderSelected}" />
       <Separator />
       <MenuItem Header="Delete"
                 InputGesture="Delete"
@@ -189,7 +189,8 @@
                   SelectedItem="{Binding SelectedNode}"
                   SelectionMode="Single"
                   Background="Transparent"
-                  Margin="12,0,0,0">
+                  Margin="12,0,0,0"
+                  ContextMenu="{StaticResource QueryTreeContextMenu}">
         <TreeView.Styles>
           <Style Selector="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -198,40 +199,6 @@
             <Setter Property="IsVisible" Value="{Binding !IsPlaceholder}" />
           </Style>
         </TreeView.Styles>
-        <TreeView.ContextMenu>
-          <ContextMenu>
-            <MenuItem Header="New Folder"
-                      Command="{Binding NewFolderCommand}"
-                      IsVisible="{Binding IsDirectorySelected}" />
-            <MenuItem Header="New Query"
-                      Command="{Binding NewQueryCommand}"
-                      IsVisible="{Binding IsDirectorySelected}" />
-            <MenuItem Header="Open"
-                      Command="{Binding OpenSelectedCommand}"
-                      IsVisible="{Binding IsPackageSelected}" />
-            <MenuItem Header="Rename"
-                      InputGesture="F2"
-                      Command="{Binding RenameCommand}"
-                      IsVisible="{Binding CanRenameSelected}" />
-            <MenuItem Header="Pack"
-                      Command="{Binding PackCommand}"
-                      IsVisible="{Binding IsFolderPackageSelected}" />
-            <MenuItem Header="Unpack"
-                      Command="{Binding UnpackCommand}"
-                      IsVisible="{Binding IsPackageFileSelected}" />
-            <Separator IsVisible="{Binding IsPackageSelected}" />
-            <MenuItem Header="Open Containing Folder"
-                      Command="{Binding OpenContainingFolderCommand}"
-                      IsVisible="{Binding IsPackageSelected}" />
-            <Separator />
-            <MenuItem Header="Delete"
-                      InputGesture="Delete"
-                      Command="{Binding DeleteCommand}"
-                      IsVisible="{Binding CanDeleteSelected}" />
-            <MenuItem Header="Refresh"
-                      Command="{Binding RefreshCommand}" />
-          </ContextMenu>
-        </TreeView.ContextMenu>
         <TreeView.ItemTemplate>
           <TreeDataTemplate DataType="vm:QueryTreeNode"
                             ItemsSource="{Binding Children}">

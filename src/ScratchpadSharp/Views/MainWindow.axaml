@@ -61,43 +61,11 @@
                     </StackPanel>
                 </Button>
                 <Button Classes="rider-toolbar-btn"
-                        Command="{Binding OpenFolderCommand}"
-                        ToolTip.Tip="Open Developer Mode folder">
-                    <StackPanel Orientation="Horizontal" Spacing="5">
-                        <TextBlock Text="📁" FontSize="12" />
-                        <TextBlock Text="Folder" />
-                    </StackPanel>
-                </Button>
-                <Button Classes="rider-toolbar-btn"
                         Command="{Binding SaveCommand}"
                         ToolTip.Tip="Save (Ctrl+S)">
                     <StackPanel Orientation="Horizontal" Spacing="5">
                         <TextBlock Text="💾" FontSize="12" />
                         <TextBlock Text="Save" />
-                    </StackPanel>
-                </Button>
-                <Button Classes="rider-toolbar-btn"
-                        Command="{Binding SaveAsFolderCommand}"
-                        ToolTip.Tip="Save as Developer Mode folder">
-                    <StackPanel Orientation="Horizontal" Spacing="5">
-                        <TextBlock Text="⇩" FontSize="12" />
-                        <TextBlock Text="Save Folder" />
-                    </StackPanel>
-                </Button>
-                <Button Classes="rider-toolbar-btn"
-                        Command="{Binding PackCommand}"
-                        ToolTip.Tip="Pack folder package to .lqpkg">
-                    <StackPanel Orientation="Horizontal" Spacing="5">
-                        <TextBlock Text="⬆" FontSize="12" />
-                        <TextBlock Text="Pack" />
-                    </StackPanel>
-                </Button>
-                <Button Classes="rider-toolbar-btn"
-                        Command="{Binding UnpackCommand}"
-                        ToolTip.Tip="Unpack .lqpkg to Developer Mode folder">
-                    <StackPanel Orientation="Horizontal" Spacing="5">
-                        <TextBlock Text="⬇" FontSize="12" />
-                        <TextBlock Text="Unpack" />
                     </StackPanel>
                 </Button>
                 <Button Classes="rider-toolbar-btn"

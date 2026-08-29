@@ -5,7 +5,7 @@ ScratchpadSharp uses **EF Core modules** — reusable database connections with 
 ## Create a database module
 
 1. Open the **Modules** sidebar (left pane).
-2. Click **+** or use **Add database** in the context menu.
+2. Click **+** on the EF Core root row to add a database.
 3. Enter display name, provider, and connection (form or raw connection string).
 4. **Test connection**, then **Save** — schema is scaffolded into `model.cs` under the module instance.
 

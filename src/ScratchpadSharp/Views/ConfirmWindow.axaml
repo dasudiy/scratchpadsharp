@@ -21,10 +21,13 @@
                  Foreground="{StaticResource TextSecondaryBrush}" />
       <TextBox x:Name="InputBox"
                IsVisible="{Binding ShowInput}"
-               Watermark="Folder name"
+               Watermark="{Binding InputWatermark}"
                Text="{Binding InputText}"
                KeyDown="OnInputKeyDown" />
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8"
+                  IsVisible="{Binding ShowOkCancel}">
         <Button Content="Cancel"
                 IsCancel="True"
                 Command="{Binding CancelCommand}"
@@ -34,6 +37,25 @@
                 IsDefault="True"
                 Command="{Binding ConfirmCommand}"
                 Click="OnOkClick"
+                Background="{StaticResource AccentBrush}"
+                Foreground="{StaticResource TextOnDarkBrush}" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8"
+                  IsVisible="{Binding ShowUnsavedActions}">
+        <Button Content="Cancel"
+                IsCancel="True"
+                Command="{Binding CancelCommand}"
+                Click="OnCancelClick" />
+        <Button Content="Don't Save"
+                Command="{Binding DiscardCommand}"
+                Click="OnDiscardClick" />
+        <Button x:Name="SaveButton"
+                Content="Save"
+                IsDefault="True"
+                Command="{Binding SaveCommand}"
+                Click="OnSaveClick"
                 Background="{StaticResource AccentBrush}"
                 Foreground="{StaticResource TextOnDarkBrush}" />
       </StackPanel>

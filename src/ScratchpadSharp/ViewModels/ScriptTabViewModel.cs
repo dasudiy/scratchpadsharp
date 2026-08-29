@@ -404,6 +404,7 @@ public class ScriptTabViewModel : ReactiveObject
             projectContext.EffectiveRootPath = filePath;
 
         Title = Path.GetFileName(filePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        this.RaisePropertyChanged(nameof(CanRename));
     }
 
     public void BeginRename()

@@ -3,7 +3,12 @@
              xmlns:vm="using:ScratchpadSharp.ViewModels"
              xmlns:conv="using:ScratchpadSharp.Converters"
              x:Class="ScratchpadSharp.Views.ModulesSidebarView"
-             x:DataType="vm:ModulesSidebarViewModel">
+             x:DataType="vm:ModulesSidebarViewModel"
+             Focusable="True"
+             KeyDown="OnKeyDown">
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Delete" Command="{Binding DeleteInstanceCommand}" />
+  </UserControl.KeyBindings>
   <UserControl.Resources>
     <x:Double x:Key="TreeViewItemIndent">12</x:Double>
     <Thickness x:Key="TreeViewItemExpandCollapseChevronMargin">0</Thickness>
@@ -43,7 +48,37 @@
     </ControlTheme>
 
     <conv:ModuleTreeIconImageConverter x:Key="ModuleTreeIconImageConverter" />
+    <conv:BoldConverter x:Key="BoldConverter" />
     <Geometry x:Key="ModuleTreeSpinnerIcon">M8 1.5A6.5 6.5 0 1 1 1.5 8H0a8 8 0 1 0 8-8v1.5z</Geometry>
+
+    <ContextMenu x:Key="ModuleTreeContextMenu">
+      <MenuItem Header="Edit connection"
+                Command="{Binding EditConnectionCommand}"
+                IsVisible="{Binding IsInstanceSelected}" />
+      <MenuItem Header="Regenerate model"
+                Command="{Binding RegenerateModelCommand}"
+                IsVisible="{Binding IsInstanceSelected}" />
+      <MenuItem Header="Add ref to query"
+                Command="{Binding AddRefCommand}"
+                IsVisible="{Binding IsInstanceSelected}" />
+      <MenuItem Header="Remove ref from query"
+                Command="{Binding RemoveRefCommand}"
+                IsVisible="{Binding IsInstanceSelected}" />
+      <MenuItem Header="Delete"
+                InputGesture="Delete"
+                Command="{Binding DeleteInstanceCommand}"
+                IsVisible="{Binding IsInstanceSelected}" />
+      <Separator IsVisible="{Binding IsTableOrViewSelected}" />
+      <MenuItem Header="Take (100)"
+                Command="{Binding Take100Command}"
+                IsVisible="{Binding IsTableOrViewSelected}" />
+      <MenuItem Header="Count"
+                Command="{Binding CountCommand}"
+                IsVisible="{Binding IsTableOrViewSelected}" />
+      <Separator />
+      <MenuItem Header="Refresh"
+                Command="{Binding RefreshCommand}" />
+    </ContextMenu>
   </UserControl.Resources>
 
   <UserControl.Styles>
@@ -66,7 +101,7 @@
     </Style>
 
     <Style Selector="TreeViewItem /template/ Panel#PART_ExpandCollapseChevronContainer">
-      <Setter Property="Width" Value="5" />
+      <Setter Property="Width" Value="14" />
       <Setter Property="Height" Value="20" />
       <Setter Property="Margin" Value="0" />
       <Setter Property="VerticalAlignment" Value="Center" />
@@ -117,6 +152,7 @@
         <DockPanel x:Name="ModuleRootRow"
                    Margin="4,6,4,0"
                    MinHeight="20"
+                   ContextMenu="{StaticResource ModuleTreeContextMenu}"
                    PointerReleased="OnRootRowPointerReleased">
           <StackPanel DockPanel.Dock="Right"
                       Orientation="Horizontal"
@@ -128,6 +164,10 @@
                       Classes="module-tree-spinner"
                       Data="{StaticResource ModuleTreeSpinnerIcon}"
                       Foreground="{StaticResource AccentBrush}" />
+            <Button Classes="rider-side-panel-btn"
+                    Content="↻"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="Refresh" />
             <Button Classes="rider-side-panel-btn"
                     Content="+"
                     Command="{Binding AddDatabaseCommand}"
@@ -162,12 +202,14 @@
         </DockPanel>
 
         <TreeView x:Name="ModuleTree"
+                  Focusable="True"
                   ItemsSource="{Binding RootNode.Children}"
                   IsVisible="{Binding RootNode.IsExpanded}"
                   SelectedItem="{Binding SelectedNode}"
                   SelectionMode="Single"
                   Background="Transparent"
-                  Margin="12,0,0,0">
+                  Margin="12,0,0,0"
+                  ContextMenu="{StaticResource ModuleTreeContextMenu}">
         <TreeView.Styles>
           <Style Selector="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -193,24 +235,11 @@
               <TextBlock Text="{Binding Name}"
                          FontSize="12"
                          VerticalAlignment="Center"
+                         FontWeight="{Binding IsReferencedInActiveTab, Converter={StaticResource BoldConverter}}"
                          Foreground="{StaticResource TextPrimaryBrush}" />
             </StackPanel>
           </TreeDataTemplate>
         </TreeView.ItemTemplate>
-        <TreeView.ContextMenu>
-          <ContextMenu>
-            <MenuItem Header="Edit connection" Command="{Binding EditConnectionCommand}" />
-            <MenuItem Header="Regenerate model" Command="{Binding RegenerateModelCommand}" />
-            <MenuItem Header="Add ref to query" Command="{Binding AddRefCommand}" />
-            <MenuItem Header="Remove ref from query" Command="{Binding RemoveRefCommand}" />
-            <MenuItem Header="Delete" Command="{Binding DeleteInstanceCommand}" />
-            <Separator />
-            <MenuItem Header="Take (100)" Command="{Binding Take100Command}" />
-            <MenuItem Header="Count" Command="{Binding CountCommand}" />
-            <Separator />
-            <MenuItem Header="Refresh" Command="{Binding RefreshCommand}" />
-          </ContextMenu>
-        </TreeView.ContextMenu>
       </TreeView>
       </StackPanel>
     </ScrollViewer>

@@ -71,6 +71,12 @@ public partial class QueriesSidebarView : UserControl
             treeMenu.Opening += OnTreeContextMenuOpening;
             treeMenu.Closed += OnTreeContextMenuClosed;
         }
+
+        if (QueryRootRow.ContextMenu is ContextMenu rootMenu)
+        {
+            rootMenu.Opening += OnRootContextMenuOpening;
+            rootMenu.Closed += OnTreeContextMenuClosed;
+        }
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -105,6 +111,16 @@ public partial class QueriesSidebarView : UserControl
             if (treeViewItem?.DataContext is QueryTreeNode node)
                 viewModel.SelectedNode = node;
         }
+    }
+
+    private void OnRootContextMenuOpening(object? sender, EventArgs e)
+    {
+        if (viewModel == null || sender is not ContextMenu menu)
+            return;
+
+        menu.DataContext = viewModel;
+        if (viewModel.RootNode != null)
+            viewModel.SelectedNode = viewModel.RootNode;
     }
 
     private void OnTreePointerPressed(object? sender, PointerPressedEventArgs e)

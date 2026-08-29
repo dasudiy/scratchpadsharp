@@ -14,6 +14,7 @@ public class ModuleTreeNode : ReactiveObject
 {
     private bool isExpanded;
     private bool isLoading;
+    private bool isReferencedInActiveTab;
 
     public string Name { get; set; } = string.Empty;
     public string NodeKind { get; set; } = string.Empty;
@@ -31,6 +32,12 @@ public class ModuleTreeNode : ReactiveObject
     {
         get => isLoading;
         set => this.RaiseAndSetIfChanged(ref isLoading, value);
+    }
+
+    public bool IsReferencedInActiveTab
+    {
+        get => isReferencedInActiveTab;
+        set => this.RaiseAndSetIfChanged(ref isReferencedInActiveTab, value);
     }
 
     public ObservableCollection<ModuleTreeNode> Children { get; } = new();
@@ -92,8 +99,17 @@ public class ModulesSidebarViewModel : ReactiveObject
     public ModuleTreeNode? SelectedNode
     {
         get => selectedNode;
-        set => this.RaiseAndSetIfChanged(ref selectedNode, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref selectedNode, value);
+            this.RaisePropertyChanged(nameof(IsInstanceSelected));
+            this.RaisePropertyChanged(nameof(IsTableOrViewSelected));
+        }
     }
+
+    public bool IsInstanceSelected => SelectedNode?.NodeKind == "Instance";
+
+    public bool IsTableOrViewSelected => SelectedNode?.NodeKind is "Table" or "View";
 
     public string StatusText
     {
@@ -159,6 +175,7 @@ public class ModulesSidebarViewModel : ReactiveObject
             }
 
             StatusText = $"{efSection.Children.Count} database(s)";
+            RefreshReferencedState();
         }
         catch (Exception ex)
         {
@@ -177,6 +194,25 @@ public class ModulesSidebarViewModel : ReactiveObject
         }
 
         return Task.CompletedTask;
+    }
+
+    public void RefreshReferencedState()
+    {
+        var refs = getSelectedTab()?.ProjectContext.Config.ModuleRefs;
+        var refSet = refs is { Count: > 0 }
+            ? refs.ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        foreach (var root in RootNodes)
+        {
+            foreach (var child in root.Children)
+            {
+                if (child.NodeKind != "Instance" || string.IsNullOrEmpty(child.InstanceId))
+                    continue;
+
+                child.IsReferencedInActiveTab = refSet != null && refSet.Contains(child.InstanceId);
+            }
+        }
     }
 
     private async void OnInstanceNodePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -425,6 +461,7 @@ public class ModulesSidebarViewModel : ReactiveObject
 
         await ProjectService.Instance.AddModuleRefAsync(tab.TabId, tab.ProjectContext, SelectedNode.InstanceId);
         tab.RaisePropertyChanged(nameof(ScriptTabViewModel.ProjectContext));
+        RefreshReferencedState();
         StatusText = "Module reference added to query";
     }
 
@@ -439,6 +476,7 @@ public class ModulesSidebarViewModel : ReactiveObject
 
         await ProjectService.Instance.RemoveModuleRefAsync(tab.TabId, tab.ProjectContext, SelectedNode.InstanceId);
         tab.RaisePropertyChanged(nameof(ScriptTabViewModel.ProjectContext));
+        RefreshReferencedState();
         StatusText = "Module reference removed";
     }
 

@@ -7,6 +7,7 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.Core.Events;
@@ -24,6 +25,7 @@ public class MainWindowViewModel : ReactiveObject
     private ScriptTabViewModel? selectedTab;
     private Window? mainWindow;
     private IRootDock? layout;
+    private bool suppressCloseConfirm;
 
     private readonly IScriptExecutionService scriptService;
     private readonly ScratchpadDockFactory dockFactory;
@@ -41,6 +43,7 @@ public class MainWindowViewModel : ReactiveObject
             OnDocumentCreated);
 
         dockFactory.ActiveDockableChanged += OnActiveDockableChanged;
+        dockFactory.DockableClosing += OnDockableClosing;
         dockFactory.DockableClosed += OnDockableClosed;
 
         var dockLayout = dockFactory.CreateLayout();
@@ -104,6 +107,8 @@ public class MainWindowViewModel : ReactiveObject
                 dockFactory.ActivateScriptDocument(selectedTab);
             }
 
+            ModulesSidebar.RefreshReferencedState();
+
             this.RaisePropertyChanged(nameof(StatusText));
             this.RaisePropertyChanged(nameof(StatusBarPath));
             this.RaisePropertyChanged(nameof(CursorPosition));
@@ -128,29 +133,42 @@ public class MainWindowViewModel : ReactiveObject
             this.RaiseAndSetIfChanged(ref mainWindow, value);
             QueriesSidebar.ConfigureDialogs(
                 () => mainWindow,
-                ShowSavePackageDialogAsync,
                 CloseQueryTabsByPathAsync,
                 UpdateQueryTabPathAsync,
                 SaveQueryByPathAsync,
                 ReopenQueryTabsAtPathAsync,
+                RetargetQueryTabAsync,
                 CreateNewQueryInFolderAsync);
         }
     }
 
-    private Task CloseQueryTabsByPathAsync(string path)
+    private async Task<bool> CloseQueryTabsByPathAsync(string path)
     {
         var fullPath = Path.GetFullPath(path);
-        foreach (var tab in Tabs.ToList())
+        var matching = Tabs.Where(tab =>
         {
             var source = tab.ProjectContext.SourcePath;
-            if (string.IsNullOrEmpty(source))
+            return !string.IsNullOrEmpty(source)
+                   && string.Equals(Path.GetFullPath(source), fullPath, StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+
+        foreach (var tab in matching)
+        {
+            if (!tab.IsDirty)
                 continue;
 
-            if (string.Equals(Path.GetFullPath(source), fullPath, StringComparison.OrdinalIgnoreCase))
-                CloseTab(tab);
+            var result = await PromptUnsavedChangesAsync("Unsaved changes");
+            if (result == UnsavedChangesResult.Cancel)
+                return false;
+
+            if (result == UnsavedChangesResult.Save && !await TrySaveTabAsync(tab))
+                return false;
         }
 
-        return Task.CompletedTask;
+        foreach (var tab in matching)
+            ForceCloseTab(tab);
+
+        return true;
     }
 
     private Task UpdateQueryTabPathAsync(string oldPath, string newPath)
@@ -178,9 +196,30 @@ public class MainWindowViewModel : ReactiveObject
             if (string.IsNullOrEmpty(source))
                 continue;
 
-            if (string.Equals(Path.GetFullPath(source), oldFullPath, StringComparison.OrdinalIgnoreCase))
-                await tab.OpenFileAsync(newPath);
+            if (!string.Equals(Path.GetFullPath(source), oldFullPath, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (tab.IsDirty)
+            {
+                var result = await PromptUnsavedChangesAsync("Move query");
+                if (result == UnsavedChangesResult.Cancel)
+                    throw new InvalidOperationException("Move cancelled");
+
+                if (result == UnsavedChangesResult.Save && !await TrySaveTabAsync(tab))
+                    throw new InvalidOperationException("Move cancelled");
+            }
+
+            tab.SetSourcePath(newPath);
         }
+    }
+
+    private async Task RetargetQueryTabAsync(string oldPath, string newPath)
+    {
+        var tab = FindTabBySourcePath(oldPath);
+        if (tab != null)
+            await tab.OpenFileAsync(newPath);
+        else
+            await OpenQueryAtPathAsync(newPath);
     }
 
     public ReactiveCommand<Unit, Unit> NewTabCommand { get; }
@@ -208,13 +247,28 @@ public class MainWindowViewModel : ReactiveObject
 
     private IObservable<bool> CanRenameSelectedTab =>
         this.WhenAnyValue(x => x.SelectedTab)
-            .Select(tab => tab?.CanRename == true);
+            .SelectMany(tab => tab != null
+                ? tab.WhenAnyValue(t => t.CanRename)
+                : Observable.Return(false));
 
     private void OnDocumentCreated(ScriptTabViewModel tab, ScriptDocument document)
     {
-        tab.BindCloseHandler(() => CloseTab(tab));
+        tab.BindCloseHandler(() => _ = RequestCloseTabAsync(tab));
         tab.QueryRenameHandler = CommitQueryRenameAsync;
         Tabs.Add(tab);
+    }
+
+    private void OnDockableClosing(object? sender, DockableClosingEventArgs e)
+    {
+        if (suppressCloseConfirm)
+            return;
+
+        if (e.Dockable is not ScriptDocument document || !document.Tab.IsDirty)
+            return;
+
+        e.Cancel = true;
+        var tab = document.Tab;
+        Dispatcher.UIThread.Post(async () => await RequestCloseTabAsync(tab));
     }
 
     private async Task CommitQueryRenameAsync(string oldPath, string newName)
@@ -324,30 +378,49 @@ public class MainWindowViewModel : ReactiveObject
         await tab.OpenModuleQueryAsync(instanceId, title, code, autoRun: true);
     }
 
-    public async Task OpenQueryFromTreeAsync(string filePath)
-    {
-        var existing = Tabs.FirstOrDefault(tab =>
-            !string.IsNullOrEmpty(tab.ProjectContext.SourcePath) &&
-            string.Equals(tab.ProjectContext.SourcePath, filePath, StringComparison.OrdinalIgnoreCase));
+    public Task OpenQueryFromTreeAsync(string filePath) => OpenQueryAtPathAsync(filePath);
 
+    private ScriptTabViewModel? FindTabBySourcePath(string filePath)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        return Tabs.FirstOrDefault(tab =>
+            !string.IsNullOrEmpty(tab.ProjectContext.SourcePath)
+            && string.Equals(Path.GetFullPath(tab.ProjectContext.SourcePath), fullPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<ScriptTabViewModel?> AcquireTabForNewContentAsync(string promptTitle = "Unsaved changes")
+    {
+        if (SelectedTab is { IsDirty: true })
+        {
+            var result = await PromptUnsavedChangesAsync(promptTitle);
+            if (result == UnsavedChangesResult.Cancel)
+                return null;
+
+            if (result == UnsavedChangesResult.Save && !await TrySaveTabAsync(SelectedTab))
+                return null;
+        }
+
+        if (SelectedTab is { IsDirty: false } && string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath))
+            return SelectedTab;
+
+        var tab = CreateTab(deferInitialization: true);
+        dockFactory.AddScriptDocument(tab);
+        SelectedTab = tab;
+        return tab;
+    }
+
+    private async Task OpenQueryAtPathAsync(string filePath)
+    {
+        var existing = FindTabBySourcePath(filePath);
         if (existing != null)
         {
             SelectedTab = existing;
             return;
         }
 
-        if (SelectedTab?.IsDirty == true && !await ConfirmDiscardUnsavedAsync("Open query"))
+        var tab = await AcquireTabForNewContentAsync("Open query");
+        if (tab == null)
             return;
-
-        var tab = SelectedTab is { IsDirty: false } && string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath)
-            ? SelectedTab
-            : CreateTab(deferInitialization: true);
-
-        if (tab != SelectedTab)
-        {
-            dockFactory.AddScriptDocument(tab);
-            SelectedTab = tab;
-        }
 
         try
         {
@@ -366,25 +439,16 @@ public class MainWindowViewModel : ReactiveObject
 
     public async Task CreateNewQueryInFolderAsync(string parentPath)
     {
-        var name = await Views.ConfirmWindow.PromptAsync(MainWindow, "New Query", "Query name:", "script");
+        var name = await Views.ConfirmWindow.PromptAsync(MainWindow, "New Query", "Query name:", "script", "Query name");
         if (string.IsNullOrWhiteSpace(name))
             return;
 
         name = SanitizeFolderName(name);
         var folderPath = AllocateUniqueFolderInParent(parentPath, name);
 
-        if (SelectedTab?.IsDirty == true && !await ConfirmDiscardUnsavedAsync("New query"))
+        var tab = await AcquireTabForNewContentAsync("New query");
+        if (tab == null)
             return;
-
-        var tab = SelectedTab is { IsDirty: false } && string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath)
-            ? SelectedTab
-            : CreateTab();
-
-        if (tab != SelectedTab)
-        {
-            dockFactory.AddScriptDocument(tab);
-            SelectedTab = tab;
-        }
 
         await tab.InitializationTask;
 
@@ -462,43 +526,96 @@ public class MainWindowViewModel : ReactiveObject
 
     public async Task<bool> ConfirmDiscardUnsavedAsync(string? title = null)
     {
-        return await Views.ConfirmWindow.ConfirmAsync(
-            MainWindow,
-            title ?? "Unsaved changes",
-            "Discard unsaved changes?");
+        var result = await PromptUnsavedChangesAsync(title ?? "Unsaved changes");
+        return result == UnsavedChangesResult.Discard;
     }
 
-    public void CloseTab(ScriptTabViewModel tab)
+    public async Task<bool> RequestCloseTabAsync(ScriptTabViewModel tab)
+    {
+        if (tab.IsDirty)
+        {
+            var result = await PromptUnsavedChangesAsync("Unsaved changes");
+            if (result == UnsavedChangesResult.Cancel)
+                return false;
+
+            if (result == UnsavedChangesResult.Save && !await TrySaveTabAsync(tab))
+                return false;
+        }
+
+        ForceCloseTab(tab);
+        return true;
+    }
+
+    private async Task<UnsavedChangesResult> PromptUnsavedChangesAsync(string title)
+    {
+        return await Views.ConfirmWindow.ShowUnsavedChangesAsync(
+            MainWindow,
+            title,
+            "Save changes before continuing?");
+    }
+
+    private async Task<bool> TrySaveTabAsync(ScriptTabViewModel tab)
+    {
+        if (!tab.IsProjectReady)
+            return false;
+
+        if (string.IsNullOrEmpty(tab.ProjectContext.SourcePath))
+        {
+            var folderPath = AllocateDefaultQueryFolderPath(tab.Title);
+            Directory.CreateDirectory(folderPath);
+            tab.SetSourcePath(folderPath);
+        }
+
+        try
+        {
+            tab.StatusText = "Saving...";
+            await tab.SaveAsync();
+            QueriesSidebar.RequestRefresh();
+            this.RaisePropertyChanged(nameof(StatusText));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            tab.StatusText = $"Save failed: {ex.Message}";
+            this.RaisePropertyChanged(nameof(StatusText));
+            return false;
+        }
+    }
+
+    public void CloseTab(ScriptTabViewModel tab) => ForceCloseTab(tab);
+
+    private void ForceCloseTab(ScriptTabViewModel tab)
     {
         if (!dockFactory.TryGetDocument(tab, out var document))
             return;
 
-        dockFactory.CloseDockable(document);
+        suppressCloseConfirm = true;
+        try
+        {
+            dockFactory.CloseDockable(document);
+        }
+        finally
+        {
+            suppressCloseConfirm = false;
+        }
     }
 
     private async Task CloseSelectedTabAsync()
     {
         if (SelectedTab == null)
             return;
-        if (SelectedTab.IsDirty && !await ConfirmDiscardUnsavedAsync())
-            return;
-        CloseTab(SelectedTab);
+
+        await RequestCloseTabAsync(SelectedTab);
     }
 
     private async Task OpenAsync()
     {
-        if (SelectedTab == null) return;
+        if (SelectedTab == null)
+            return;
 
         try
         {
-            if (SelectedTab.IsDirty && !await ConfirmDiscardUnsavedAsync("Open file"))
-            {
-                SelectedTab.StatusText = "Open cancelled";
-                return;
-            }
-
             SelectedTab.StatusText = "Opening file...";
-
             var filePath = await ShowOpenFileDialogAsync();
             if (filePath == null)
             {
@@ -506,8 +623,7 @@ public class MainWindowViewModel : ReactiveObject
                 return;
             }
 
-            await SelectedTab.OpenFileAsync(filePath);
-            this.RaisePropertyChanged(nameof(StatusText));
+            await OpenQueryAtPathAsync(filePath);
         }
         catch (Exception ex)
         {
@@ -519,16 +635,11 @@ public class MainWindowViewModel : ReactiveObject
 
     private async Task OpenFolderAsync()
     {
-        if (SelectedTab == null) return;
+        if (SelectedTab == null)
+            return;
 
         try
         {
-            if (SelectedTab.IsDirty && !await ConfirmDiscardUnsavedAsync("Open folder"))
-            {
-                SelectedTab.StatusText = "Open cancelled";
-                return;
-            }
-
             SelectedTab.StatusText = "Opening folder package...";
             var folderPath = await ShowOpenFolderDialogAsync("Open Developer Mode package folder");
             if (folderPath == null)
@@ -544,8 +655,7 @@ public class MainWindowViewModel : ReactiveObject
                 return;
             }
 
-            await SelectedTab.OpenFileAsync(folderPath);
-            this.RaisePropertyChanged(nameof(StatusText));
+            await OpenQueryAtPathAsync(folderPath);
         }
         catch (Exception ex)
         {
@@ -557,27 +667,10 @@ public class MainWindowViewModel : ReactiveObject
 
     private async Task SaveAsync()
     {
-        if (SelectedTab is not { IsProjectReady: true }) return;
+        if (SelectedTab is not { IsProjectReady: true })
+            return;
 
-        if (string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath))
-        {
-            var folderPath = AllocateDefaultQueryFolderPath(SelectedTab.Title);
-            Directory.CreateDirectory(folderPath);
-            SelectedTab.SetSourcePath(folderPath);
-        }
-
-        try
-        {
-            SelectedTab.StatusText = "Saving...";
-            await SelectedTab.SaveAsync();
-            QueriesSidebar.RequestRefresh();
-            this.RaisePropertyChanged(nameof(StatusText));
-        }
-        catch (Exception ex)
-        {
-            SelectedTab.StatusText = $"Save failed: {ex.Message}";
-            this.RaisePropertyChanged(nameof(StatusText));
-        }
+        await TrySaveTabAsync(SelectedTab);
     }
 
     private async Task SaveAsAsync()
@@ -617,7 +710,8 @@ public class MainWindowViewModel : ReactiveObject
                 MainWindow,
                 "Save as folder",
                 "Folder name (leave empty to use the selected folder).",
-                suggested);
+                suggested,
+                "Folder name");
             if (name == null)
                 return;
             if (!string.IsNullOrWhiteSpace(name))
@@ -802,24 +896,6 @@ public class MainWindowViewModel : ReactiveObject
             DefaultExtension = "lqpkg",
             SuggestedStartLocation = await GetQueryDirectoryFolderAsync(),
             SuggestedFileName = SelectedTab != null ? SanitizeFolderName(SelectedTab.Title) + ".lqpkg" : "query.lqpkg",
-            FileTypeChoices =
-            [
-                new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }
-            ]
-        });
-
-        return file?.Path.LocalPath;
-    }
-
-    private async Task<string?> ShowSavePackageDialogAsync()
-    {
-        if (MainWindow?.StorageProvider == null) return null;
-
-        var file = await MainWindow.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Pack to .lqpkg",
-            DefaultExtension = "lqpkg",
-            SuggestedStartLocation = await GetQueryDirectoryFolderAsync(),
             FileTypeChoices =
             [
                 new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }

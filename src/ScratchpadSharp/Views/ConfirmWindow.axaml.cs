@@ -25,6 +25,12 @@ public partial class ConfirmWindow : Window
             return;
         }
 
+        if (DataContext is ConfirmViewModel { Mode: ConfirmDialogMode.UnsavedChanges })
+        {
+            SaveButton.Focus();
+            return;
+        }
+
         OkButton.Focus();
     }
 
@@ -38,8 +44,39 @@ public partial class ConfirmWindow : Window
             Close();
     }
 
+    private void SaveAndClose()
+    {
+        if (DataContext is not ConfirmViewModel vm)
+            return;
+
+        vm.SaveCommand.Execute(Unit.Default);
+        if (vm.WasConfirmed)
+            Close();
+    }
+
+    private void DiscardAndClose()
+    {
+        if (DataContext is not ConfirmViewModel vm)
+            return;
+
+        vm.DiscardCommand.Execute(Unit.Default);
+        if (vm.WasConfirmed)
+            Close();
+    }
+
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        if (DataContext is ConfirmViewModel { Mode: ConfirmDialogMode.UnsavedChanges })
+        {
+            if (e.Key == Key.Escape)
+            {
+                Close();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (e.Key == Key.Enter)
         {
             ConfirmAndClose();
@@ -63,6 +100,10 @@ public partial class ConfirmWindow : Window
 
     private void OnOkClick(object? sender, RoutedEventArgs e) => ConfirmAndClose();
 
+    private void OnSaveClick(object? sender, RoutedEventArgs e) => SaveAndClose();
+
+    private void OnDiscardClick(object? sender, RoutedEventArgs e) => DiscardAndClose();
+
     private void OnCancelClick(object? sender, RoutedEventArgs e) => Close();
 
     public static async Task<bool> ConfirmAsync(Window? owner, string title, string prompt)
@@ -76,12 +117,31 @@ public partial class ConfirmWindow : Window
         return vm.WasConfirmed;
     }
 
-    public static async Task<string?> PromptAsync(Window? owner, string title, string prompt, string? defaultValue)
+    public static async Task<UnsavedChangesResult> ShowUnsavedChangesAsync(
+        Window? owner,
+        string title,
+        string prompt)
+    {
+        if (owner == null)
+            return UnsavedChangesResult.Cancel;
+
+        var vm = new ConfirmViewModel(title, prompt, mode: ConfirmDialogMode.UnsavedChanges);
+        var window = new ConfirmWindow { DataContext = vm };
+        await window.ShowDialog(owner);
+        return vm.WasConfirmed ? vm.UnsavedResult : UnsavedChangesResult.Cancel;
+    }
+
+    public static async Task<string?> PromptAsync(
+        Window? owner,
+        string title,
+        string prompt,
+        string? defaultValue,
+        string? inputWatermark = null)
     {
         if (owner == null)
             return null;
 
-        var vm = new ConfirmViewModel(title, prompt, defaultValue, showInput: true);
+        var vm = new ConfirmViewModel(title, prompt, defaultValue, showInput: true, inputWatermark: inputWatermark);
         var window = new ConfirmWindow { DataContext = vm };
         await window.ShowDialog(owner);
         return vm.WasConfirmed ? vm.InputText.Trim() : null;

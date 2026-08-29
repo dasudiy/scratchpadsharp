@@ -11,7 +11,7 @@ public sealed class ScriptDocument : Document
     {
         Tab = tab;
         Id = tab.TabId;
-        Title = tab.Title;
+        Title = FormatTitle(tab);
         CanClose = true;
 
         tab.PropertyChanged += OnTabPropertyChanged;
@@ -21,7 +21,10 @@ public sealed class ScriptDocument : Document
 
     private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ScriptTabViewModel.Title))
-            Title = Tab.Title;
+        if (e.PropertyName is nameof(ScriptTabViewModel.Title) or nameof(ScriptTabViewModel.IsDirty))
+            Title = FormatTitle(Tab);
     }
+
+    private static string FormatTitle(ScriptTabViewModel tab) =>
+        tab.IsDirty ? $"{tab.Title}*" : tab.Title;
 }

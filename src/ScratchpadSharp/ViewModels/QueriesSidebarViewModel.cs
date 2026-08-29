@@ -76,11 +76,11 @@ public class QueriesSidebarViewModel : ReactiveObject
 {
     private readonly Func<string, Task> openQueryAsync;
     private Func<Window?> getOwnerWindow = () => null;
-    private Func<Task<string?>> showSavePackageDialogAsync = () => Task.FromResult<string?>(null);
-    private Func<string, Task> closeQueryTabsByPathAsync = _ => Task.CompletedTask;
+    private Func<string, Task<bool>> closeQueryTabsByPathAsync = _ => Task.FromResult(true);
     private Func<string, string, Task> renameQueryTabPathAsync = (_, _) => Task.CompletedTask;
     private Func<string, Task> saveQueryByPathAsync = _ => Task.CompletedTask;
     private Func<string, string, Task> reopenQueryTabsAtPathAsync = (_, _) => Task.CompletedTask;
+    private Func<string, string, Task> retargetQueryTabAsync = (_, _) => Task.CompletedTask;
     private Func<string, Task> createNewQueryInFolderAsync = _ => Task.CompletedTask;
 
     private QueryTreeNode? rootNode;
@@ -119,19 +119,19 @@ public class QueriesSidebarViewModel : ReactiveObject
 
     public void ConfigureDialogs(
         Func<Window?> ownerWindowProvider,
-        Func<Task<string?>> savePackageDialog,
-        Func<string, Task> closeQueryTabsByPath,
+        Func<string, Task<bool>> closeQueryTabsByPath,
         Func<string, string, Task> renameQueryTabPath,
         Func<string, Task> saveQueryByPath,
         Func<string, string, Task> reopenQueryTabsAtPath,
+        Func<string, string, Task> retargetQueryTab,
         Func<string, Task> createNewQueryInFolder)
     {
         getOwnerWindow = ownerWindowProvider;
-        showSavePackageDialogAsync = savePackageDialog;
         closeQueryTabsByPathAsync = closeQueryTabsByPath;
         renameQueryTabPathAsync = renameQueryTabPath;
         saveQueryByPathAsync = saveQueryByPath;
         reopenQueryTabsAtPathAsync = reopenQueryTabsAtPath;
+        retargetQueryTabAsync = retargetQueryTab;
         createNewQueryInFolderAsync = createNewQueryInFolder;
     }
 
@@ -202,6 +202,7 @@ public class QueriesSidebarViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(IsPackageFileSelected));
             this.RaisePropertyChanged(nameof(CanRenameSelected));
             this.RaisePropertyChanged(nameof(CanDeleteSelected));
+            this.RaisePropertyChanged(nameof(CanOpenContainingFolderSelected));
         }
     }
 
@@ -220,6 +221,8 @@ public class QueriesSidebarViewModel : ReactiveObject
     public bool CanRenameSelected => CanRename(SelectedNode);
 
     public bool CanDeleteSelected => CanDelete(SelectedNode);
+
+    public bool CanOpenContainingFolderSelected => CanOpenContainingFolder(SelectedNode);
 
     public string StatusText
     {
@@ -295,7 +298,7 @@ public class QueriesSidebarViewModel : ReactiveObject
             return;
 
         var owner = getOwnerWindow();
-        var name = await ConfirmWindow.PromptAsync(owner, "New Folder", "Folder name:", "New Folder");
+        var name = await ConfirmWindow.PromptAsync(owner, "New Folder", "Folder name:", "New Folder", "Folder name");
         if (string.IsNullOrWhiteSpace(name))
             return;
 
@@ -403,7 +406,8 @@ public class QueriesSidebarViewModel : ReactiveObject
 
         try
         {
-            await closeQueryTabsByPathAsync(node.FullPath);
+            if (!await closeQueryTabsByPathAsync(node.FullPath))
+                return;
 
             if (node.Kind == QueryNodeKind.PackageFile)
                 File.Delete(node.FullPath);
@@ -465,9 +469,8 @@ public class QueriesSidebarViewModel : ReactiveObject
 
             StatusText = "Packing...";
             await QueryPathOperations.PackAsync(sourcePath, zipPath);
-            await closeQueryTabsByPathAsync(sourcePath);
             QueryPathOperations.DeletePath(sourcePath);
-            await openQueryAsync(zipPath);
+            await retargetQueryTabAsync(sourcePath, zipPath);
             await ReloadDirectoryParentAsync(SelectedNode);
             StatusText = $"Packed: {Path.GetFileName(zipPath)}";
         }
@@ -491,9 +494,8 @@ public class QueriesSidebarViewModel : ReactiveObject
 
             StatusText = "Unpacking...";
             await QueryPathOperations.UnpackAsync(sourcePath, folderPath);
-            await closeQueryTabsByPathAsync(sourcePath);
             QueryPathOperations.DeletePath(sourcePath);
-            await openQueryAsync(folderPath);
+            await retargetQueryTabAsync(sourcePath, folderPath);
             await ReloadDirectoryParentAsync(SelectedNode);
             StatusText = $"Unpacked: {Path.GetFileName(folderPath)}";
         }
