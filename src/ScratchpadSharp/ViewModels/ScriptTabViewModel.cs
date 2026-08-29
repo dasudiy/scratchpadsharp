@@ -30,7 +30,11 @@ public class ScriptTabViewModel : ReactiveObject
     private bool isOutputPanelExpanded = true;
     private string cursorPosition = "1:1";
     private bool isSelected;
+    private bool isRenaming;
+    private string renameEditName = string.Empty;
     private IReadOnlyList<CompilationError> compilationErrors = Array.Empty<CompilationError>();
+
+    public Func<string, string, Task>? QueryRenameHandler { get; set; }
 
     private readonly IScriptExecutionService scriptService;
     private readonly HtmlDumpService htmlDumpService;
@@ -83,6 +87,23 @@ public class ScriptTabViewModel : ReactiveObject
         get => title;
         set => this.RaiseAndSetIfChanged(ref title, value);
     }
+
+    public bool IsRenaming
+    {
+        get => isRenaming;
+        set => this.RaiseAndSetIfChanged(ref isRenaming, value);
+    }
+
+    public string RenameEditName
+    {
+        get => renameEditName;
+        set => this.RaiseAndSetIfChanged(ref renameEditName, value);
+    }
+
+    public bool CanRename =>
+        !string.IsNullOrEmpty(projectContext.SourcePath);
+
+    public event Action? RenameEditStarted;
 
     public string CodeText
     {
@@ -279,34 +300,23 @@ public class ScriptTabViewModel : ReactiveObject
 
     public async Task OpenFileAsync(string filePath)
     {
+        if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            throw new NotSupportedException("Plain .cs files are not supported. Open a .lqpkg or folder package.");
+
         isProjectReady = false;
         this.RaisePropertyChanged(nameof(IsProjectReady));
         try
         {
-            var needsPackageResolve = false;
-            if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            {
-                projectContext = await ProjectService.Instance.NewProjectAsync(TabId);
-                projectContext.SourcePath = filePath;
-                CodeText = await File.ReadAllTextAsync(filePath);
-                Output = string.Empty;
-                needsPackageResolve = true;
-            }
-            else
-            {
-                projectContext = await ProjectService.Instance.LoadProjectAsync(TabId, filePath);
-                CodeText = projectContext.Code;
-                Output = projectContext.Output;
-            }
+            projectContext = await ProjectService.Instance.LoadProjectAsync(TabId, filePath);
+            CodeText = projectContext.Code;
+            Output = projectContext.Output;
 
             Title = Path.GetFileName(filePath);
             StatusText = $"Opened: {Title}";
             htmlDumpService.Clear();
             MarkProjectReady();
             MarkClean();
-            packageResolveTask = needsPackageResolve
-                ? ResolvePackagesInBackgroundAsync()
-                : Task.CompletedTask;
+            packageResolveTask = Task.CompletedTask;
         }
         finally
         {
@@ -376,12 +386,11 @@ public class ScriptTabViewModel : ReactiveObject
         if (string.IsNullOrEmpty(projectContext.SourcePath))
             throw new InvalidOperationException("No file path set. Use Save As first.");
 
-        projectContext.Code = CodeText;
-
         if (projectContext.SourcePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            await File.WriteAllTextAsync(projectContext.SourcePath, CodeText);
-        else
-            await ProjectService.Instance.SaveProjectAsync(projectContext);
+            throw new NotSupportedException("Plain .cs scripts cannot be saved. Use Save As to save as .lqpkg or a folder package.");
+
+        projectContext.Code = CodeText;
+        await ProjectService.Instance.SaveProjectAsync(projectContext);
 
         Title = Path.GetFileName(projectContext.SourcePath);
         StatusText = $"Saved: {Title}";
@@ -391,7 +400,53 @@ public class ScriptTabViewModel : ReactiveObject
     public void SetSourcePath(string filePath)
     {
         projectContext.SourcePath = filePath;
-        Title = Path.GetFileName(filePath);
+        if (Directory.Exists(filePath))
+            projectContext.EffectiveRootPath = filePath;
+
+        Title = Path.GetFileName(filePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+    }
+
+    public void BeginRename()
+    {
+        if (string.IsNullOrEmpty(projectContext.SourcePath))
+            return;
+
+        RenameEditName = Path.GetFileName(
+            projectContext.SourcePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        IsRenaming = true;
+        RenameEditStarted?.Invoke();
+    }
+
+    public void CancelRename()
+    {
+        IsRenaming = false;
+        RenameEditName = Title;
+    }
+
+    public async Task CommitRenameAsync()
+    {
+        if (!IsRenaming || string.IsNullOrEmpty(projectContext.SourcePath))
+            return;
+
+        IsRenaming = false;
+        var oldPath = projectContext.SourcePath;
+        var newName = RenameEditName;
+
+        if (QueryRenameHandler != null)
+            await QueryRenameHandler(oldPath, newName);
+        else
+        {
+            var newPath = QueryPathOperations.TryRename(oldPath, newName, out var error);
+            if (newPath == null)
+            {
+                RenameEditName = Title;
+                StatusText = error ?? "Rename failed";
+                return;
+            }
+
+            SetSourcePath(newPath);
+            StatusText = $"Renamed to {Path.GetFileName(newPath)}";
+        }
     }
 
     public void Cleanup()

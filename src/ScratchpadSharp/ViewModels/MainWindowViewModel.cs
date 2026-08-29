@@ -60,6 +60,7 @@ public class MainWindowViewModel : ReactiveObject
         SaveAsFolderCommand = ReactiveCommand.CreateFromTask(SaveAsFolderAsync, SelectedTabReady);
         PackCommand = ReactiveCommand.CreateFromTask(PackAsync, SelectedTabReady);
         UnpackCommand = ReactiveCommand.CreateFromTask(UnpackAsync, SelectedTabReady);
+        RenameTabCommand = ReactiveCommand.Create(BeginRenameSelectedTab, CanRenameSelectedTab);
         ExecuteCommand = ReactiveCommand.CreateFromTask(ExecuteAsync, SelectedTabReady);
         CancelCommand = ReactiveCommand.Create(Cancel,
             this.WhenAnyValue(x => x.SelectedTab)
@@ -122,7 +123,64 @@ public class MainWindowViewModel : ReactiveObject
     public Window? MainWindow
     {
         get => mainWindow;
-        set => this.RaiseAndSetIfChanged(ref mainWindow, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref mainWindow, value);
+            QueriesSidebar.ConfigureDialogs(
+                () => mainWindow,
+                ShowSavePackageDialogAsync,
+                CloseQueryTabsByPathAsync,
+                UpdateQueryTabPathAsync,
+                SaveQueryByPathAsync,
+                ReopenQueryTabsAtPathAsync,
+                CreateNewQueryInFolderAsync);
+        }
+    }
+
+    private Task CloseQueryTabsByPathAsync(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        foreach (var tab in Tabs.ToList())
+        {
+            var source = tab.ProjectContext.SourcePath;
+            if (string.IsNullOrEmpty(source))
+                continue;
+
+            if (string.Equals(Path.GetFullPath(source), fullPath, StringComparison.OrdinalIgnoreCase))
+                CloseTab(tab);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task UpdateQueryTabPathAsync(string oldPath, string newPath)
+    {
+        var oldFullPath = Path.GetFullPath(oldPath);
+        foreach (var tab in Tabs)
+        {
+            var source = tab.ProjectContext.SourcePath;
+            if (string.IsNullOrEmpty(source))
+                continue;
+
+            if (string.Equals(Path.GetFullPath(source), oldFullPath, StringComparison.OrdinalIgnoreCase))
+                tab.SetSourcePath(newPath);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task ReopenQueryTabsAtPathAsync(string oldPath, string newPath)
+    {
+        var oldFullPath = Path.GetFullPath(oldPath);
+        foreach (var tab in Tabs.ToList())
+        {
+            var source = tab.ProjectContext.SourcePath;
+            if (string.IsNullOrEmpty(source))
+                continue;
+
+            if (string.Equals(Path.GetFullPath(source), oldFullPath, StringComparison.OrdinalIgnoreCase))
+                await tab.OpenFileAsync(newPath);
+        }
     }
 
     public ReactiveCommand<Unit, Unit> NewTabCommand { get; }
@@ -134,6 +192,7 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> SaveAsFolderCommand { get; }
     public ReactiveCommand<Unit, Unit> PackCommand { get; }
     public ReactiveCommand<Unit, Unit> UnpackCommand { get; }
+    public ReactiveCommand<Unit, Unit> RenameTabCommand { get; }
     public ReactiveCommand<Unit, Unit> ExecuteCommand { get; }
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> FormatCommand { get; }
@@ -147,10 +206,49 @@ public class MainWindowViewModel : ReactiveObject
                 ? tab.WhenAnyValue(t => t.IsProjectReady)
                 : Observable.Return(false));
 
+    private IObservable<bool> CanRenameSelectedTab =>
+        this.WhenAnyValue(x => x.SelectedTab)
+            .Select(tab => tab?.CanRename == true);
+
     private void OnDocumentCreated(ScriptTabViewModel tab, ScriptDocument document)
     {
         tab.BindCloseHandler(() => CloseTab(tab));
+        tab.QueryRenameHandler = CommitQueryRenameAsync;
         Tabs.Add(tab);
+    }
+
+    private async Task CommitQueryRenameAsync(string oldPath, string newName)
+    {
+        var newPath = QueryPathOperations.TryRename(oldPath, newName, out var error);
+        if (newPath == null)
+        {
+            if (SelectedTab != null)
+                SelectedTab.StatusText = error ?? "Rename failed";
+            this.RaisePropertyChanged(nameof(StatusText));
+            return;
+        }
+
+        await UpdateQueryTabPathAsync(oldPath, newPath);
+        QueriesSidebar.RequestRefresh();
+        if (SelectedTab != null)
+            SelectedTab.StatusText = $"Renamed to {Path.GetFileName(newPath)}";
+        this.RaisePropertyChanged(nameof(StatusText));
+    }
+
+    private void BeginRenameSelectedTab() => SelectedTab?.BeginRename();
+
+    private async Task SaveQueryByPathAsync(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        foreach (var tab in Tabs)
+        {
+            var source = tab.ProjectContext.SourcePath;
+            if (string.IsNullOrEmpty(source))
+                continue;
+
+            if (string.Equals(Path.GetFullPath(source), fullPath, StringComparison.OrdinalIgnoreCase))
+                await tab.SaveAsync();
+        }
     }
 
     private void OnActiveDockableChanged(object? sender, ActiveDockableChangedEventArgs e)
@@ -264,6 +362,38 @@ public class MainWindowViewModel : ReactiveObject
             tab.StatusText = "Error opening query";
             this.RaisePropertyChanged(nameof(StatusText));
         }
+    }
+
+    public async Task CreateNewQueryInFolderAsync(string parentPath)
+    {
+        var name = await Views.ConfirmWindow.PromptAsync(MainWindow, "New Query", "Query name:", "script");
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        name = SanitizeFolderName(name);
+        var folderPath = AllocateUniqueFolderInParent(parentPath, name);
+
+        if (SelectedTab?.IsDirty == true && !await ConfirmDiscardUnsavedAsync("New query"))
+            return;
+
+        var tab = SelectedTab is { IsDirty: false } && string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath)
+            ? SelectedTab
+            : CreateTab();
+
+        if (tab != SelectedTab)
+        {
+            dockFactory.AddScriptDocument(tab);
+            SelectedTab = tab;
+        }
+
+        await tab.InitializationTask;
+
+        Directory.CreateDirectory(folderPath);
+        tab.SetSourcePath(folderPath);
+        tab.StatusText = "Saving...";
+        await tab.SaveAsync();
+        QueriesSidebar.RequestRefresh();
+        this.RaisePropertyChanged(nameof(StatusText));
     }
 
     private ScriptTabViewModel CreateTab(bool deferInitialization = false)
@@ -431,9 +561,9 @@ public class MainWindowViewModel : ReactiveObject
 
         if (string.IsNullOrEmpty(SelectedTab.ProjectContext.SourcePath))
         {
-            var defaultPath = AllocateDefaultQueryPath(SelectedTab.Title);
-            Directory.CreateDirectory(Path.GetDirectoryName(defaultPath)!);
-            SelectedTab.SetSourcePath(defaultPath);
+            var folderPath = AllocateDefaultQueryFolderPath(SelectedTab.Title);
+            Directory.CreateDirectory(folderPath);
+            SelectedTab.SetSourcePath(folderPath);
         }
 
         try
@@ -458,6 +588,9 @@ public class MainWindowViewModel : ReactiveObject
         {
             var filePath = await ShowSaveFileDialogAsync();
             if (string.IsNullOrEmpty(filePath)) return;
+
+            if (!filePath.EndsWith(".lqpkg", StringComparison.OrdinalIgnoreCase))
+                filePath += ".lqpkg";
 
             SelectedTab.SetSourcePath(filePath);
             await SaveAsync();
@@ -519,14 +652,17 @@ public class MainWindowViewModel : ReactiveObject
 
             await SelectedTab.SaveAsync();
 
-            var zipPath = await ShowSavePackageDialogAsync();
-            if (string.IsNullOrEmpty(zipPath)) return;
-
-            if (!zipPath.EndsWith(".lqpkg", StringComparison.OrdinalIgnoreCase))
-                zipPath += ".lqpkg";
+            var zipPath = await QueryPathOperations.ResolvePackTargetAsync(MainWindow, sourcePath);
+            if (string.IsNullOrEmpty(zipPath))
+                return;
 
             SelectedTab.StatusText = "Packing...";
-            await PackageService.Instance.PackAsync(sourcePath, zipPath);
+            this.RaisePropertyChanged(nameof(StatusText));
+
+            await QueryPathOperations.PackAsync(sourcePath, zipPath);
+            QueryPathOperations.DeletePath(sourcePath);
+            await SelectedTab.OpenFileAsync(zipPath);
+            QueriesSidebar.RequestRefresh();
             SelectedTab.StatusText = $"Packed: {Path.GetFileName(zipPath)}";
             this.RaisePropertyChanged(nameof(StatusText));
         }
@@ -551,13 +687,18 @@ public class MainWindowViewModel : ReactiveObject
                 return;
             }
 
-            var folderPath = await ShowOpenFolderDialogAsync("Unpack to folder");
-            if (string.IsNullOrEmpty(folderPath)) return;
+            var folderPath = await QueryPathOperations.ResolveUnpackTargetAsync(MainWindow, sourcePath);
+            if (string.IsNullOrEmpty(folderPath))
+                return;
 
             SelectedTab.StatusText = "Unpacking...";
-            await PackageService.Instance.UnpackAsync(sourcePath, folderPath);
+            this.RaisePropertyChanged(nameof(StatusText));
+
+            await QueryPathOperations.UnpackAsync(sourcePath, folderPath);
+            QueryPathOperations.DeletePath(sourcePath);
             await SelectedTab.OpenFileAsync(folderPath);
-            SelectedTab.StatusText = $"Unpacked to: {Path.GetFileName(folderPath)}";
+            QueriesSidebar.RequestRefresh();
+            SelectedTab.StatusText = $"Unpacked: {Path.GetFileName(folderPath)}";
             this.RaisePropertyChanged(nameof(StatusText));
         }
         catch (Exception ex)
@@ -630,7 +771,7 @@ public class MainWindowViewModel : ReactiveObject
             SuggestedStartLocation = await GetQueryDirectoryFolderAsync(),
             FileTypeFilter =
             [
-                new FilePickerFileType("Scratchpad Script") { Patterns = ["*.cs", "*.lqpkg"] }
+                new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }
             ]
         });
 
@@ -657,13 +798,12 @@ public class MainWindowViewModel : ReactiveObject
 
         var file = await MainWindow.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Save Script",
-            DefaultExtension = "cs",
+            Title = "Save Script Package",
+            DefaultExtension = "lqpkg",
             SuggestedStartLocation = await GetQueryDirectoryFolderAsync(),
-            SuggestedFileName = SelectedTab != null ? SanitizeFolderName(SelectedTab.Title) + ".cs" : "query.cs",
+            SuggestedFileName = SelectedTab != null ? SanitizeFolderName(SelectedTab.Title) + ".lqpkg" : "query.lqpkg",
             FileTypeChoices =
             [
-                new FilePickerFileType("C# Script") { Patterns = ["*.cs"] },
                 new FilePickerFileType("Script Package") { Patterns = ["*.lqpkg"] }
             ]
         });
@@ -699,18 +839,22 @@ public class MainWindowViewModel : ReactiveObject
         return await MainWindow.StorageProvider.TryGetFolderFromPathAsync(directory);
     }
 
-    private static string AllocateDefaultQueryPath(string title)
+    private static string AllocateDefaultQueryFolderPath(string title)
     {
         var directory = ApplicationSettings.GetEffectiveQueryDirectory();
-        var baseName = SanitizeFolderName(title);
-        var path = Path.Combine(directory, $"{baseName}.cs");
-        if (!File.Exists(path))
+        return AllocateUniqueFolderInParent(directory, SanitizeFolderName(title));
+    }
+
+    private static string AllocateUniqueFolderInParent(string parentPath, string baseName)
+    {
+        var path = Path.Combine(parentPath, baseName);
+        if (!Directory.Exists(path) && !File.Exists(path))
             return path;
 
         for (var i = 2; ; i++)
         {
-            path = Path.Combine(directory, $"{baseName}{i}.cs");
-            if (!File.Exists(path))
+            path = Path.Combine(parentPath, $"{baseName}{i}");
+            if (!Directory.Exists(path) && !File.Exists(path))
                 return path;
         }
     }

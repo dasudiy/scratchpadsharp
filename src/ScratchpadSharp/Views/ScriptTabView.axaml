@@ -5,7 +5,30 @@
     x:Class="ScratchpadSharp.Views.ScriptTabView"
     Background="#FBFCFD">
 
-    <Grid x:Name="MainGrid" RowDefinitions="*, Auto, 2*">
+    <Grid RowDefinitions="Auto, *">
+        <Border Grid.Row="0"
+                IsVisible="{Binding IsRenaming}"
+                Background="#F0F4F8"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,4">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Rename:"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           Foreground="{StaticResource TextMutedBrush}" />
+                <TextBox Grid.Column="1"
+                         Name="RenameTextBox"
+                         Text="{Binding RenameEditName}"
+                         VerticalAlignment="Center"
+                         LostFocus="OnRenameTextBoxLostFocus"
+                         KeyDown="OnRenameTextBoxKeyDown"
+                         Loaded="OnRenameTextBoxLoaded" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" x:Name="MainGrid" RowDefinitions="*, Auto, 2*">
         <!-- Editor -->
         <Border Grid.Row="0"
                 BorderThickness="0"
@@ -77,5 +100,6 @@
                 </Panel>
             </Border>
         </Grid>
+    </Grid>
     </Grid>
 </UserControl>

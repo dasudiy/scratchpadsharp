@@ -23,6 +23,7 @@
         <KeyBinding Gesture="F5" Command="{Binding ExecuteCommand}" />
         <KeyBinding Gesture="Shift+F5" Command="{Binding CancelCommand}" />
         <KeyBinding Gesture="F4" Command="{Binding ManageReferencesCommand}" />
+        <KeyBinding Gesture="F2" Command="{Binding RenameTabCommand}" />
     </Window.KeyBindings>
 
     <Window.Resources>

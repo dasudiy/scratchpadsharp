@@ -7,7 +7,8 @@
         Width="460"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        CanResize="False">
+        CanResize="False"
+        KeyDown="OnWindowKeyDown">
   <Border Padding="20" Background="{StaticResource SurfaceBrush}">
     <StackPanel Spacing="14" MaxWidth="420">
       <TextBlock Text="{Binding Title}"
@@ -18,13 +19,23 @@
                  TextWrapping="Wrap"
                  FontSize="12.5"
                  Foreground="{StaticResource TextSecondaryBrush}" />
-      <TextBox IsVisible="{Binding ShowInput}"
+      <TextBox x:Name="InputBox"
+               IsVisible="{Binding ShowInput}"
                Watermark="Folder name"
-               Text="{Binding InputText}" />
+               Text="{Binding InputText}"
+               KeyDown="OnInputKeyDown" />
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-        <Button Content="Cancel" Command="{Binding CancelCommand}" Click="OnCancelClick" />
-        <Button Content="OK" Command="{Binding ConfirmCommand}" Click="OnOkClick"
-                Background="{StaticResource AccentBrush}" Foreground="{StaticResource TextOnDarkBrush}" />
+        <Button Content="Cancel"
+                IsCancel="True"
+                Command="{Binding CancelCommand}"
+                Click="OnCancelClick" />
+        <Button x:Name="OkButton"
+                Content="OK"
+                IsDefault="True"
+                Command="{Binding ConfirmCommand}"
+                Click="OnOkClick"
+                Background="{StaticResource AccentBrush}"
+                Foreground="{StaticResource TextOnDarkBrush}" />
       </StackPanel>
     </StackPanel>
   </Border>

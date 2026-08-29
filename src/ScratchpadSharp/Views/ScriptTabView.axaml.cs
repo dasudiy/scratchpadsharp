@@ -24,6 +24,7 @@ namespace ScratchpadSharp.Views;
 public partial class ScriptTabView : UserControl
 {
     private ScriptTabViewModel? viewModel;
+    private bool suppressRenameCommit;
     private readonly IRoslynCompletionService completionService = new RoslynCompletionService();
     private readonly ISignatureProvider signatureProvider = new SignatureProvider();
 
@@ -63,12 +64,18 @@ public partial class ScriptTabView : UserControl
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (viewModel != null)
+        {
             viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            viewModel.RenameEditStarted -= OnRenameEditStarted;
+        }
 
         viewModel = DataContext as ScriptTabViewModel;
 
         if (viewModel != null)
+        {
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            viewModel.RenameEditStarted += OnRenameEditStarted;
+        }
 
         DetachEditorHooks();
         _isEditorInitialized = false;
@@ -169,6 +176,72 @@ public partial class ScriptTabView : UserControl
 
         if (e.PropertyName == nameof(ScriptTabViewModel.CompilationErrors))
             ApplyCompilationErrors();
+    }
+
+    private void OnRenameEditStarted() =>
+        Dispatcher.UIThread.Post(FocusRenameEditor, DispatcherPriority.Loaded);
+
+    private async void OnRenameTextBoxLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (suppressRenameCommit || viewModel is not { IsRenaming: true })
+            return;
+
+        suppressRenameCommit = true;
+        try
+        {
+            await viewModel.CommitRenameAsync();
+        }
+        finally
+        {
+            suppressRenameCommit = false;
+        }
+    }
+
+    private async void OnRenameTextBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (viewModel is not { IsRenaming: true })
+            return;
+
+        if (e.Key == Key.Enter)
+        {
+            suppressRenameCommit = true;
+            try
+            {
+                await viewModel.CommitRenameAsync();
+            }
+            finally
+            {
+                suppressRenameCommit = false;
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            suppressRenameCommit = true;
+            try
+            {
+                viewModel.CancelRename();
+            }
+            finally
+            {
+                suppressRenameCommit = false;
+            }
+
+            e.Handled = true;
+        }
+    }
+
+    private void OnRenameTextBoxLoaded(object? sender, RoutedEventArgs e) =>
+        Dispatcher.UIThread.Post(FocusRenameEditor, DispatcherPriority.Input);
+
+    private void FocusRenameEditor()
+    {
+        if (RenameTextBox == null || viewModel is not { IsRenaming: true })
+            return;
+
+        RenameTextBox.Focus();
+        RenameTextBox.SelectAll();
     }
 
     private void OnCaretPositionChanged(object? sender, EventArgs e) => UpdateCursorPosition();
