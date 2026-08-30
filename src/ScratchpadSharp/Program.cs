@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using Avalonia;
-using Avalonia.ReactiveUI;
+using ReactiveUI.Avalonia;
 
 namespace ScratchpadSharp;
 
@@ -26,13 +26,11 @@ internal class Program
 
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
-            // UsePlatformDetect 会自动调用 .UseSkia()，解决 "No rendering system configured" 报错。
-            // 它也会自动探测 Wayland 或 X11，并应用上面设置的环境变量。
             .UsePlatformDetect()
-            .With(new X11PlatformOptions 
-            { 
+            .With(new X11PlatformOptions
+            {
                 EnableMultiTouch = true
             })
             .LogToTrace()
-            .UseReactiveUI();
+            .UseReactiveUI(_ => { });
 }

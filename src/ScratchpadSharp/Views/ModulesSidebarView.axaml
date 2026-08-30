@@ -211,7 +211,7 @@
                   Margin="12,0,0,0"
                   ContextMenu="{StaticResource ModuleTreeContextMenu}">
         <TreeView.Styles>
-          <Style Selector="TreeViewItem">
+          <Style Selector="TreeViewItem" x:DataType="vm:ModuleTreeNode">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="Padding" Value="0" />
           </Style>

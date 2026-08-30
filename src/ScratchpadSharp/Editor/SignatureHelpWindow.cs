@@ -9,7 +9,6 @@ using Avalonia.Controls.Primitives.PopupPositioning;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
-using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
@@ -25,13 +24,13 @@ namespace ScratchpadSharp.Editor;
 /// <summary>
 /// Signature Help Popup, positioned above the caret or below the completion list.
 /// </summary>
-public class SignatureHelpWindow : Popup, IStyleable
+public class SignatureHelpWindow : Popup
 {
     private readonly SignatureHelpPopup _popupContent;
     private readonly Func<CompletionWindow?>? _completionWindowProvider;
     public SignatureHelpViewModel ViewModel { get; }
 
-    Type IStyleable.StyleKey => typeof(PopupRoot);
+    protected override Type StyleKeyOverride => typeof(PopupRoot);
 
     /// <summary>
     /// Gets the parent TextArea.
@@ -70,7 +69,7 @@ public class SignatureHelpWindow : Popup, IStyleable
 
 
         TextArea = textArea ?? throw new ArgumentNullException(nameof(textArea));
-        _parentWindow = textArea.GetVisualRoot() as Window;
+        _parentWindow = TopLevel.GetTopLevel(textArea) as Window;
 
 
         AddHandler(PointerReleasedEvent, OnMouseUp, handledEventsToo: true);
@@ -129,7 +128,7 @@ public class SignatureHelpWindow : Popup, IStyleable
 
     private void AttachEvents()
     {
-        ((ISetLogicalParent)this).SetParent(TextArea.GetVisualRoot() as ILogical);
+        ((ISetLogicalParent)this).SetParent(TopLevel.GetTopLevel(TextArea) as ILogical);
 
         _document = TextArea.Document;
         if (_document != null)

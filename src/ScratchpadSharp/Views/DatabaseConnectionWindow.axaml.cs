@@ -23,7 +23,7 @@ public partial class DatabaseConnectionWindow : Window
     {
         if (DataContext is DatabaseConnectionViewModel vm)
         {
-            vm.SaveCommand.Execute(System.Reactive.Unit.Default);
+            vm.SaveCommand.Execute(ReactiveUI.Primitives.RxVoid.Default);
             if (vm.WasSaved)
                 Close();
         }

@@ -18,6 +18,7 @@ using AvaloniaEdit.Rendering;
 using ScratchpadSharp.Core.Configuration;
 using ScratchpadSharp.Core.Services;
 using ScratchpadSharp.Editor;
+using ScratchpadSharp.Services;
 using ScratchpadSharp.ViewModels;
 
 namespace ScratchpadSharp.Views;
@@ -42,6 +43,7 @@ public partial class ScriptTabView : UserControl
         SizeChanged += OnViewSizeChanged;
         AttachedToVisualTree += OnAttachedToVisualTree;
         DetachedFromVisualTree += OnDetachedFromVisualTree;
+        HookOutputWebView();
     }
 
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
@@ -60,8 +62,11 @@ public partial class ScriptTabView : UserControl
     private void OnApplicationSettingsChanged() =>
         Dispatcher.UIThread.Post(ApplyEditorSettings);
 
-    private void OnLoaded(object? sender, RoutedEventArgs e) =>
+    private void OnLoaded(object? sender, RoutedEventArgs e)
+    {
         TryInitializeEditor();
+        LoadOutputDocument();
+    }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
@@ -69,6 +74,8 @@ public partial class ScriptTabView : UserControl
         {
             viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             viewModel.RenameEditStarted -= OnRenameEditStarted;
+            viewModel.DumpFragmentAppended -= OnDumpFragmentAppended;
+            viewModel.DumpHtmlCleared -= OnDumpHtmlCleared;
         }
 
         viewModel = DataContext as ScriptTabViewModel;
@@ -77,6 +84,8 @@ public partial class ScriptTabView : UserControl
         {
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
             viewModel.RenameEditStarted += OnRenameEditStarted;
+            viewModel.DumpFragmentAppended += OnDumpFragmentAppended;
+            viewModel.DumpHtmlCleared += OnDumpHtmlCleared;
         }
 
         DetachEditorHooks();
@@ -86,6 +95,7 @@ public partial class ScriptTabView : UserControl
         _errorRenderer = null;
 
         TryInitializeEditor();
+        LoadOutputDocument();
     }
 
     private void TryInitializeEditor()
@@ -169,7 +179,17 @@ public partial class ScriptTabView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (viewModel == null || CodeEditor == null) return;
+        if (viewModel == null) return;
+
+        if (e.PropertyName == nameof(ScriptTabViewModel.IsOutputPanelExpanded))
+            UpdateOutputPanelLayout(viewModel.IsOutputPanelExpanded);
+
+        if (e.PropertyName is nameof(ScriptTabViewModel.ShowHtmlOutput)
+            or nameof(ScriptTabViewModel.Output)
+            or nameof(ScriptTabViewModel.HtmlOutput))
+            LoadOutputDocument();
+
+        if (CodeEditor == null) return;
 
         if (e.PropertyName == nameof(ScriptTabViewModel.CodeText) &&
             CodeEditor.Document.Text != viewModel.CodeText)
@@ -177,9 +197,6 @@ public partial class ScriptTabView : UserControl
             CodeEditor.Document.Text = viewModel.CodeText;
             _signatureHelpHandler?.Reset();
         }
-
-        if (e.PropertyName == nameof(ScriptTabViewModel.IsOutputPanelExpanded))
-            UpdateOutputPanelLayout(viewModel.IsOutputPanelExpanded);
 
         if (e.PropertyName == nameof(ScriptTabViewModel.CompilationErrors))
             ApplyCompilationErrors();
@@ -411,5 +428,115 @@ public partial class ScriptTabView : UserControl
             Debug.WriteLine($"Failed to load custom syntax highlighting: {ex.Message}");
             CodeEditor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinition("C#");
         }
+    }
+
+    private void HookOutputWebView()
+    {
+        if (OutputWebView == null)
+            return;
+
+        OutputWebView.EnvironmentRequested += OnOutputEnvironmentRequested;
+        OutputWebView.AdapterCreated += OnOutputAdapterCreated;
+        OutputWebView.NavigationStarted += OnOutputNavigationStarted;
+        OutputWebView.NewWindowRequested += OnOutputNewWindowRequested;
+        App.OutputWebViewInitFailed += OnOutputWebViewInitFailed;
+        TryShowWebViewUnavailableFallback();
+    }
+
+    private void OnOutputWebViewInitFailed(string message) =>
+        ShowWebViewFallback($"Output WebView failed to start: {message}");
+
+    private static void OnOutputEnvironmentRequested(object? sender, WebViewEnvironmentRequestedEventArgs e)
+    {
+        e.EnableDevTools = false;
+        switch (e)
+        {
+            case GtkWebViewEnvironmentRequestedEventArgs gtk:
+                gtk.EphemeralDataManager = true;
+                gtk.DisableCache = true;
+                break;
+            case LinuxWpeWebViewEnvironmentRequestedEventArgs wpe:
+                wpe.PreferWebKitGtkInstead = false;
+                break;
+        }
+    }
+
+    private void OnOutputAdapterCreated(object? sender, WebViewAdapterEventArgs e)
+    {
+        HideWebViewFallback();
+        LoadOutputDocument();
+    }
+
+    private void OnOutputNavigationStarted(object? sender, WebViewNavigationStartingEventArgs e)
+    {
+        var uri = e.Request;
+        if (uri is null)
+            return;
+
+        if (uri.Scheme is "about" or "data")
+            return;
+
+        e.Cancel = true;
+    }
+
+    private void OnOutputNewWindowRequested(object? sender, WebViewNewWindowRequestedEventArgs e) =>
+        e.Handled = true;
+
+    private void OnDumpFragmentAppended(string _) => LoadOutputDocument();
+
+    private void OnDumpHtmlCleared() => LoadOutputDocument();
+
+    private void LoadOutputDocument()
+    {
+        if (OutputWebView == null || viewModel == null)
+            return;
+
+        var html = viewModel.ShowHtmlOutput
+            ? viewModel.HtmlOutput
+            : HtmlDumpService.BuildTextDocument(viewModel.OutputDisplayHtml);
+
+        try
+        {
+            OutputWebView.NavigateToString(html);
+        }
+        catch (Exception ex)
+        {
+            ShowWebViewFallback($"Output WebView failed to start: {ex.Message}");
+        }
+    }
+
+    private void ShowWebViewFallback(string message)
+    {
+        if (OutputWebViewFallback == null)
+            return;
+
+        OutputWebViewFallback.Text = message;
+        OutputWebViewFallback.IsVisible = true;
+        if (OutputWebView != null)
+            OutputWebView.IsVisible = false;
+    }
+
+    private void HideWebViewFallback()
+    {
+        if (OutputWebViewFallback != null)
+            OutputWebViewFallback.IsVisible = false;
+        if (OutputWebView != null)
+            OutputWebView.IsVisible = true;
+    }
+
+    private void TryShowWebViewUnavailableFallback()
+    {
+        if (!OperatingSystem.IsLinux())
+            return;
+
+        var gtk = WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebKitGtk);
+        var wpe = WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WpeWebKit);
+        if (gtk.IsInstalled || wpe.IsInstalled)
+            return;
+
+        var reason = gtk.UnavailableReason ?? wpe.UnavailableReason
+            ?? "WebKitGTK is not installed.";
+        ShowWebViewFallback(
+            $"{reason} Install: sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libsoup-3.0-0");
     }
 }

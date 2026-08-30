@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using System.Reactive;
+using Unit = ReactiveUI.Primitives.RxVoid;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;

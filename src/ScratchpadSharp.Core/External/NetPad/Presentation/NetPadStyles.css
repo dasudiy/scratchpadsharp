@@ -5,7 +5,8 @@
 
 output-pane {
     outline: none;
-    font-size: 12px;
+    font-size: 13px;
+    display: block;
 }
 
 output-pane:hover .nav-controls {
@@ -61,29 +62,28 @@ output-pane .dump-container-wrapper .group {
     border-left: 2px transparent solid;
 }
 
-output-pane .dump-container-wrapper .group self.text:not(.raw, .error, .code) {
+output-pane .dump-container-wrapper .group.text:not(.raw, .error, .code) {
     padding-top: 0;
 }
 
 output-pane .dump-container-wrapper .group.raw {
     padding: 1rem 0.75rem;
-    background: #000;
+    background: rgb(128 128 128 / 10%);
     border-left: #949494 2px dashed;
 }
 
 output-pane .dump-container-wrapper .group.raw:hover {
-    background: #000;
+    background: rgb(128 128 128 / 20%);
 }
 
 output-pane .dump-container-wrapper .group.error {
     padding: 1.25rem 0.75rem;
-    color: red;
-    background: rgba(0, 0, 0, );
+    background: rgba(250, 128, 114, 0.06);
     border-left: red 2px solid;
 }
 
 output-pane .dump-container-wrapper .group.error:hover {
-    background: rgba(0, 0, 0, );
+    background: rgba(250, 128, 114, 0.1);
 }
 
 output-pane .dump-container-wrapper .group.code pre {
@@ -104,7 +104,7 @@ output-pane .dump-container-wrapper .group.audio {
 output-pane .dump-container-wrapper .group.image:hover,
 output-pane .dump-container-wrapper .group.video:hover,
 output-pane .dump-container-wrapper .group.audio:hover {
-    background: #000;
+    background: rgb(128 128 128 / 10%);
 }
 
 output-pane .dump-container-wrapper .group.audio audio {

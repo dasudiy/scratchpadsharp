@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using System.Reactive;
+using Unit = ReactiveUI.Primitives.RxVoid;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -23,6 +23,7 @@ public partial class QueriesSidebarView : UserControl
     private bool suppressRenameCommit;
     private QueryTreeNode? pendingDragNode;
     private Point? pendingDragStart;
+    private PointerPressedEventArgs? pendingDragPress;
     private bool dragInProgress;
     private Control? dropHighlightTarget;
 
@@ -137,16 +138,18 @@ public partial class QueriesSidebarView : UserControl
         {
             pendingDragNode = null;
             pendingDragStart = null;
+            pendingDragPress = null;
             return;
         }
 
         pendingDragNode = node;
         pendingDragStart = e.GetPosition(QueryTree);
+        pendingDragPress = e;
     }
 
     private async void OnTreePointerMoved(object? sender, PointerEventArgs e)
     {
-        if (pendingDragNode == null || pendingDragStart == null || dragInProgress)
+        if (pendingDragNode == null || pendingDragStart == null || pendingDragPress == null || dragInProgress)
             return;
 
         if (!e.GetCurrentPoint(QueryTree).Properties.IsLeftButtonPressed)
@@ -158,15 +161,17 @@ public partial class QueriesSidebarView : UserControl
             return;
 
         var sourcePath = pendingDragNode.FullPath;
+        var press = pendingDragPress;
         pendingDragNode = null;
         pendingDragStart = null;
+        pendingDragPress = null;
         dragInProgress = true;
 
         try
         {
             var dragData = new DataTransfer();
             dragData.Add(DataTransferItem.Create(QueryPathDragFormat, sourcePath));
-            await DragDrop.DoDragDropAsync(e, dragData, DragDropEffects.Move);
+            await DragDrop.DoDragDropAsync(press, dragData, DragDropEffects.Move);
         }
         finally
         {

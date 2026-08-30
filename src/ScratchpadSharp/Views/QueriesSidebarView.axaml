@@ -192,7 +192,7 @@
                   Margin="12,0,0,0"
                   ContextMenu="{StaticResource QueryTreeContextMenu}">
         <TreeView.Styles>
-          <Style Selector="TreeViewItem">
+          <Style Selector="TreeViewItem" x:DataType="vm:QueryTreeNode">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="DragDrop.AllowDrop" Value="True" />

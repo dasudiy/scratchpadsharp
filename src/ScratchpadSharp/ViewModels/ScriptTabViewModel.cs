@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reactive;
+using Unit = ReactiveUI.Primitives.RxVoid;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -46,10 +46,23 @@ public class ScriptTabViewModel : ReactiveObject
     {
         this.scriptService = scriptService;
         htmlDumpService = new HtmlDumpService();
-        htmlDumpService.SetUpdateCallback(html =>
+        htmlOutput = htmlDumpService.BuildDumpDocument();
+        htmlDumpService.FragmentAppended += fragment =>
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => HtmlOutput = html);
-        });
+            Dispatcher.UIThread.Post(() =>
+            {
+                HtmlOutput = htmlDumpService.BuildDumpDocument();
+                DumpFragmentAppended?.Invoke(fragment);
+            });
+        };
+        htmlDumpService.Cleared += () =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                HtmlOutput = htmlDumpService.BuildDumpDocument();
+                DumpHtmlCleared?.Invoke();
+            });
+        };
 
         TabId = Guid.NewGuid().ToString("N");
 
@@ -104,6 +117,8 @@ public class ScriptTabViewModel : ReactiveObject
         !string.IsNullOrEmpty(projectContext.SourcePath);
 
     public event Action? RenameEditStarted;
+    public event Action<string>? DumpFragmentAppended;
+    public event Action? DumpHtmlCleared;
 
     public string CodeText
     {

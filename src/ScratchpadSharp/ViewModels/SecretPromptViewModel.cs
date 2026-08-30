@@ -1,4 +1,4 @@
-using System.Reactive;
+using Unit = ReactiveUI.Primitives.RxVoid;
 using ReactiveUI;
 using ScratchpadSharp.Core.Security;
 

@@ -300,20 +300,21 @@ users.Dump("User List");
 1. **Compilation**: `ScriptExecutionService` registers `DumpExtension.UseSink(new DumpDispatcher())` and adds the NetPad presentation namespace via `ScriptConfig.Usings`.
 2. **User call**: `DumpExtension.Dump()` invokes `IDumpSink.ResultWrite`.
 3. **Serialization**: `DumpDispatcher` serializes via `HtmlPresenter` (O2Html) to an HTML string.
-4. **Rendering**: `HtmlDumpService` wraps the HTML with embedded NetPad CSS and updates the UI via `Avalonia.HtmlRenderer`.
+4. **Rendering**: `HtmlDumpService` loads a persistent HTML shell (NetPad CSS + collapse JS) into `NativeWebView` and appends dump fragments via `InvokeScript`.
 
 See [docs/dump-workflow.md](docs/dump-workflow.md) for a detailed flow.
 
-### 5.3 Future Enhancement: WebView
+### 5.3 Output WebView
 
-**Goal**: Replace `Avalonia.HtmlRenderer` with a full `WebView` (e.g., CefGlue) for complete CSS/JS support and collapsible-tree interactivity.
+**Goal**: Full CSS/JS support and collapsible-tree interactivity in the results pane.
 
 **Current State**:
 
 - Objects are serialized to HTML via O2Html.
-- HTML dumps render in `HtmlPanel` (`Avalonia.HtmlRenderer`); console output uses `SelectableTextBlock`.
-- The results panel toggles between HTML and text views.
-- Collapsible tree expansion in dumps is limited without a full browser engine.
+- HTML dumps and ANSI console output render in `NativeWebView` (`Avalonia.Controls.WebView`): WebView2 on Windows, WKWebView on macOS, WebKitGTK/WPE on Linux.
+- The results panel toggles between HTML dump and text views inside the same page.
+- Clicking a dump title or table info header toggles `.collapsed`.
+- Linux requires WebKitGTK (`libwebkit2gtk-4.1-0`); if the engine is missing, the pane shows an install hint.
 
 ---
 
@@ -331,12 +332,7 @@ See [docs/dump-workflow.md](docs/dump-workflow.md) for a detailed flow.
 
     <!-- Results Panel (HTML dump + text console, toggle) -->
     <Panel Grid.Row="2">
-        <ScrollViewer IsVisible="{Binding ShowHtmlOutput}">
-            <the:HtmlPanel Text="{Binding HtmlOutput}" />
-        </ScrollViewer>
-        <ScrollViewer IsVisible="{Binding !ShowHtmlOutput}">
-            <SelectableTextBlock Text="{Binding Output}" ... />
-        </ScrollViewer>
+        <NativeWebView Name="OutputWebView" />
     </Panel>
 </Grid>
 ```

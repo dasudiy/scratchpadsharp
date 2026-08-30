@@ -1,5 +1,5 @@
 using System;
-using System.Reactive;
+using Unit = ReactiveUI.Primitives.RxVoid;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;

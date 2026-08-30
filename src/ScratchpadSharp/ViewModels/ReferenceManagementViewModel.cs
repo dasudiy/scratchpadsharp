@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Reactive;
+using Unit = ReactiveUI.Primitives.RxVoid;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
+using Avalonia.Threading;
+using NuGet.Packaging;
 using NuGet.Packaging;
 using NuGet.Packaging.Core;
 using NuGet.Protocol.Core.Types;
@@ -227,23 +229,19 @@ public class ReferenceManagementViewModel : ReactiveObject
                 (installing, applying) => !installing && !applying));
 
         InstallPackageCommand.ThrownExceptions
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(ex => StatusText = $"Install failed: {ex.Message}");
+            .Subscribe(ex => Dispatcher.UIThread.Post(() => StatusText = $"Install failed: {ex.Message}"));
 
         RemoveAssemblyReferenceCommand.ThrownExceptions
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(ex => StatusText = $"Remove failed: {ex.Message}");
+            .Subscribe(ex => Dispatcher.UIThread.Post(() => StatusText = $"Remove failed: {ex.Message}"));
 
         RestorePackagesCommand.ThrownExceptions
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(ex => StatusText = $"Restore failed: {ex.Message}");
+            .Subscribe(ex => Dispatcher.UIThread.Post(() => StatusText = $"Restore failed: {ex.Message}"));
 
         _ = LoadDataAsync();
 
         this.WhenAnyValue(x => x.LocalSearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(300))
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(_ => FilterLocalPackages());
+            .Subscribe(_ => Dispatcher.UIThread.Post(FilterLocalPackages));
 
         this.WhenAnyValue(x => x.OnlineSearchQuery)
             .Throttle(TimeSpan.FromMilliseconds(500))
@@ -257,18 +255,16 @@ public class ReferenceManagementViewModel : ReactiveObject
 
         this.WhenAnyValue(x => x.IncludePreReleaseVersions)
             .Throttle(TimeSpan.FromMilliseconds(300))
-            .ObserveOn(RxApp.MainThreadScheduler)
             .SelectMany(_ => Observable.FromAsync(ReloadVersionsAsync))
             .Subscribe(
                 _ => { },
-                ex => StatusText = $"Version load failed: {ex.Message}");
+                ex => Dispatcher.UIThread.Post(() => StatusText = $"Version load failed: {ex.Message}"));
 
         this.WhenAnyValue(x => x.SelectedPackage)
-            .ObserveOn(RxApp.MainThreadScheduler)
             .SelectMany(p => Observable.FromAsync(() => OnSelectedPackageChangedAsync(p)))
             .Subscribe(
                 _ => { },
-                ex => StatusText = $"Version load failed: {ex.Message}");
+                ex => Dispatcher.UIThread.Post(() => StatusText = $"Version load failed: {ex.Message}"));
     }
 
     private void RefreshModuleReferences()

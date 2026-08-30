@@ -4,7 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data.Common;
 using System.Linq;
-using System.Reactive;
+using Unit = ReactiveUI.Primitives.RxVoid;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
 using ReactiveUI;

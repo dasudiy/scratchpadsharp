@@ -1,0 +1,72 @@
+html, body {
+    height: 100%;
+    overflow: hidden;
+    background: #ffffff;
+    color: #1F2328;
+}
+
+body {
+    font-family: Inter, Segoe UI, sans-serif;
+}
+
+#dump-pane,
+#text-pane {
+    box-sizing: border-box;
+    height: 100%;
+    overflow: auto;
+}
+
+/* Padding lives on the inner wrapper so the scrollbar cannot eat padding-right. */
+output-pane .dump-container-wrapper {
+    box-sizing: border-box;
+    overflow-x: visible;
+    padding: 8px 12px;
+    min-width: 100%;
+    width: max-content;
+}
+
+#dump-pane[hidden],
+#text-pane[hidden] {
+    display: none !important;
+}
+
+output-pane .dump-container-wrapper .title,
+output-pane .dump-container-wrapper .table-info-header,
+output-pane .dump-container-wrapper .collapse-actionable {
+    cursor: pointer;
+    user-select: none;
+}
+
+output-pane .dump-container-wrapper table.table {
+    border-collapse: collapse;
+}
+
+output-pane .dump-container-wrapper table.table-bordered th,
+output-pane .dump-container-wrapper table.table-bordered td {
+    border: 1px solid #3da3da;
+}
+
+output-pane .dump-container-wrapper table.table-sm th,
+output-pane .dump-container-wrapper table.table-sm td {
+    padding: 3px 5px;
+}
+
+.caret-up-icon,
+.caret-down-icon {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+    border-style: solid;
+}
+
+.caret-up-icon {
+    border-width: 0 4px 6px 4px;
+    border-color: transparent transparent #ffffff transparent;
+}
+
+.caret-down-icon {
+    border-width: 6px 4px 0 4px;
+    border-color: #ffffff transparent transparent transparent;
+}

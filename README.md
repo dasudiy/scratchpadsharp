@@ -30,6 +30,12 @@ dotnet build
 dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 ```
 
+The output pane uses the platform WebView. On Linux install WebKitGTK:
+
+```bash
+sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libsoup-3.0-0
+```
+
 ### GNOME Desktop Icon
 
 Window/taskbar icons load from embedded assets. To appear in the **GNOME app grid**, install the freedesktop entry once:

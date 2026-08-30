@@ -1,0 +1,15 @@
+---
+description: Do not bypass the booked goal with a different implementation
+alwaysApply: true
+---
+
+# Do not bypass the booked goal
+
+If the agreed target cannot be met (platform bug, missing API, control does not paint, etc.):
+
+- **Stop.** Report the blocker, evidence, and what is still unproven.
+- **Do not** substitute a different implementation (old control, extra renderer, "temporary" fallback) so the feature looks done.
+- **Do not** keep stacking env-var / layout / JS workarounds after the same failure has already been observed.
+- Ask how to proceed (change goal, wait on upstream, or accept the limitation).
+
+Example: Linux dump pane must be `NativeWebView` with NetPad CSS/JS. If WebKitGTK does not paint, **do not** put `HtmlPanel` back. Report that the goal is blocked.
