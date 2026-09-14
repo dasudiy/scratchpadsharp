@@ -1,5 +1,8 @@
 <Project>
   <PropertyGroup>
+    <Version>1.0.0-pre.1</Version>
+    <Authors>dasudiy</Authors>
+    <Product>ScratchpadSharp</Product>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/dasudiy/scratchpadsharp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

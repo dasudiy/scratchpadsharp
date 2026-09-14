@@ -8,7 +8,7 @@ obj/
 *.user
 *.suo
 *.sln.iml
-.github/
+.github/copilot-instructions.md
 
 # NuGet
 .packages/

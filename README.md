@@ -1,6 +1,11 @@
 # ScratchpadSharp
 
+[![CI](https://github.com/dasudiy/scratchpadsharp/actions/workflows/ci.yml/badge.svg)](https://github.com/dasudiy/scratchpadsharp/actions/workflows/ci.yml)
+[![Release](https://github.com/dasudiy/scratchpadsharp/actions/workflows/release.yml/badge.svg)](https://github.com/dasudiy/scratchpadsharp/releases)
+
 A lightweight, high-performance C# script runner built with Avalonia UI and Roslyn.
+
+Pre-built binaries are on the [GitHub Releases](https://github.com/dasudiy/scratchpadsharp/releases) page (framework-dependent zips for Windows x64, Linux x64, and macOS). Push a `v*` tag to cut a new release.
 
 ## Features
 

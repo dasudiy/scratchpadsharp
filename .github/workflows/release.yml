@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore ScratchpadSharp.sln
+
+      - name: Build
+        run: dotnet build ScratchpadSharp.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet run --project tests/ScratchpadSharp.Core.Tests/ScratchpadSharp.Core.Tests.csproj -c Release --no-build
+
+  publish:
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-latest
+            rid: osx-x64
+          - os: macos-latest
+            rid: osx-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish src/ScratchpadSharp/ScratchpadSharp.csproj \
+            -c Release \
+            -r "${{ matrix.rid }}" \
+            --self-contained false \
+            -p:Version="$VERSION" \
+            -p:PublishSingleFile=false \
+            -p:PublishTrimmed=false \
+            -o "publish/${{ matrix.rid }}"
+
+      - name: Pack zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "publish\${{ matrix.rid }}\*" -DestinationPath "dist\ScratchpadSharp-$env:VERSION-${{ matrix.rid }}.zip" -Force
+
+      - name: Pack zip (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          chmod +x "publish/${{ matrix.rid }}/ScratchpadSharp"
+          (cd "publish/${{ matrix.rid }}" && zip -r "$GITHUB_WORKSPACE/dist/ScratchpadSharp-${VERSION}-${{ matrix.rid }}.zip" .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScratchpadSharp-${{ matrix.rid }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum *.zip > SHA256SUMS.txt
+          ls -lh
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ScratchpadSharp ${{ env.VERSION }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          body: |
+            Framework-dependent Avalonia build. Extract the zip for your OS and run `ScratchpadSharp` / `ScratchpadSharp.exe` from that folder (ship the entire directory).
+
+            **Requirements**
+            - [.NET 8 runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+            - Windows: [WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
+            - Linux: `sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libsoup-3.0-0`
+            - macOS: system WebKit (none extra)
+
+            Do not flatten this into a single-file or trimmed publish; Roslyn scripting needs the assemblies on disk.
