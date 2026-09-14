@@ -23,6 +23,18 @@ src/
 └── ScratchpadSharp.Shared/   # Shared models and exceptions
 ```
 
+## Requirements
+
+- **.NET 8** — SDK to build; [.NET 8 runtime](https://dotnet.microsoft.com/download/dotnet/8.0) for framework-dependent publish output.
+
+The output pane uses the platform WebView (`NativeWebView`):
+
+| Platform | WebView engine | Extra install |
+|----------|----------------|---------------|
+| **Windows** | [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (Evergreen Runtime) | Install the runtime if missing; most Windows 10/11 systems already have it. Published builds embed a Windows app manifest required for native WebView hosting. |
+| **Linux** | WebKitGTK | `sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libsoup-3.0-0` (Debian/Ubuntu). If WebKitGTK is missing, the output pane shows an install hint instead of crashing. |
+| **macOS** | WKWebView | None (system WebKit). |
+
 ## Build & Run
 
 ```bash
@@ -30,11 +42,18 @@ dotnet build
 dotnet run --project src/ScratchpadSharp/ScratchpadSharp.csproj
 ```
 
-The output pane uses the platform WebView. On Linux install WebKitGTK:
+### Windows publish
 
 ```bash
-sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libsoup-3.0-0
+dotnet publish src/ScratchpadSharp/ScratchpadSharp.csproj -c Release -r win-x64
 ```
+
+Ship the **entire** `publish/` folder (`ScratchpadSharp.exe` plus every `.dll` beside it). Do not use `-p:PublishSingleFile=true` or trimming: Roslyn scripting needs real assembly files on disk, and WebView2 needs a normal Win32 host with the embedded `app.manifest`.
+
+The target machine needs:
+
+- [.NET 8 runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (framework-dependent publish)
+- [WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (usually already installed on Windows 10/11)
 
 ### GNOME Desktop Icon
 

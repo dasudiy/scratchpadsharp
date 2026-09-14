@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.CodeAnalysis;
 using ScratchpadSharp.Shared.Models;
 
@@ -64,57 +66,116 @@ public static class MetadataReferenceProvider
     /// </summary>
     public static IEnumerable<MetadataReference> GetDefaultReferences()
     {
-        if (cachedReferences != null)
+        if (cachedReferences is { Count: >= MinimumFrameworkReferenceCount })
             return cachedReferences;
 
+        var built = BuildDefaultReferences();
+        if (built.Count >= MinimumFrameworkReferenceCount)
+            cachedReferences = built;
+
+        return built;
+    }
+
+    private static List<MetadataReference> BuildDefaultReferences()
+    {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in GetFrameworkAssemblyPaths())
             paths.Add(path);
 
-        paths.Add(typeof(ScriptExecutionService).Assembly.Location);
+        foreach (var assembly in new[] { typeof(ScriptExecutionService).Assembly, typeof(ScriptConfig).Assembly })
+        {
+            var location = assembly.Location;
+            if (!string.IsNullOrWhiteSpace(location))
+            {
+                paths.Add(location);
+                continue;
+            }
 
-        cachedReferences = paths
+            var sibling = Path.Combine(AppContext.BaseDirectory, assembly.GetName().Name + ".dll");
+            paths.Add(sibling);
+        }
+
+        return CreateReferences(paths);
+    }
+
+    private const int MinimumFrameworkReferenceCount = 50;
+
+    private static List<MetadataReference> CreateReferences(IEnumerable<string> paths) =>
+        paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
             .Where(File.Exists)
+            .Where(IsManagedAssembly)
             .Where(path => !string.Equals(Path.GetFileName(path), "Dumpify.dll", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(CreateReferenceWithXmlDocs)
             .ToList();
 
-        return cachedReferences;
-    }
-
     /// <summary>
-    /// All trusted platform assemblies for the current .NET runtime (includes facades like
-    /// System.ComponentModel.TypeConverter). Falls back to the shared framework directory or a
-    /// minimal type set when TPA is unavailable.
+    /// Managed framework assemblies for script compilation. Prefer TRUSTED_PLATFORM_ASSEMBLIES;
+    /// fall back to the installed shared framework directory when TPA is unavailable.
     /// </summary>
     private static IEnumerable<string> GetFrameworkAssemblyPaths()
     {
+        var tpa = ReadExistingTrustedPlatformAssemblyPaths();
+        if (tpa.Count >= MinimumFrameworkReferenceCount)
+            return tpa;
+
+        var paths = new HashSet<string>(tpa, StringComparer.OrdinalIgnoreCase);
+        foreach (var path in SharedFrameworkResolver.GetMicrosoftNetCoreAppAssemblyPaths())
+            paths.Add(path);
+
+        if (paths.Count >= MinimumFrameworkReferenceCount)
+            return paths;
+
+        foreach (var path in GetRuntimeDirectoryAssemblyPaths())
+            paths.Add(path);
+
+        return paths;
+    }
+
+    private static List<string> ReadExistingTrustedPlatformAssemblyPaths()
+    {
+        var paths = new List<string>();
         var tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-        if (!string.IsNullOrWhiteSpace(tpa))
-        {
-            foreach (var path in tpa.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-                    yield return path;
-            }
+        if (string.IsNullOrWhiteSpace(tpa))
+            return paths;
 
-            yield break;
+        foreach (var path in tpa.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+                continue;
+
+            if (IsManagedAssembly(path))
+                paths.Add(path);
         }
 
-        var coreDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
-        if (!string.IsNullOrEmpty(coreDir) && Directory.Exists(coreDir))
+        return paths;
+    }
+
+    private static IEnumerable<string> GetRuntimeDirectoryAssemblyPaths()
+    {
+        var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
+        if (string.IsNullOrEmpty(runtimeDir) || !Directory.Exists(runtimeDir))
+            yield break;
+
+        foreach (var path in Directory.EnumerateFiles(runtimeDir, "*.dll", SearchOption.TopDirectoryOnly))
         {
-            foreach (var path in Directory.EnumerateFiles(coreDir, "*.dll", SearchOption.TopDirectoryOnly))
+            if (IsManagedAssembly(path))
                 yield return path;
-
-            yield break;
         }
+    }
 
-        yield return typeof(object).Assembly.Location;
-        yield return typeof(Console).Assembly.Location;
-        yield return typeof(Enumerable).Assembly.Location;
-        yield return typeof(List<>).Assembly.Location;
-        yield return typeof(Task).Assembly.Location;
+    public static bool IsManagedAssembly(string path)
+    {
+        try
+        {
+            AssemblyName.GetAssemblyName(path);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -127,7 +188,7 @@ public static class MetadataReferenceProvider
 
         foreach (var reference in GetDefaultReferences())
         {
-            var name = Path.GetFileNameWithoutExtension(reference.Display ?? string.Empty);
+            var name = GetReferenceAssemblyName(reference);
             if (!string.IsNullOrEmpty(name))
                 byName[name] = reference;
         }
@@ -137,7 +198,7 @@ public static class MetadataReferenceProvider
 
         foreach (var path in extraPaths)
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path) || !IsManagedAssembly(path))
                 continue;
 
             var name = Path.GetFileNameWithoutExtension(path);
@@ -148,5 +209,17 @@ public static class MetadataReferenceProvider
         }
 
         return byName.Values;
+    }
+
+    private static string GetReferenceAssemblyName(MetadataReference reference)
+    {
+        var path = reference switch
+        {
+            PortableExecutableReference portable when !string.IsNullOrWhiteSpace(portable.FilePath)
+                => portable.FilePath,
+            _ => reference.Display
+        };
+
+        return Path.GetFileNameWithoutExtension(path ?? string.Empty);
     }
 }

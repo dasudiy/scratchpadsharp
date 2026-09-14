@@ -40,7 +40,7 @@ In the main application (`ScratchpadSharp`):
     *   The view injects the fragment with `InvokeScript("appendDump", html)` so scroll and expand/collapse state are kept.
     *   `Clear()` empties the dump container without reloading the shell.
 
-On Linux, WebKitGTK (`libwebkit2gtk-4.1-0`) must be installed; otherwise the pane shows an install hint.
+On Linux, WebKitGTK (`libwebkit2gtk-4.1-0`) must be installed; otherwise the pane shows an install hint. On Windows the published exe embeds `app.manifest` (supported OS list) so `NativeControlHost` can create the WebView2 child window; the machine also needs the [WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 
 ## Key Components
 
@@ -48,7 +48,7 @@ On Linux, WebKitGTK (`libwebkit2gtk-4.1-0`) must be installed; otherwise the pan
 -   **`DumpDispatcher`**: The core service that handles object-to-HTML serialization and notifies the UI.
 -   **`HtmlPresenter` / `O2Html`**: The engine responsible for traversing objects and generating the HTML representation.
 -   **`HtmlDumpService`**: The UI-side service that listens for dump events, owns the WebView HTML shell, and raises fragment/clear events.
--   **`NativeWebView`**: Platform WebView (WebView2 / WKWebView / WebKitGTK) that renders dumps with JavaScript (collapsible trees). On Linux, install `libwebkit2gtk-4.1-0`.
+-   **`NativeWebView`**: Platform WebView (WebView2 / WKWebView / WebKitGTK) that renders dumps with JavaScript (collapsible trees). Windows needs WebView2 Evergreen plus the app manifest; Linux needs `libwebkit2gtk-4.1-0`.
 
 ## Flow Diagram
 

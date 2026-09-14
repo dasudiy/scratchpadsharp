@@ -315,6 +315,7 @@ See [docs/dump-workflow.md](docs/dump-workflow.md) for a detailed flow.
 - The results panel toggles between HTML dump and text views inside the same page.
 - Clicking a dump title or table info header toggles `.collapsed`.
 - Linux requires WebKitGTK (`libwebkit2gtk-4.1-0`); if the engine is missing, the pane shows an install hint.
+- Windows published builds embed `app.manifest` so `NativeControlHost` can create a WebView2 child window. The target machine needs the WebView2 Evergreen Runtime (usually already present on Windows 10/11).
 
 ---
 

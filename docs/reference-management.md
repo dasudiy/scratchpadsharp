@@ -223,4 +223,4 @@ project/
 
 `References` 仅用于 **用户本地 DLL 路径**（如 `"libs/MyLib.dll"`，或包含路径分隔符的相对路径）。条目会写入 Manifest 作为 `Local` 资产。加载/补水时不会把 deps.json 里的 NuGet 包写回 `Config.NuGetPackages`；那些包只出现在补水后的编译/运行时列表里。
 
-共享框架（BCL）不由此字段配置：`MetadataReferenceProvider.GetDefaultReferences()` 从运行时 `TRUSTED_PLATFORM_ASSEMBLIES` 加载完整 TPA 列表；无 TPA 时回退到共享框架目录或最小类型集。脚本额外引用与 TPA **同名**时，`GetReferencesWithPackages` 用补水路径覆盖 TPA 条目。
+共享框架（BCL）不由此字段配置：`MetadataReferenceProvider.GetDefaultReferences()` 优先从运行时 `TRUSTED_PLATFORM_ASSEMBLIES` 加载托管程序集；TPA 不完整时再回退到已安装的 `Microsoft.NETCore.App` 共享框架目录，最后才扫描当前 runtime 目录。所有路径都会跳过 native DLL（`libSkiaSharp.dll`、`coreclr.dll`、`e_sqlite3.dll` 等没有托管元数据的 PE），避免 Roslyn `CS0009`。脚本额外引用与 TPA **同名**时，`GetReferencesWithPackages` 用补水路径覆盖 TPA 条目。
