@@ -133,7 +133,7 @@ For each table:
 - **DbSet** — entity name + `s` (`SalesTicketOrders`)
 - **Table mapping** — `entity.ToTable("SalesTicketOrder", "dbo")` so the pluralized DbSet still targets the real table
 - **Primary key** — `HasKey` on a single column or composite `{ Col1, Col2 }`
-- **Column rename** — `HasColumnName("original_name")` when the PascalCase property differs from the SQL name
+- **Column rename** — `HasColumnName("original_name")` when the PascalCase property differs from the SQL name (including when a column would otherwise share the entity class name, e.g. table `News` + column `News` → property `NewsValue`)
 
 `AppDbContext` uses `OnConfiguring` with the provider extension (`UseSqlite` / `UseSqlServer`) and the connection string from `module.json` (password stripped). There is no `AddDbContext` DI — scripts construct `new AppDbContext()` directly.
 

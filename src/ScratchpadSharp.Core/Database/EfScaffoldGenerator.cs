@@ -43,7 +43,7 @@ public static class EfScaffoldGenerator
             foreach (var col in table.Columns)
             {
                 var propType = MapClrType(col.DataType, col.IsNullable);
-                var propName = ToPascalIdentifier(col.Name);
+                var propName = ToEntityPropertyName(className, col.Name);
                 sb.AppendLine($"    public {propType} {propName} {{ get; set; }}");
             }
 
@@ -75,7 +75,7 @@ public static class EfScaffoldGenerator
             var pkProps = table.Columns
                 .Where(c => c.IsPrimaryKey)
                 .OrderBy(c => c.Ordinal)
-                .Select(c => ToPascalIdentifier(c.Name))
+                .Select(c => ToEntityPropertyName(className, c.Name))
                 .ToList();
 
             if (pkProps.Count == 1)
@@ -86,7 +86,7 @@ public static class EfScaffoldGenerator
 
             foreach (var col in table.Columns)
             {
-                var propName = ToPascalIdentifier(col.Name);
+                var propName = ToEntityPropertyName(className, col.Name);
                 if (!string.Equals(propName, col.Name, StringComparison.Ordinal))
                     sb.AppendLine(
                         $"            entity.Property(e => e.{propName}).HasColumnName(\"{EscapeCSharpString(col.Name)}\");");
@@ -132,6 +132,17 @@ public static class EfScaffoldGenerator
 
     private static bool HasPrimaryKey(DbTableInfo table) =>
         table.Columns.Any(c => c.IsPrimaryKey);
+
+    /// <summary>
+    /// Property name for a column; appends "Value" when it would match the entity class name (CS0542).
+    /// </summary>
+    public static string ToEntityPropertyName(string entityClassName, string columnName)
+    {
+        var propName = ToPascalIdentifier(columnName);
+        if (string.Equals(propName, entityClassName, StringComparison.Ordinal))
+            propName += "Value";
+        return propName;
+    }
 
     public static string ToPascalIdentifier(string name)
     {

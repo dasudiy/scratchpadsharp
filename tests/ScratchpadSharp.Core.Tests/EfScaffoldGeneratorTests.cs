@@ -14,6 +14,7 @@ public static class EfScaffoldGeneratorTests
         failures += Run(nameof(GeneratedModel_HasEfUsings), GeneratedModel_HasEfUsings);
         failures += Run(nameof(GeneratedModel_ConfiguresPrimaryKey), GeneratedModel_ConfiguresPrimaryKey);
         failures += Run(nameof(GeneratedModel_MapsToRealTableName), GeneratedModel_MapsToRealTableName);
+        failures += Run(nameof(GeneratedModel_AvoidsPropertyNameCollision), GeneratedModel_AvoidsPropertyNameCollision);
         failures += Run(nameof(GeneratedModel_SkipsEfMigrationsHistory), GeneratedModel_SkipsEfMigrationsHistory);
         failures += Run(nameof(EnsureModuleUsings_PrependsMissing), EnsureModuleUsings_PrependsMissing);
         return failures;
@@ -74,6 +75,25 @@ public static class EfScaffoldGeneratorTests
 
         return model.Contains("DbSet<SalesTicketOrder> SalesTicketOrders", StringComparison.Ordinal) &&
                model.Contains("entity.ToTable(\"SalesTicketOrder\", \"dbo\");", StringComparison.Ordinal);
+    }
+
+    private static bool GeneratedModel_AvoidsPropertyNameCollision()
+    {
+        var snapshot = new DbSchemaSnapshot([
+            new DbTableInfo("News", "dbo", false, [
+                new DbColumnInfo("Id", "int", false, true, 0),
+                new DbColumnInfo("News", "nvarchar", true, false, 1)
+            ])
+        ]);
+
+        var provider = DatabaseProviderCatalog.Get(DatabaseProviderIds.SqlServer);
+        var model = EfScaffoldGenerator.GenerateModel(
+            snapshot, provider, "Test", "Server=localhost;Database=test;TrustServerCertificate=True");
+
+        return model.Contains("public class News", StringComparison.Ordinal) &&
+               model.Contains("public string? NewsValue { get; set; }", StringComparison.Ordinal) &&
+               model.Contains("entity.Property(e => e.NewsValue).HasColumnName(\"News\");", StringComparison.Ordinal) &&
+               !model.Contains("public string? News { get; set; }", StringComparison.Ordinal);
     }
 
     private static bool GeneratedModel_SkipsEfMigrationsHistory()
