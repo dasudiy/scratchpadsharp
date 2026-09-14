@@ -35,7 +35,10 @@ public class RoslynWorkspaceService
     {
         lock (initLock)
         {
-            return initializationTask ??= InitializeCoreAsync();
+            // Run on the thread pool: MEF host composition is CPU-heavy and would otherwise
+            // execute synchronously on the caller's (UI) thread during startup restore.
+            initializationTask ??= Task.Run(InitializeCoreAsync);
+            return initializationTask;
         }
     }
 

@@ -19,6 +19,8 @@ public class NuGetService
 
     private readonly string globalPackagesFolder;
     private readonly List<PackageSource> packageSources;
+    private readonly ConcurrentDictionary<string, SourceRepository> sourceRepositoryCache =
+        new(StringComparer.OrdinalIgnoreCase);
     public IEnumerable<PackageSource> PackageSources => packageSources;
 
     private NuGetService()
@@ -43,12 +45,15 @@ public class NuGetService
         return await Task.FromResult(packageSources.Select(s => s.Name).ToList());
     }
 
+    private SourceRepository GetSourceRepository(PackageSource source) =>
+        sourceRepositoryCache.GetOrAdd(source.Source ?? source.Name, _ => Repository.Factory.GetCoreV3(source));
+
     public async Task<IEnumerable<SourcePackageDependencyInfo>> GetPackageDependenciesAsync(PackageIdentity package,
         NuGetFramework framework, CancellationToken cancellationToken)
     {
         using var cache = new SourceCacheContext();
-        
-        foreach (var repo in packageSources.Select(t=> Repository.Factory.GetCoreV3(t)))
+
+        foreach (var repo in packageSources.Select(GetSourceRepository))
         {
             try 
             {
@@ -89,7 +94,7 @@ public class NuGetService
         {
             try
             {
-                var repository = Repository.Factory.GetCoreV3(source);
+                var repository = GetSourceRepository(source);
                 var resource = await repository.GetResourceAsync<PackageSearchResource>(token);
                 if (resource == null) return;
 
@@ -149,7 +154,7 @@ public class NuGetService
         {
             try
             {
-                var repository = Repository.Factory.GetCoreV3(source);
+                var repository = GetSourceRepository(source);
                 var resource = await repository.GetResourceAsync<PackageMetadataResource>(cancellationToken);
                 var metadata = await resource.GetMetadataAsync(identity, cache, NullLogger.Instance, cancellationToken);
                 if (metadata != null)
@@ -253,7 +258,7 @@ public class NuGetService
             {
                 try
                 {
-                    var repository = Repository.Factory.GetCoreV3(source);
+                    var repository = GetSourceRepository(source);
                     var resource = await repository.GetResourceAsync<FindPackageByIdResource>(token);
                     if (resource == null) return;
 
@@ -296,7 +301,7 @@ public class NuGetService
             $"Downloading {package.Id} {package.Version}...", 0, package.Id));
 
         using var cacheContext = new SourceCacheContext();
-        var repositories = packageSources.Select(t => Repository.Factory.GetCoreV3(t));
+        var repositories = packageSources.Select(GetSourceRepository);
         var failures = new List<string>();
 
         foreach (var repo in repositories)

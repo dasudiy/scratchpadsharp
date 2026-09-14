@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,10 +12,40 @@ public static class MetadataReferenceProvider
 {
     private static List<MetadataReference>? cachedReferences;
 
+    // MetadataReference is immutable and safely shared across projects/compilations. Entries are
+    // keyed by path and invalidated when last-write time or length changes so a rebuilt local DLL
+    // is re-read and the previous mapping can be released.
+    private static readonly ConcurrentDictionary<string, CachedReference> referenceCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly record struct CachedReference(
+        long LastWriteTicks, long Length, MetadataReference Reference);
+
     private static MetadataReference CreateReferenceWithXmlDocs(string assemblyPath)
     {
-        var docProvider = ResolveXmlDocumentation(assemblyPath);
-        return MetadataReference.CreateFromFile(assemblyPath, documentation: docProvider);
+        var (lastWrite, length) = ReadStamp(assemblyPath);
+        if (referenceCache.TryGetValue(assemblyPath, out var cached) &&
+            cached.LastWriteTicks == lastWrite &&
+            cached.Length == length)
+            return cached.Reference;
+
+        var reference = MetadataReference.CreateFromFile(
+            assemblyPath, documentation: ResolveXmlDocumentation(assemblyPath));
+        referenceCache[assemblyPath] = new CachedReference(lastWrite, length, reference);
+        return reference;
+    }
+
+    private static (long LastWriteTicks, long Length) ReadStamp(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? (info.LastWriteTimeUtc.Ticks, info.Length) : (0, 0);
+        }
+        catch
+        {
+            return (0, 0);
+        }
     }
 
     private static XmlDocumentationProvider? ResolveXmlDocumentation(string assemblyPath)

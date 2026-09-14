@@ -37,7 +37,12 @@ public class ProjectService
     public Task<ProjectContext> NewProjectAsync(string tabId, CancellationToken ct = default) =>
         CreateShellProjectAsync(tabId, ct);
 
-    public async Task<ProjectContext> CreateShellProjectAsync(string tabId, CancellationToken ct = default)
+    /// <param name="activateRoslyn">
+    /// Pass <c>false</c> when a subsequent step (e.g. <see cref="ApplySavedProjectStateAsync"/>)
+    /// will activate the Roslyn project itself, avoiding a redundant workspace pass.
+    /// </param>
+    public async Task<ProjectContext> CreateShellProjectAsync(string tabId, CancellationToken ct = default,
+        bool activateRoslyn = true)
     {
         var path = Path.GetTempFileName();
         File.Delete(path);
@@ -52,7 +57,8 @@ public class ProjectService
         };
         context.MergedEnvironment = ModuleMergeService.BuildFromQuery(context.Config);
 
-        await ActivateRoslynProjectAsync(tabId, context);
+        if (activateRoslyn)
+            await ActivateRoslynProjectAsync(tabId, context);
         return context;
     }
 

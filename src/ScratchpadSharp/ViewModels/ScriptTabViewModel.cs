@@ -346,7 +346,14 @@ public class ScriptTabViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(IsProjectReady));
         try
         {
-            projectContext = await ProjectService.Instance.CreateShellProjectAsync(TabId);
+            // A saved manifest already holds the resolved (merged) package graph, so skip both
+            // the redundant Roslyn activation in CreateShellProjectAsync and the network-bound
+            // re-resolution in RefreshMergedEnvironmentAsync.
+            var restoreManifest = state.Config != null &&
+                                  state.Manifest?.ResolvedState.Assemblies is { Count: > 0 };
+
+            projectContext = await ProjectService.Instance.CreateShellProjectAsync(
+                TabId, activateRoslyn: !restoreManifest);
 
             if (!string.IsNullOrEmpty(state.SourcePath))
             {
@@ -359,19 +366,17 @@ public class ScriptTabViewModel : ReactiveObject
                 }
             }
 
-            if (state.Config != null &&
-                state.Manifest?.ResolvedState.Assemblies is { Count: > 0 })
+            if (restoreManifest)
             {
                 await ProjectService.Instance.ApplySavedProjectStateAsync(
-                    TabId, projectContext, state.Config, state.Manifest);
+                    TabId, projectContext, state.Config!, state.Manifest!);
             }
             else if (state.Config != null)
             {
+                // No manifest to restore from: RestoreConfigAsync re-resolves the merged
+                // environment (module refs included) — may hit the network.
                 await ProjectService.Instance.RestoreConfigAsync(TabId, projectContext, state.Config);
             }
-
-            if (state.Config?.ModuleRefs is { Count: > 0 })
-                await ProjectService.Instance.RefreshMergedEnvironmentAsync(TabId, projectContext);
 
             if (!string.IsNullOrEmpty(state.Code))
             {
